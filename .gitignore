@@ -1,25 +1,26 @@
-# Python
+# Python cache
 __pycache__/
 *.py[cod]
 *.pyo
 *.so
 
-# Entorno/venv
+# Virtual environments
 .venv/
 env/
+venv/
 *.egg-info/
 
-# Config y credenciales
+# Environment variables
 .env
 .env.*.local
 
-# IDE/OS
+# IDE / OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 
-# Build/paquete
+# Build artifacts
 build/
 dist/
 *.spec
