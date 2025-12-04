@@ -1,4 +1,8 @@
 from typing import Any, Dict, List
+from pathlib import Path
+import json
+import re
+import unicodedata
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont
@@ -22,6 +26,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 import pandas as pd
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.styles import PatternFill, Alignment
 
 from services.usda_api import USDAApiError, get_food_details, search_foods
 
@@ -150,7 +157,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("Ingredientes en formulación (vista rápida)"))
         self.formulation_preview = QTableWidget(0, 5)
         self.formulation_preview.setHorizontalHeaderLabels(
-            ["FDC ID", "Descripción", "Cantidad (g)", "Cantidad (%)", "Fijar %"]
+            ["FDC ID", "Ingrediente", "Cantidad (g)", "Cantidad (%)", "Fijar %"]
         )
         self.formulation_preview.setEditTriggers(QTableWidget.NoEditTriggers)
         self.formulation_preview.setSelectionBehavior(QTableWidget.SelectRows)
@@ -178,7 +185,17 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(self.formulation_tab)
 
         header_layout = QHBoxLayout()
-        header_layout.addWidget(QLabel("Ingredientes en formulación"))
+        self.export_state_button = QPushButton("Exportar")
+        self.import_state_button = QPushButton("Importar")
+        header_layout.addWidget(self.export_state_button)
+        header_layout.addWidget(self.import_state_button)
+        header_layout.addStretch()
+        self.formula_name_input = QLineEdit()
+        self.formula_name_input.setPlaceholderText(
+            "Nombre Fórmula Ej.: Pan dulce con chocolate"
+        )
+        self.formula_name_input.setAlignment(Qt.AlignCenter)
+        header_layout.addWidget(self.formula_name_input, 1)
         header_layout.addStretch()
         header_layout.addWidget(QLabel("Unidad de formulación:"))
         self.quantity_mode_selector = QComboBox()
@@ -190,7 +207,7 @@ class MainWindow(QMainWindow):
         self.formulation_table.setHorizontalHeaderLabels(
             [
                 "FDC ID",
-                "Descripción",
+                "Ingrediente",
                 "Cantidad (g)",
                 "Cantidad (%)",
                 "Fijar %",
@@ -257,6 +274,8 @@ class MainWindow(QMainWindow):
         self.formulation_table.itemChanged.connect(self.on_lock_toggled_from_table)
         self.totals_table.itemChanged.connect(self.on_totals_checkbox_changed)
         self.toggle_export_button.clicked.connect(self.on_toggle_export_clicked)
+        self.export_state_button.clicked.connect(self.on_export_state_clicked)
+        self.import_state_button.clicked.connect(self.on_import_state_clicked)
         self._set_default_column_widths(formulation=True)
 
     def _set_default_column_widths(self, formulation: bool = False) -> None:
@@ -409,10 +428,11 @@ class MainWindow(QMainWindow):
             )
             return
 
+        default_name = f"{self._safe_base_name()}.xlsx"
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Exportar formulacion a Excel",
-            "formulacion.xlsx",
+            default_name,
             "Archivos de Excel (*.xlsx)",
         )
         if not path:
@@ -435,6 +455,251 @@ class MainWindow(QMainWindow):
                 "Exportado",
                 f"Archivo guardado en:\n{path}",
             )
+
+    def on_export_state_clicked(self) -> None:
+        """Export formulation state (ingredientes + cantidades + flags) a JSON."""
+        if not self.formulation_items:
+            QMessageBox.information(
+                self,
+                "Exportar formulación",
+                "No hay ingredientes en la formulación para exportar.",
+            )
+            return
+
+        default_name = f"{self._safe_base_name()}.json"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Exportar formulación",
+            default_name,
+            "Archivos JSON (*.json)",
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".json"):
+            path += ".json"
+
+        payload_items: list[Dict[str, Any]] = []
+        for item in self.formulation_items:
+            payload_items.append(
+                {
+                    "fdc_id": item.get("fdc_id"),
+                    "description": item.get("description", ""),
+                    "brand": item.get("brand", ""),
+                    "data_type": item.get("data_type", ""),
+                    "amount_g": float(item.get("amount_g", 0.0) or 0.0),
+                    "locked": bool(item.get("locked", False)),
+                }
+            )
+
+        payload = {
+            "quantity_mode": self.quantity_mode,
+            "items": payload_items,
+            "nutrient_export_flags": self.nutrient_export_flags,
+            "formula_name": self.formula_name_input.text(),
+            "version": 2,
+        }
+        try:
+            Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(
+                self,
+                "Error al exportar",
+                f"No se pudo exportar la formulación:\n{exc}",
+            )
+            return
+
+        self.status_label.setText(f"Formulación exportada en {path}")
+
+    def on_import_state_clicked(self) -> None:
+        """Import formulation state from JSON or Excel and refresh UI."""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Importar formulación",
+            "",
+            "Archivos JSON (*.json);;Archivos Excel (*.xlsx)",
+        )
+        if not path:
+            return
+
+        ext = Path(path).suffix.lower()
+        if ext == ".json":
+            success = self._load_state_from_json(path)
+        elif ext in (".xlsx", ".xls"):
+            success = self._load_state_from_excel(path)
+        else:
+            QMessageBox.warning(
+                self,
+                "Formato no soportado",
+                "Selecciona un archivo .json o .xlsx",
+            )
+            return
+
+        if success:
+            self._refresh_formulation_views()
+            self.status_label.setText(f"Formulación importada desde {path}")
+
+    def _load_state_from_json(self, path: str) -> bool:
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(
+                self,
+                "Error al importar",
+                f"No se pudo leer el archivo:\n{exc}",
+            )
+            return False
+
+        if not isinstance(data, dict):
+            QMessageBox.warning(
+                self,
+                "Formato inválido",
+                "El archivo no contiene una formulación válida.",
+            )
+            return False
+
+        items = data.get("items") or []
+        if not isinstance(items, list) or not items:
+            QMessageBox.warning(
+                self,
+                "Formato inválido",
+                "El archivo no contiene ingredientes válidos.",
+            )
+            return False
+
+        base_items: list[Dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            base_items.append(
+                {
+                    "fdc_id": item.get("fdc_id") or item.get("fdcId"),
+                    "amount_g": float(item.get("amount_g", 0.0) or 0.0),
+                    "locked": bool(item.get("locked", False)),
+                    "description": item.get("description", ""),
+                    "brand": item.get("brand", ""),
+                    "data_type": item.get("data_type", ""),
+                }
+            )
+
+        hydrated = self._hydrate_items(base_items)
+        if hydrated is None:
+            return False
+
+        self.formulation_items = hydrated
+
+        flags = data.get("nutrient_export_flags")
+        self.nutrient_export_flags = (
+            {k: bool(v) for k, v in flags.items()} if isinstance(flags, dict) else {}
+        )
+
+        mode = data.get("quantity_mode", "g")
+        self.quantity_mode = "g" if mode != "%" else "%"
+        self.quantity_mode_selector.setCurrentIndex(
+            0 if self.quantity_mode == "g" else 1
+        )
+
+        self.formula_name_input.setText(data.get("formula_name", ""))
+        return True
+
+    def _load_state_from_excel(self, path: str) -> bool:
+        def _read(sheet: str | int, header_row: int) -> pd.DataFrame:
+            return pd.read_excel(path, sheet_name=sheet, header=header_row)
+
+        df: pd.DataFrame | None = None
+        # Prefer sheet "Ingredientes" with headers on second row (row index 1)
+        for sheet in ("Ingredientes", 0):
+            for header_row in (1, 0):
+                try:
+                    tmp = _read(sheet, header_row)
+                    if not tmp.empty:
+                        df = tmp
+                        break
+                except Exception:
+                    continue
+            if df is not None:
+                break
+
+        if df is None or df.empty:
+            QMessageBox.warning(
+                self,
+                "Sin datos",
+                "El archivo no tiene filas para importar.",
+            )
+            return False
+
+        # Normalize columns for matching
+        cols_norm: Dict[str, str] = {self._normalize_label(c): c for c in df.columns}
+        fdc_candidates = [
+            "fdc id",
+            "fdc_id",
+            "fdcid",
+            "fdc",
+        ]
+        amount_candidates = [
+            "cantidad (g)",
+            "cantidad g",
+            "cantidad",
+            "cantidad gramos",
+            "cantidad en gramos",
+            "amount g",
+            "amount_g",
+            "g",
+            "grams",
+        ]
+
+        fdc_col = next((cols_norm[c] for c in fdc_candidates if c in cols_norm), None)
+        amount_col = next(
+            (cols_norm[c] for c in amount_candidates if c in cols_norm), None
+        )
+        if not fdc_col or not amount_col:
+            QMessageBox.warning(
+                self,
+                "Columnas faltantes",
+                "Se requieren columnas FDC ID y Cantidad (g).",
+            )
+            return False
+
+        base_items: list[Dict[str, Any]] = []
+        for _, row in df.iterrows():
+            fdc_val = row.get(fdc_col)
+            amt_val = row.get(amount_col)
+            if pd.isna(fdc_val):
+                continue
+            try:
+                fdc_int = int(fdc_val)
+            except Exception:
+                continue
+            try:
+                amt = float(amt_val) if not pd.isna(amt_val) else 0.0
+            except Exception:
+                amt = 0.0
+            base_items.append(
+                {
+                    "fdc_id": fdc_int,
+                    "amount_g": amt,
+                    "locked": False,
+                }
+            )
+
+        if not base_items:
+            QMessageBox.warning(
+                self,
+                "Sin ingredientes",
+                "No se encontraron filas válidas con FDC ID y Cantidad (g).",
+            )
+            return False
+
+        hydrated = self._hydrate_items(base_items)
+        if hydrated is None:
+            return False
+
+        self.formulation_items = hydrated
+        self.nutrient_export_flags = {}
+        self.quantity_mode = "g"
+        self.quantity_mode_selector.setCurrentIndex(0)
+        if not self.formula_name_input.text().strip():
+            self.formula_name_input.setText(Path(path).stem)
+        return True
 
     def _populate_table(self, foods) -> None:
         self.table.setRowCount(0)
@@ -489,12 +754,12 @@ class MainWindow(QMainWindow):
 
     def _update_quantity_headers(self) -> None:
         self.formulation_preview.setHorizontalHeaderLabels(
-            ["FDC ID", "Descripción", "Cantidad (g)", "Cantidad (%)", "Fijar %"]
+            ["FDC ID", "Ingrediente", "Cantidad (g)", "Cantidad (%)", "Fijar %"]
         )
         self.formulation_table.setHorizontalHeaderLabels(
             [
                 "FDC ID",
-                "Descripción",
+                "Ingrediente",
                 "Cantidad (g)",
                 "Cantidad (%)",
                 "Fijar %",
@@ -533,6 +798,134 @@ class MainWindow(QMainWindow):
         if self.quantity_mode == "g":
             return column == self.amount_g_column_index
         return column == self.percent_column_index
+
+    def _nutrients_by_header(self, nutrients: List[Dict[str, Any]]) -> Dict[str, float]:
+        """Build a mapping of template header -> nutrient amount (per 100 g)."""
+        out: Dict[str, float] = {}
+        for entry in nutrients:
+            amount = entry.get("amount")
+            if amount is None:
+                continue
+            nut = entry.get("nutrient") or {}
+            name = nut.get("name", "")
+            unit = nut.get("unitName") or self._infer_unit(nut) or ""
+            header = f"{name} ({unit})" if unit else name
+            if header:
+                out[header] = amount
+        return out
+
+    def _collect_nutrient_columns(self) -> tuple[list[str], Dict[str, str]]:
+        """
+        Collect ordered nutrient headers and their categories.
+        Category is taken from USDA "group" rows (amount/unit missing) when present.
+        """
+        headers: list[str] = []
+        categories: Dict[str, str] = {}
+        preferred_order = [
+            "Proximates",
+            "Carbohydrates",
+            "Minerals",
+            "Vitamins and Other Components",
+            "Lipids",
+            "Amino acids",
+        ]
+        category_seen: Dict[str, list[str]] = {cat: [] for cat in preferred_order}
+
+        for item in self.formulation_items:
+            current_category = "Nutrientes"
+            for entry in item.get("nutrients", []):
+                nut = entry.get("nutrient") or {}
+                name = nut.get("name", "") or ""
+                unit = nut.get("unitName") or self._infer_unit(nut) or ""
+                amount = entry.get("amount")
+                nut_key = self._nutrient_key(nut)
+                if nut_key and not self.nutrient_export_flags.get(nut_key, True):
+                    continue
+
+                if amount is None and name:
+                    current_category = name
+                    continue
+
+                if amount is None:
+                    continue
+
+                header = f"{name} ({unit})" if unit else name
+                if not header:
+                    continue
+                categories[header] = current_category
+                if header not in category_seen.setdefault(current_category, []):
+                    category_seen[current_category].append(header)
+
+        # Flatten by preferred category order then any remaining categories
+        ordered_headers: list[str] = []
+        for cat in preferred_order + [c for c in category_seen if c not in preferred_order]:
+            ordered_headers.extend(category_seen.get(cat, []))
+
+        # Preserve only those actually present
+        return [h for h in ordered_headers if h in categories], categories
+
+    def _split_header_unit(self, header: str) -> tuple[str, str]:
+        if header.endswith(")") and " (" in header:
+            name, unit = header.rsplit(" (", 1)
+            return name, unit[:-1]
+        return header, ""
+
+    def _hydrate_items(self, items: list[Dict[str, Any]]) -> list[Dict[str, Any]] | None:
+        """Fetch USDA details for items to populate description/nutrients."""
+        hydrated: list[Dict[str, Any]] = []
+        for item in items:
+            fdc_id = item.get("fdc_id") or item.get("fdcId")
+            if fdc_id is None:
+                QMessageBox.warning(
+                    self,
+                    "FDC ID faltante",
+                    "Uno de los ingredientes no tiene FDC ID.",
+                )
+                return None
+            try:
+                fdc_id_int = int(fdc_id)
+            except ValueError:
+                QMessageBox.warning(
+                    self,
+                    "FDC ID inválido",
+                    f"FDC ID no numérico: {fdc_id}",
+                )
+                return None
+
+            try:
+                details = get_food_details(fdc_id_int)
+            except Exception as exc:  # noqa: BLE001 - surface to user
+                QMessageBox.critical(
+                    self,
+                    "Error al cargar ingrediente",
+                    f"No se pudo cargar el FDC {fdc_id_int}:\n{exc}",
+                )
+                return None
+
+            hydrated.append(
+                {
+                    "fdc_id": fdc_id_int,
+                    "description": details.get("description", "")
+                    or item.get("description", ""),
+                    "brand": details.get("brandOwner", "") or item.get("brand", ""),
+                    "data_type": details.get("dataType", "") or item.get("data_type", ""),
+                    "amount_g": float(item.get("amount_g", 0.0) or 0.0),
+                    "nutrients": details.get("foodNutrients", []) or [],
+                    "locked": bool(item.get("locked", False)),
+                }
+            )
+
+        return hydrated
+
+    def _normalize_label(self, label: str) -> str:
+        """Normalize column labels for loose matching (casefold + strip accents)."""
+        if label is None:
+            return ""
+        text = str(label)
+        text = unicodedata.normalize("NFKD", text)
+        text = "".join(ch for ch in text if not unicodedata.combining(ch))
+        text = text.replace("_", " ").replace("-", " ")
+        return re.sub(r"\s+", " ", text).strip().lower()
 
     def _populate_formulation_tables(self) -> None:
         """Refresh both formulation tables with current items."""
@@ -641,45 +1034,160 @@ class MainWindow(QMainWindow):
         self._populate_totals_table()
 
     def _export_formulation_to_excel(self, filepath: str) -> None:
-        """Write formulation ingredients and totals to an Excel workbook."""
-        ingredients_rows: List[Dict[str, object]] = []
-        for item in self.formulation_items:
-            ingredients_rows.append(
-                {
-                    "FDC ID": item.get("fdc_id", ""),
-                    "Descripcion": item.get("description", ""),
-                    "Marca / Origen": item.get("brand", ""),
-                    "Tipo de dato": item.get("data_type", ""),
-                    "Cantidad (g)": item.get("amount_g", 0.0),
-                    "Cantidad (%)": self._amount_to_percent(
-                        item.get("amount_g", 0.0)
-                    ),
-                }
-            )
+        """Build Excel from scratch with nutrient categories as in USDA view."""
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Ingredientes"
+        totals_sheet = wb.create_sheet("Totales")
 
-        totals_rows: List[Dict[str, object]] = []
-        totals = self._calculate_totals()
-        sorted_totals = sorted(
-            totals.items(), key=lambda item: item[1].get("order", float("inf"))
+        base_headers = [
+            "FDC ID",
+            "Ingrediente",
+            "Marca / Origen",
+            "Tipo de dato",
+            "Cantidad (g)",
+            "Cantidad (%)",
+        ]
+
+        nutrient_headers, header_categories = self._collect_nutrient_columns()
+
+        header_fill = PatternFill("solid", fgColor="D9D9D9")
+        total_fill = PatternFill("solid", fgColor="FFF2CC")
+        category_fills = {
+            "Proximates": PatternFill("solid", fgColor="DAEEF3"),
+            "Carbohydrates": PatternFill("solid", fgColor="E6B8B7"),
+            "Minerals": PatternFill("solid", fgColor="C4D79B"),
+            "Vitamins and Other Components": PatternFill("solid", fgColor="FFF2CC"),
+            "Lipids": PatternFill("solid", fgColor="D9E1F2"),
+            "Amino acids": PatternFill("solid", fgColor="E4DFEC"),
+        }
+        center = Alignment(horizontal="center", vertical="center")
+
+        # Row 1: group titles (base + nutrient categories)
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(base_headers))
+        ws.cell(row=1, column=1, value="Detalles de formulación").alignment = center
+
+        if nutrient_headers:
+            start_col = len(base_headers) + 1
+            col = start_col
+            while col < start_col + len(nutrient_headers):
+                idx = col - start_col
+                category = header_categories.get(nutrient_headers[idx], "Nutrientes")
+                run_start = col
+                while (
+                    col < start_col + len(nutrient_headers)
+                    and header_categories.get(nutrient_headers[col - start_col], "Nutrientes")
+                    == category
+                ):
+                    col += 1
+                run_end = col - 1
+                ws.merge_cells(start_row=1, start_column=run_start, end_row=1, end_column=run_end)
+                cat_cell = ws.cell(row=1, column=run_start, value=category)
+                cat_cell.alignment = center
+                cat_cell.fill = category_fills.get(category, header_fill)
+
+        # Row 2: headers
+        headers = base_headers + nutrient_headers
+        for col_idx, name in enumerate(headers, start=1):
+            cell = ws.cell(row=2, column=col_idx, value=name)
+            cell.fill = category_fills.get(
+                header_categories.get(name, ""), header_fill
+            ) if col_idx > len(base_headers) else header_fill
+            cell.alignment = center
+
+        start_row = 3
+        grams_col = base_headers.index("Cantidad (g)") + 1
+        percent_col = base_headers.index("Cantidad (%)") + 1
+        data_rows = len(self.formulation_items)
+        end_row = start_row + data_rows - 1
+
+        # Write ingredient rows
+        for idx, item in enumerate(self.formulation_items):
+            row = start_row + idx
+            values = [
+                item.get("fdc_id", ""),
+                item.get("description", ""),
+                item.get("brand", ""),
+                item.get("data_type", ""),
+                float(item.get("amount_g", 0.0) or 0.0),
+                None,  # placeholder for percent formula
+            ]
+            for col_idx, val in enumerate(values, start=1):
+                ws.cell(row=row, column=col_idx, value=val)
+
+            gram_cell = f"{get_column_letter(grams_col)}{row}"
+            total_range = f"${get_column_letter(grams_col)}${start_row}:${get_column_letter(grams_col)}${end_row}"
+            ws.cell(
+                row=row,
+                column=percent_col,
+                value=f"={gram_cell}/SUM({total_range})",
+            ).number_format = "0.00%"
+
+            nut_map = self._nutrients_by_header(item.get("nutrients", []))
+            for offset, header in enumerate(nutrient_headers, start=len(base_headers) + 1):
+                if header in nut_map:
+                    ws.cell(row=row, column=offset, value=nut_map[header])
+
+        total_row = end_row + 1
+        ws.cell(row=total_row, column=1, value="Total")
+        ws.cell(row=total_row, column=2, value="Formulado")
+        ws.cell(row=total_row, column=3, value="Formulado")
+        ws.cell(row=total_row, column=4, value="Formulado")
+
+        gram_total_cell = ws.cell(
+            row=total_row,
+            column=grams_col,
+            value=f"=SUBTOTAL(9,{get_column_letter(grams_col)}{start_row}:{get_column_letter(grams_col)}{end_row})",
         )
-        for nut_key, entry in sorted_totals:
-            if not self.nutrient_export_flags.get(nut_key, True):
-                continue
-            totals_rows.append(
-                {
-                    "Nutriente": entry["name"],
-                    "Total": entry["amount"],
-                    "Unidad": entry["unit"],
-                }
-            )
+        gram_total_cell.fill = total_fill
+        percent_total_cell = ws.cell(row=total_row, column=percent_col, value="100%")
+        percent_total_cell.number_format = "0.00%"
+        percent_total_cell.fill = total_fill
 
-        with pd.ExcelWriter(filepath, engine="openpyxl") as writer:
-            pd.DataFrame(ingredients_rows).to_excel(
-                writer, sheet_name="Ingredientes", index=False
+        for offset, header in enumerate(nutrient_headers, start=len(base_headers) + 1):
+            col_letter = get_column_letter(offset)
+            formula = (
+                f"=SUMPRODUCT(${get_column_letter(percent_col)}${start_row}:${get_column_letter(percent_col)}${end_row},"
+                f"${col_letter}${start_row}:${col_letter}${end_row})"
             )
-            pd.DataFrame(totals_rows).to_excel(
-                writer, sheet_name="Totales", index=False
-            )
+            cell = ws.cell(row=total_row, column=offset, value=formula)
+            cell.fill = total_fill
+
+        # Styles for data rows
+        for row in range(start_row, total_row + 1):
+            ws.cell(row=row, column=grams_col).number_format = "0.0"
+
+        # Freeze panes to keep headers/base columns visible
+        freeze_col = len(base_headers) + 1 if nutrient_headers else 1
+        ws.freeze_panes = f"{get_column_letter(freeze_col)}3"
+
+        # Adjust widths
+        widths = {
+            "A": 12,
+            "B": 35,
+            "C": 18,
+            "D": 14,
+            "E": 12,
+            "F": 12,
+        }
+        for col_letter, width in widths.items():
+            ws.column_dimensions[col_letter].width = width
+
+        # Totales sheet: simple reference to totals row
+        totals_headers = ["Nutriente", "Total", "Unidad"]
+        for col_idx, name in enumerate(totals_headers, start=1):
+            cell = totals_sheet.cell(row=1, column=col_idx, value=name)
+            cell.fill = header_fill
+            cell.alignment = center
+
+        for idx, header in enumerate(nutrient_headers, start=1):
+            name_part, unit = self._split_header_unit(header)
+            totals_sheet.cell(row=idx + 1, column=1, value=name_part)
+            totals_sheet.cell(row=idx + 1, column=3, value=unit or "")
+            source_cell = f"Ingredientes!{get_column_letter(len(base_headers) + idx)}{total_row}"
+            totals_sheet.cell(row=idx + 1, column=2, value=f"={source_cell}")
+
+        wb.save(filepath)
 
     def _calculate_totals(self) -> Dict[str, Dict[str, Any]]:
         """
@@ -886,6 +1394,12 @@ class MainWindow(QMainWindow):
             total += amount_g
         percent = 0.0 if total <= 0 else (amount_g / total) * 100.0
         return f"{percent:.2f} %"
+
+    def _safe_base_name(self, fallback: str = "formulacion") -> str:
+        """Return a filesystem-safe base name using the formula input or fallback."""
+        name = (self.formula_name_input.text() or "").strip()
+        clean = re.sub(r'[\\/:*?"<>|]+', "_", name).strip(". ")
+        return clean or fallback
 
     def _prompt_quantity(
         self, default_amount: float | None = None, editing_index: int | None = None
