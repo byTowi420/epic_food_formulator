@@ -3,8 +3,9 @@ from pathlib import Path
 import json
 import re
 import unicodedata
+import os
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot, QEvent, QItemSelectionModel
+from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot, QEvent, QItemSelectionModel, QCoreApplication
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont
 from PySide6.QtWidgets import (
     QComboBox,
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QCheckBox,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -20,6 +22,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QSizePolicy,
     QHeaderView,
+    QSplitter,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -67,6 +70,23 @@ class MainWindow(QMainWindow):
         self.percent_column_index = 3
         self.lock_column_index = 4
         self.nutrient_export_flags: Dict[str, bool] = {}
+        self.last_path = self._load_last_path()
+        self.search_page = 1
+        self.search_page_size = 25
+        self.search_fetch_page_size = 200
+        self.search_max_pages = 5
+        self.search_results: List[Dict[str, Any]] = []
+        self.last_query = ""
+        self.last_include_brands = False
+        self._last_results_count = 0
+        self.data_type_priority = {
+            "Foundation": 0,
+            "SR Legacy": 1,
+            "Survey": 2,
+            "Survey (FNDDS)": 2,
+            "Experimental": 3,
+            "Branded": 4,
+        }
 
         self._build_ui()
 
@@ -89,6 +109,7 @@ class MainWindow(QMainWindow):
 
     def _build_search_tab_ui(self) -> None:
         layout = QVBoxLayout(self.search_tab)
+        layout.setSpacing(6)
 
         search_layout = QHBoxLayout()
         self.search_input = QLineEdit()
@@ -100,14 +121,21 @@ class MainWindow(QMainWindow):
         search_layout.addWidget(self.search_input)
         search_layout.addWidget(self.search_button)
 
-        fdc_layout = QHBoxLayout()
-        self.fdc_id_input = QLineEdit()
-        self.fdc_id_input.setPlaceholderText("Buscar por FDC ID (ej: 169910)")
-        self.fdc_id_button = QPushButton("Cargar FDC ID")
-        fdc_layout.addWidget(self.fdc_id_input)
-        fdc_layout.addWidget(self.fdc_id_button)
+        self.include_brands_checkbox = QCheckBox("Incluir Marcas")
+        self.prev_page_button = QPushButton("<")
+        self.prev_page_button.setFixedWidth(32)
+        self.next_page_button = QPushButton(">")
+        self.next_page_button.setFixedWidth(32)
+        self.prev_page_button.setEnabled(False)
+        self.next_page_button.setEnabled(False)
 
+        # Controles legacy ocultos (buscar por FDC y botón de agregar)
+        self.fdc_id_input = QLineEdit()
+        self.fdc_id_input.hide()
+        self.fdc_id_button = QPushButton("Cargar FDC ID")
+        self.fdc_id_button.hide()
         self.add_button = QPushButton("Agregar seleccionado a formulación")
+        self.add_button.hide()
 
         self.status_label = QLabel("")
         self.status_label.setAlignment(Qt.AlignLeft)
@@ -122,10 +150,16 @@ class MainWindow(QMainWindow):
         )
 
         layout.addLayout(search_layout)
-        layout.addLayout(fdc_layout)
-        layout.addWidget(self.add_button)
-        layout.addWidget(self.status_label)
+        status_controls_layout = QHBoxLayout()
+        status_controls_layout.setContentsMargins(0, 0, 0, 0)
+        status_controls_layout.addWidget(self.status_label, 1)
+        status_controls_layout.addStretch()
+        status_controls_layout.addWidget(self.include_brands_checkbox)
+        status_controls_layout.addWidget(self.prev_page_button)
+        status_controls_layout.addWidget(self.next_page_button)
+        layout.addLayout(status_controls_layout)
 
+        # Tabla de resultados (arriba)
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(
             ["FDC ID", "Descripción", "Marca / Origen", "Tipo de dato"]
@@ -135,7 +169,6 @@ class MainWindow(QMainWindow):
         self.table.setSelectionMode(QTableWidget.SingleSelection)
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.table)
 
         self.details_table = QTableWidget(0, 3)
         self.details_table.setHorizontalHeaderLabels(
@@ -168,20 +201,33 @@ class MainWindow(QMainWindow):
 
         bottom_layout.addLayout(left_panel, 1)
         bottom_layout.addLayout(right_panel, 1)
-        layout.addLayout(bottom_layout)
+
+        bottom_widget = QWidget()
+        bottom_widget.setLayout(bottom_layout)
+
+        splitter = QSplitter(Qt.Vertical)
+        splitter.addWidget(self.table)
+        splitter.addWidget(bottom_widget)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
+        splitter.setSizes([400, 500])
+
+        layout.addWidget(splitter)
 
         self.search_button.clicked.connect(self.on_search_clicked)
         self.search_input.returnPressed.connect(self.on_search_clicked)
         self.table.cellDoubleClicked.connect(self.on_result_double_clicked)
-        self.add_button.clicked.connect(self.on_add_selected_clicked)
-        self.fdc_id_button.clicked.connect(self.on_fdc_search_clicked)
-        self.fdc_id_input.returnPressed.connect(self.on_fdc_search_clicked)
         self.remove_preview_button.clicked.connect(self.on_remove_preview_clicked)
         self.formulation_preview.cellDoubleClicked.connect(
             self.on_formulation_preview_double_clicked
         )
         self.formulation_preview.itemSelectionChanged.connect(
             self.on_preview_selection_changed
+        )
+        self.prev_page_button.clicked.connect(self.on_prev_page_clicked)
+        self.next_page_button.clicked.connect(self.on_next_page_clicked)
+        self.include_brands_checkbox.stateChanged.connect(
+            self.on_include_brands_toggled
         )
         self._set_default_column_widths()
 
@@ -332,14 +378,140 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Ingresa un termino de busqueda.")
             return
 
-        self.status_label.setText("Buscando en FoodData Central...")
+        self.search_page = 1
+        self.last_query = query
+        self.last_include_brands = self.include_brands_checkbox.isChecked()
+        self._start_search()
+
+    def on_prev_page_clicked(self) -> None:
+        if self.search_page <= 1:
+            return
+        self.search_page -= 1
+        self._show_current_search_page()
+        self._update_paging_buttons(len(self.search_results))
+
+    def on_next_page_clicked(self) -> None:
+        total = len(self.search_results)
+        if self.search_page * self.search_page_size >= total:
+            return
+        self.search_page += 1
+        self._show_current_search_page()
+        self._update_paging_buttons(total)
+
+    def on_include_brands_toggled(self) -> None:
+        # Re-lanzar búsqueda con el filtro actualizado si ya hay texto
+        if not self.search_input.text().strip():
+            return
+        self.search_page = 1
+        self.last_query = self.search_input.text().strip()
+        self.last_include_brands = self.include_brands_checkbox.isChecked()
+        self._start_search()
+
+    def _start_search(self) -> None:
+        if not self.last_query:
+            self.status_label.setText("Ingresa un termino de busqueda.")
+            return
+
         self.search_button.setEnabled(False)
+        self.prev_page_button.setEnabled(False)
+        self.next_page_button.setEnabled(False)
+        self.search_results = []
+        self._last_results_count = 0
+        self._populate_table([])  # clear while loading
+
+        data_types = self._data_types_for_search()
+        self.status_label.setText(
+            f"Buscando en FoodData Central... (pagina {self.search_page})"
+        )
 
         self._run_in_thread(
-            fn=search_foods,
-            args=(query,),
+            fn=self._fetch_all_pages,
+            args=(self.last_query, data_types),
             on_success=self._on_search_success,
             on_error=self._on_search_error,
+        )
+
+    def _data_types_for_search(self) -> List[str] | None:
+        if self.last_include_brands:
+            # None => sin filtro de tipos (trae todos)
+            return None
+        return ["Foundation", "SR Legacy"]
+
+    def _fetch_all_pages(self, query: str, data_types: List[str] | None) -> List[Dict[str, Any]]:
+        all_results: List[Dict[str, Any]] = []
+        page = 1
+        while page <= self.search_max_pages:
+            batch = search_foods(
+                query,
+                page_size=self.search_fetch_page_size,
+                data_types=data_types,
+                page_number=page,
+            )
+            if not batch:
+                break
+            all_results.extend(batch)
+            if len(batch) < self.search_fetch_page_size:
+                break
+            page += 1
+
+        # Fallback: if no search results and the query looks like an FDC ID, try direct lookup.
+        stripped = query.strip()
+        if not all_results and stripped.isdigit():
+            try:
+                details = get_food_details(int(stripped))
+            except Exception:
+                return all_results
+            all_results.append(
+                {
+                    "fdcId": details.get("fdcId"),
+                    "description": details.get("description", ""),
+                    "brandOwner": details.get("brandOwner", "") or "",
+                    "dataType": details.get("dataType", "") or "",
+                }
+            )
+        return all_results
+
+    def _sort_search_results(self, foods: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        def priority(data_type: str) -> int:
+            return self.data_type_priority.get(
+                data_type, self.data_type_priority.get(data_type.strip(), len(self.data_type_priority))
+            )
+
+        return sorted(
+            foods,
+            key=lambda f: (
+                priority(f.get("dataType", "") or ""),
+                (f.get("description", "") or "").lower(),
+            ),
+        )
+
+    def _filter_results_by_query(self, foods: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
+        tokens = [t for t in query.lower().split() if t]
+        if not tokens:
+            return foods
+
+        filtered: List[Dict[str, Any]] = []
+        for f in foods:
+            haystack = f"{f.get('description', '')} {f.get('brandOwner', '')} {f.get('fdcId', '')}".lower()
+            if all(tok in haystack for tok in tokens):
+                filtered.append(f)
+        return filtered
+
+    def _show_current_search_page(self) -> None:
+        start = (self.search_page - 1) * self.search_page_size
+        end = start + self.search_page_size
+        slice_results = self.search_results[start:end]
+        self._populate_table(slice_results, base_index=start)
+        total_pages = max(1, (len(self.search_results) + self.search_page_size - 1) // self.search_page_size)
+        self.status_label.setText(
+            f"Se encontraron {len(self.search_results)} resultados (pagina {self.search_page}/{total_pages})."
+        )
+
+    def _update_paging_buttons(self, count: int) -> None:
+        has_query = bool(self.last_query)
+        self.prev_page_button.setEnabled(has_query and self.search_page > 1)
+        self.next_page_button.setEnabled(
+            has_query and (self.search_page * self.search_page_size < count)
         )
 
     def on_fdc_search_clicked(self) -> None:
@@ -438,10 +610,15 @@ class MainWindow(QMainWindow):
             return
 
         default_name = f"{self._safe_base_name()}.xlsx"
+        initial_path = (
+            str(Path(self.last_path or "").with_name(default_name))
+            if self.last_path
+            else default_name
+        )
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Exportar formulacion a Excel",
-            default_name,
+            initial_path,
             "Archivos de Excel (*.xlsx)",
         )
         if not path:
@@ -450,6 +627,7 @@ class MainWindow(QMainWindow):
         if not path.lower().endswith(".xlsx"):
             path += ".xlsx"
 
+        self._save_last_path(path)
         try:
             self._export_formulation_to_excel(path)
         except Exception as exc:  # noqa: BLE001 - surface the error to the user
@@ -479,7 +657,7 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Exportar formulación",
-            default_name,
+            str(Path(self.last_path or "").with_name(default_name)) if self.last_path else default_name,
             "Archivos JSON (*.json)",
         )
         if not path:
@@ -487,6 +665,7 @@ class MainWindow(QMainWindow):
         if not path.lower().endswith(".json"):
             path += ".json"
 
+        self._save_last_path(path)
         payload_items: list[Dict[str, Any]] = []
         for item in self.formulation_items:
             payload_items.append(
@@ -524,11 +703,12 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Importar formulación",
-            "",
+            self.last_path or "",
             "Archivos JSON (*.json);;Archivos Excel (*.xlsx)",
         )
         if not path:
             return
+        self._save_last_path(path)
 
         ext = Path(path).suffix.lower()
         if ext == ".json":
@@ -710,7 +890,7 @@ class MainWindow(QMainWindow):
             self.formula_name_input.setText(Path(path).stem)
         return True
 
-    def _populate_table(self, foods) -> None:
+    def _populate_table(self, foods, base_index: int = 0) -> None:
         self.table.setRowCount(0)
 
         for row_idx, food in enumerate(foods):
@@ -725,6 +905,9 @@ class MainWindow(QMainWindow):
             self.table.setItem(row_idx, 1, QTableWidgetItem(description))
             self.table.setItem(row_idx, 2, QTableWidgetItem(brand))
             self.table.setItem(row_idx, 3, QTableWidgetItem(data_type))
+            self.table.setVerticalHeaderItem(
+                row_idx, QTableWidgetItem(str(base_index + row_idx + 1))
+            )
 
     def _populate_details_table(self, nutrients) -> None:
         nutrients = self._augment_fat_nutrients(nutrients or [])
@@ -809,28 +992,50 @@ class MainWindow(QMainWindow):
             return column == self.amount_g_column_index
         return column == self.percent_column_index
 
-    def _nutrients_by_header(self, nutrients: List[Dict[str, Any]]) -> Dict[str, float]:
-        """Build a mapping of template header -> nutrient amount (per 100 g)."""
+    def _nutrients_by_header(
+        self, nutrients: List[Dict[str, Any]], header_by_key: Dict[str, str]
+    ) -> Dict[str, float]:
+        """
+        Build a mapping of template header -> nutrient amount (per 100 g),
+        aligned to a precomputed header key map to avoid duplicate columns.
+        """
         out: Dict[str, float] = {}
+        best_priority: Dict[str, int] = {}
+        allowed_keys = set(header_by_key.keys())
+        alias_priority = {
+            "carbohydrate, by difference": 2,
+            "carbohydrate, by summation": 1,
+            "carbohydrate by summation": 1,
+            "sugars, total": 2,
+            "total sugars": 1,
+        }
+
         for entry in nutrients:
             amount = entry.get("amount")
             if amount is None:
                 continue
             nut = entry.get("nutrient") or {}
-            name = nut.get("name", "")
-            unit = nut.get("unitName") or self._infer_unit(nut) or ""
-            header = f"{name} ({unit})" if unit else name
-            if header:
-                out[header] = amount
+            header_key, name, unit = self._header_key(nut)
+            if not header_key or header_key not in allowed_keys:
+                continue
+            header = header_by_key[header_key]
+            priority = alias_priority.get((nut.get("name") or "").strip().lower(), 0)
+            current_best = best_priority.get(header, -1)
+            if priority < current_best:
+                continue
+
+            best_priority[header] = priority
+            out[header] = amount
+
         return out
 
-    def _collect_nutrient_columns(self) -> tuple[list[str], Dict[str, str]]:
+    def _collect_nutrient_columns(self) -> tuple[list[str], Dict[str, str], Dict[str, str]]:
         """
         Collect ordered nutrient headers and their categories.
         Category is taken from USDA "group" rows (amount/unit missing) when present.
         """
-        headers: list[str] = []
-        categories: Dict[str, str] = {}
+        candidates: Dict[str, Dict[str, Any]] = {}
+        categories_seen_order: Dict[str, int] = {}
         preferred_order = [
             "Proximates",
             "Carbohydrates",
@@ -839,40 +1044,90 @@ class MainWindow(QMainWindow):
             "Lipids",
             "Amino acids",
         ]
-        category_seen: Dict[str, list[str]] = {cat: [] for cat in preferred_order}
+        preferred_count = len(preferred_order)
 
         for item in self.formulation_items:
             current_category = "Nutrientes"
+            if current_category not in categories_seen_order:
+                categories_seen_order[current_category] = len(categories_seen_order)
+
+            data_priority = self.data_type_priority.get(
+                (item.get("data_type") or "").strip(), len(self.data_type_priority)
+            )
             for entry in item.get("nutrients", []):
                 nut = entry.get("nutrient") or {}
-                name = nut.get("name", "") or ""
-                unit = nut.get("unitName") or self._infer_unit(nut) or ""
                 amount = entry.get("amount")
                 nut_key = self._nutrient_key(nut)
                 if nut_key and not self.nutrient_export_flags.get(nut_key, True):
                     continue
 
+                name = self._canonical_alias_name(nut.get("name", "") or "")
+                unit = nut.get("unitName") or self._infer_unit(nut) or ""
+
                 if amount is None and name:
                     current_category = name
+                    if current_category not in categories_seen_order:
+                        categories_seen_order[current_category] = len(
+                            categories_seen_order
+                        )
                     continue
 
                 if amount is None:
                     continue
 
-                header = f"{name} ({unit})" if unit else name
+                header_key, canonical_name, canonical_unit = self._header_key(nut)
+                if not header_key:
+                    continue
+                header = (
+                    f"{canonical_name} ({canonical_unit})"
+                    if canonical_unit
+                    else canonical_name
+                )
                 if not header:
                     continue
-                categories[header] = current_category
-                if header not in category_seen.setdefault(current_category, []):
-                    category_seen[current_category].append(header)
+
+                order = self._nutrient_order(nut, len(candidates))
+                existing = candidates.get(header_key)
+                if existing is None or (
+                    data_priority < existing["data_priority"]
+                    or (
+                        data_priority == existing["data_priority"]
+                        and order < existing["order"]
+                    )
+                    or (
+                        data_priority == existing["data_priority"]
+                        and order == existing["order"]
+                        and header < existing["header"]
+                    )
+                ):
+                    candidates[header_key] = {
+                        "header_key": header_key,
+                        "header": header,
+                        "category": current_category,
+                        "order": order,
+                        "data_priority": data_priority,
+                    }
 
         # Flatten by preferred category order then any remaining categories
-        ordered_headers: list[str] = []
-        for cat in preferred_order + [c for c in category_seen if c not in preferred_order]:
-            ordered_headers.extend(category_seen.get(cat, []))
+        def category_rank(cat: str) -> int:
+            if cat in preferred_order:
+                return preferred_order.index(cat)
+            return preferred_count + categories_seen_order.get(cat, preferred_count)
 
-        # Preserve only those actually present
-        return [h for h in ordered_headers if h in categories], categories
+        sorted_candidates = sorted(
+            candidates.values(),
+            key=lambda c: (
+                category_rank(c["category"]),
+                c["order"],
+                c["header"].lower(),
+            ),
+        )
+
+        ordered_headers: list[str] = [c["header"] for c in sorted_candidates]
+        categories: Dict[str, str] = {c["header"]: c["category"] for c in sorted_candidates}
+        header_key_map: Dict[str, str] = {c["header"]: c["header_key"] for c in sorted_candidates}
+
+        return ordered_headers, categories, header_key_map
 
     def _augment_fat_nutrients(self, nutrients: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
         """
@@ -1060,9 +1315,136 @@ class MainWindow(QMainWindow):
 
         return result
 
+    def _augment_pair(self, nutrients: list[Dict[str, Any]], target_a: str, target_b: str) -> list[Dict[str, Any]]:
+        """Generic helper: ensure both targets exist, deduplicate, insert clone next to original."""
+        if not nutrients:
+            return []
+
+        def _norm(entry: Dict[str, Any]) -> str:
+            return (entry.get("nutrient", {}).get("name") or "").strip().lower()
+
+        first_a_idx = None
+        first_b_idx = None
+        a_amt = None
+        b_amt = None
+        a_entry = None
+        b_entry = None
+        filtered: list[Dict[str, Any]] = []
+
+        for entry in nutrients:
+            name = _norm(entry)
+            if name == target_a:
+                if first_a_idx is None:
+                    first_a_idx = len(filtered)
+                    a_amt = entry.get("amount")
+                    a_entry = dict(entry)
+                    a_nut = dict(a_entry.get("nutrient") or {})
+                    a_nut.pop("id", None)
+                    a_nut.pop("number", None)
+                    a_entry["nutrient"] = a_nut
+                continue
+            if name == target_b:
+                if first_b_idx is None:
+                    first_b_idx = len(filtered)
+                    b_amt = entry.get("amount")
+                    b_entry = dict(entry)
+                    b_nut = dict(b_entry.get("nutrient") or {})
+                    b_nut.pop("id", None)
+                    b_nut.pop("number", None)
+                    b_entry["nutrient"] = b_nut
+                continue
+            filtered.append(entry)
+
+        def _clone(source: Dict[str, Any], new_name: str, amount: float | None) -> Dict[str, Any]:
+            nut = dict(source.get("nutrient") or {})
+            nut["name"] = new_name
+            nut.pop("id", None)
+            nut.pop("number", None)
+            clone = dict(source)
+            clone["nutrient"] = nut
+            clone["amount"] = amount
+            return clone
+
+        result = list(filtered)
+
+        if a_amt is None and b_amt is None:
+            return nutrients
+
+        if a_amt is None:
+            # only B present
+            a_clone = _clone(b_entry or {"nutrient": {"name": target_b}}, target_a, b_amt)
+            insert_at = first_b_idx if first_b_idx is not None else len(result)
+            result.insert(insert_at, a_clone)
+            result.insert(insert_at + 1, b_entry)
+            return result
+
+        if b_amt is None:
+            # only A present
+            b_clone = _clone(a_entry or {"nutrient": {"name": target_a}}, target_b, a_amt)
+            insert_at = first_a_idx if first_a_idx is not None else len(result)
+            result.insert(insert_at, a_entry)
+            result.insert(insert_at + 1, b_clone)
+            return result
+
+        # both present: reinsert once each preserving original order
+        if first_a_idx is not None and first_b_idx is not None:
+            insert_first = min(first_a_idx, first_b_idx)
+            insert_second = max(first_a_idx, first_b_idx)
+            first_entry = a_entry if first_a_idx < first_b_idx else b_entry
+            second_entry = b_entry if first_entry is a_entry else a_entry
+            result.insert(insert_first, first_entry)
+            result.insert(insert_second, second_entry)
+            return result
+
+        return result
+
+    def _augment_alias_nutrients(self, nutrients: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
+        """Ensure paired aliases are both present (e.g., sugars total, carbs by diff/summation)."""
+        pairs = [
+            ("sugars, total", "total sugars"),
+            ("carbohydrate, by difference", "carbohydrate, by summation"),
+        ]
+        augmented = nutrients or []
+        for a, b in pairs:
+            augmented = self._augment_pair(augmented, a, b)
+        return augmented
+
+    def _canonical_alias_name(self, name: str) -> str:
+        """Return a display name for known aliases to keep one column in Excel."""
+        lower = (name or "").strip().lower()
+        mapping = {
+            "sugars, total": "Sugars, Total",
+            "total sugars": "Sugars, Total",
+            "carbohydrate, by difference": "Carbohydrate, by difference",
+            "carbohydrate, by summation": "Carbohydrate, by difference",
+            "carbohydrate by summation": "Carbohydrate, by difference",
+        }
+        return mapping.get(lower, name)
+
     def _normalize_nutrients(self, nutrients: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
-        """Apply all nutrient augmentation steps (fat + energy) in order."""
-        return self._augment_energy_nutrients(self._augment_fat_nutrients(nutrients or []))
+        """Apply all nutrient augmentation steps (fat + alias + energy) in order."""
+        return self._augment_energy_nutrients(
+            self._augment_alias_nutrients(self._augment_fat_nutrients(nutrients or []))
+        )
+
+    def _load_last_path(self) -> str:
+        try:
+            data = json.loads(Path("last_path.json").read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data.get("last_path", "")
+        except Exception:
+            return ""
+        return ""
+
+    def _save_last_path(self, path: str) -> None:
+        try:
+            Path("last_path.json").write_text(
+                json.dumps({"last_path": str(Path(path).expanduser())}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            self.last_path = str(Path(path).expanduser())
+        except Exception:
+            pass
 
     def _ensure_normalized_items(self) -> None:
         """Normalize all formulation_items in-place (fat + energy)."""
@@ -1082,6 +1464,7 @@ class MainWindow(QMainWindow):
     def _hydrate_items(self, items: list[Dict[str, Any]]) -> list[Dict[str, Any]] | None:
         """Fetch USDA details for items to populate description/nutrients."""
         hydrated: list[Dict[str, Any]] = []
+        total = len(items)
         for item in items:
             fdc_id = item.get("fdc_id") or item.get("fdcId")
             if fdc_id is None:
@@ -1101,6 +1484,10 @@ class MainWindow(QMainWindow):
                 )
                 return None
 
+            self.status_label.setText(
+                f"Importando ingrediente {len(hydrated)+1}/{total} (FDC {fdc_id_int})..."
+            )
+            QCoreApplication.processEvents()
             try:
                 details = get_food_details(fdc_id_int)
             except Exception as exc:  # noqa: BLE001 - surface to user
@@ -1310,7 +1697,8 @@ class MainWindow(QMainWindow):
             "Cantidad (%)",
         ]
 
-        nutrient_headers, header_categories = self._collect_nutrient_columns()
+        nutrient_headers, header_categories, header_key_map = self._collect_nutrient_columns()
+        header_by_key = {v: k for k, v in header_key_map.items()}
 
         header_fill = PatternFill("solid", fgColor="D9D9D9")
         total_fill = PatternFill("solid", fgColor="FFF2CC")
@@ -1384,7 +1772,7 @@ class MainWindow(QMainWindow):
                 value=f"={gram_cell}/SUM({total_range})",
             ).number_format = "0.00%"
 
-            nut_map = self._nutrients_by_header(item.get("nutrients", []))
+            nut_map = self._nutrients_by_header(item.get("nutrients", []), header_by_key)
             for offset, header in enumerate(nutrient_headers, start=len(base_headers) + 1):
                 if header in nut_map:
                     ws.cell(row=row, column=offset, value=nut_map[header])
@@ -1511,6 +1899,21 @@ class MainWindow(QMainWindow):
             return f"num:{nutrient['number']}"
         name = name_lower
         return f"name:{name}" if name else ""
+
+    def _header_key(self, nutrient: Dict[str, Any]) -> tuple[str, str, str]:
+        """Return a stable header key plus canonical name and unit for a nutrient."""
+        name = self._canonical_alias_name(nutrient.get("name", "") or "")
+        unit = nutrient.get("unitName") or self._infer_unit(nutrient) or ""
+        unit_part = unit.strip().lower()
+        name_part = name.strip().lower()
+        if name_part:
+            header_key = f"{name_part}|{unit_part}"
+        else:
+            base_key = self._nutrient_key(nutrient)
+            if not base_key:
+                return "", name, unit
+            header_key = f"{base_key}|{unit_part}"
+        return header_key, name, unit
 
     def _infer_unit(self, nutrient: Dict[str, Any]) -> str:
         """Try to fill missing unit from nutrient metadata or heuristic defaults."""
@@ -1865,13 +2268,23 @@ class MainWindow(QMainWindow):
 
     # ---- Callbacks for async ops ----
     def _on_search_success(self, foods) -> None:
-        self._populate_table(foods)
-        self.status_label.setText(f"Se encontraron {len(foods)} resultados.")
+        foods_sorted = self._sort_search_results(foods)
+        filtered = self._filter_results_by_query(foods_sorted, self.last_query)
+        self.search_results = filtered
+        self._last_results_count = len(filtered)
+        self.search_page = 1
+        self._show_current_search_page()
+        total_pages = max(1, (len(filtered) + self.search_page_size - 1) // self.search_page_size)
+        self.status_label.setText(
+            f"Se encontraron {len(filtered)} resultados (pagina {self.search_page}/{total_pages})."
+        )
         self.search_button.setEnabled(True)
+        self._update_paging_buttons(len(filtered))
 
     def _on_search_error(self, message: str) -> None:
         self.status_label.setText(f"Error: {message}")
         self.search_button.setEnabled(True)
+        self._update_paging_buttons(self._last_results_count)
 
     def _on_details_success(self, details) -> None:
         nutrients = self._normalize_nutrients(details.get("foodNutrients", []) or [])

@@ -11,12 +11,12 @@ load_dotenv()
 
 USDA_API_KEY = os.getenv("USDA_API_KEY")
 BASE_URL = "https://api.nal.usda.gov/fdc/v1"
-DEFAULT_TIMEOUT = (3.05, 10)  # (connect timeout, read timeout)
+DEFAULT_TIMEOUT = (3.05, 20)  # (connect timeout, read timeout)
 
 _session_lock = threading.Lock()
 _session: requests.Session | None = None
 _details_cache: Dict[int, Dict[str, Any]] = {}
-_search_cache: Dict[tuple[str, int, tuple[str, ...]], List[Dict[str, Any]]] = {}
+_search_cache: Dict[tuple[str, int, tuple[str, ...] | None, int], List[Dict[str, Any]]] = {}
 _cache_lock = threading.Lock()
 
 
@@ -43,10 +43,10 @@ def _get_session() -> requests.Session:
 
         session = requests.Session()
         retries = Retry(
-            total=2,
-            connect=2,
-            read=2,
-            backoff_factor=0.5,
+            total=4,
+            connect=4,
+            read=4,
+            backoff_factor=1.0,
             status_forcelist=(429, 500, 502, 503, 504),
             allowed_methods=("GET",),
             raise_on_status=False,
@@ -86,19 +86,22 @@ def search_foods(
     query: str,
     page_size: int = 25,
     data_types: List[str] | None = None,
+    page_number: int = 1,
 ) -> List[Dict[str, Any]]:
     """
     Search foods in FoodData Central by name.
 
     :param query: text to search (e.g., 'apple', 'cheddar', 'rice')
     :param page_size: number of results to return
+    :param data_types: list of USDA dataType strings. If None, do not filter.
+    :param page_number: page to fetch (1-based)
     :return: list of dicts with basic food info
     """
     if not query:
         return []
 
-    normalized_types = tuple(data_types or ("Foundation", "SR Legacy"))
-    cache_key = (query.lower().strip(), page_size, normalized_types)
+    normalized_types = None if data_types is None else tuple(data_types)
+    cache_key = (query.lower().strip(), page_size, normalized_types, page_number)
     with _cache_lock:
         cached = _search_cache.get(cache_key)
     if cached is not None:
@@ -107,8 +110,10 @@ def search_foods(
     params: Dict[str, Any] = {
         "query": query,
         "pageSize": page_size,
-        "dataType": list(normalized_types),
+        "pageNumber": page_number,
     }
+    if normalized_types is not None:
+        params["dataType"] = list(normalized_types)
 
     data = _request_json("foods/search", params)
     foods = data.get("foods", [])
