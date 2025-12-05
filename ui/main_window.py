@@ -4,7 +4,7 @@ import json
 import re
 import unicodedata
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
+from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot, QEvent, QItemSelectionModel
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont
 from PySide6.QtWidgets import (
     QComboBox,
@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
-    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QSizePolicy,
@@ -127,8 +126,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.add_button)
         layout.addWidget(self.status_label)
 
-        splitter = QSplitter(Qt.Vertical)
-
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(
             ["FDC ID", "Descripción", "Marca / Origen", "Tipo de dato"]
@@ -136,8 +133,9 @@ class MainWindow(QMainWindow):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.table.horizontalHeader().setStretchLastSection(True)
-        splitter.addWidget(self.table)
+        layout.addWidget(self.table)
 
         self.details_table = QTableWidget(0, 3)
         self.details_table.setHorizontalHeaderLabels(
@@ -146,27 +144,31 @@ class MainWindow(QMainWindow):
         self.details_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.details_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.details_table.setSelectionMode(QTableWidget.NoSelection)
+        self.details_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.details_table.horizontalHeader().setStretchLastSection(True)
-        splitter.addWidget(self.details_table)
 
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 1)
+        bottom_layout = QHBoxLayout()
 
-        layout.addWidget(splitter)
-
-        layout.addWidget(QLabel("Ingredientes en formulación (vista rápida)"))
-        self.formulation_preview = QTableWidget(0, 5)
-        self.formulation_preview.setHorizontalHeaderLabels(
-            ["FDC ID", "Ingrediente", "Cantidad (g)", "Cantidad (%)", "Fijar %"]
-        )
+        left_panel = QVBoxLayout()
+        left_panel.addWidget(QLabel("Ingredientes en formulación"))
+        self.formulation_preview = QTableWidget(0, 2)
+        self.formulation_preview.setHorizontalHeaderLabels(["FDC ID", "Ingrediente"])
         self.formulation_preview.setEditTriggers(QTableWidget.NoEditTriggers)
         self.formulation_preview.setSelectionBehavior(QTableWidget.SelectRows)
         self.formulation_preview.setSelectionMode(QTableWidget.SingleSelection)
         self.formulation_preview.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.formulation_preview)
+        left_panel.addWidget(self.formulation_preview)
 
         self.remove_preview_button = QPushButton("Eliminar ingrediente seleccionado")
-        layout.addWidget(self.remove_preview_button)
+        left_panel.addWidget(self.remove_preview_button)
+
+        right_panel = QVBoxLayout()
+        right_panel.addWidget(QLabel("Nutrientes del ingrediente seleccionado"))
+        right_panel.addWidget(self.details_table)
+
+        bottom_layout.addLayout(left_panel, 1)
+        bottom_layout.addLayout(right_panel, 1)
+        layout.addLayout(bottom_layout)
 
         self.search_button.clicked.connect(self.on_search_clicked)
         self.search_input.returnPressed.connect(self.on_search_clicked)
@@ -178,7 +180,9 @@ class MainWindow(QMainWindow):
         self.formulation_preview.cellDoubleClicked.connect(
             self.on_formulation_preview_double_clicked
         )
-        self.formulation_preview.itemChanged.connect(self.on_lock_toggled_from_table)
+        self.formulation_preview.itemSelectionChanged.connect(
+            self.on_preview_selection_changed
+        )
         self._set_default_column_widths()
 
     def _build_formulation_tab_ui(self) -> None:
@@ -217,6 +221,7 @@ class MainWindow(QMainWindow):
         self.formulation_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.formulation_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.formulation_table.setSelectionMode(QTableWidget.SingleSelection)
+        self.formulation_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.formulation_table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.formulation_table)
 
@@ -248,6 +253,7 @@ class MainWindow(QMainWindow):
         self.totals_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.totals_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.totals_table.setSelectionMode(QTableWidget.NoSelection)
+        self.totals_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.totals_table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.totals_table)
 
@@ -291,35 +297,34 @@ class MainWindow(QMainWindow):
                 header = table.horizontalHeader()
                 header.setSectionResizeMode(QHeaderView.Interactive)
 
-            self.table.setColumnWidth(0, 90)   # FDC ID
+            self.table.setColumnWidth(0, 75)   # FDC ID
             self.table.setColumnWidth(1, 340)  # Descripcion
             self.table.setColumnWidth(2, 200)  # Marca / Origen
             self.table.setColumnWidth(3, 120)  # Tipo de dato
 
-            self.details_table.setColumnWidth(0, 220)  # Nutriente
-            self.details_table.setColumnWidth(1, 120)  # Cantidad
-            self.details_table.setColumnWidth(2, 80)   # Unidad
+            self.details_table.setColumnWidth(0, 200)  # Nutriente
+            self.details_table.setColumnWidth(1, 90)   # Cantidad
+            self.details_table.setColumnWidth(2, 70)   # Unidad
 
-            self.formulation_preview.setColumnWidth(0, 90)   # FDC ID
-            self.formulation_preview.setColumnWidth(1, 320)  # Descripcion
-            self.formulation_preview.setColumnWidth(2, 120)  # Cantidad
-            self.formulation_preview.setColumnWidth(3, 70)   # Fijar %
+            self.formulation_preview.setColumnWidth(0, 70)  # FDC ID
+            self.formulation_preview.setColumnWidth(1, 290)  # Ingrediente
             return
 
         for table in (self.formulation_table, self.totals_table):
             header = table.horizontalHeader()
             header.setSectionResizeMode(QHeaderView.Interactive)
 
-        self.formulation_table.setColumnWidth(0, 90)   # FDC ID
-        self.formulation_table.setColumnWidth(1, 320)  # Descripcion
-        self.formulation_table.setColumnWidth(2, 120)  # Cantidad
-        self.formulation_table.setColumnWidth(3, 70)   # Fijar %
-        self.formulation_table.setColumnWidth(4, 200)  # Marca / Origen
+        self.formulation_table.setColumnWidth(0, 75)   # FDC ID
+        self.formulation_table.setColumnWidth(1, 330)  # Ingrediente
+        self.formulation_table.setColumnWidth(2, 95)   # Cantidad (g)
+        self.formulation_table.setColumnWidth(3, 85)   # Cantidad (%)
+        self.formulation_table.setColumnWidth(4, 65)   # Fijar %
+        self.formulation_table.setColumnWidth(5, 150)  # Marca / Origen
 
-        self.totals_table.setColumnWidth(0, 220)  # Nutriente
-        self.totals_table.setColumnWidth(1, 100)  # Total
-        self.totals_table.setColumnWidth(2, 70)   # Unidad
-        self.totals_table.setColumnWidth(3, 90)   # Exportar
+        self.totals_table.setColumnWidth(0, 210)  # Nutriente
+        self.totals_table.setColumnWidth(1, 85)   # Total
+        self.totals_table.setColumnWidth(2, 60)   # Unidad
+        self.totals_table.setColumnWidth(3, 80)   # Exportar
 
     def on_search_clicked(self) -> None:
         query = self.search_input.text().strip()
@@ -370,6 +375,10 @@ class MainWindow(QMainWindow):
         if not self._can_edit_column(column):
             return
         self._edit_quantity_for_row(row)
+
+    def on_preview_selection_changed(self) -> None:
+        """Update nutrients panel when preview selection changes."""
+        self._show_nutrients_for_selected_preview()
 
     def on_formulation_cell_double_clicked(self, row: int, column: int) -> None:
         """Double click on formulation row -> edit its quantity."""
@@ -718,6 +727,7 @@ class MainWindow(QMainWindow):
             self.table.setItem(row_idx, 3, QTableWidgetItem(data_type))
 
     def _populate_details_table(self, nutrients) -> None:
+        nutrients = self._augment_fat_nutrients(nutrients or [])
         self.details_table.setRowCount(0)
 
         for row_idx, n in enumerate(nutrients):
@@ -754,7 +764,7 @@ class MainWindow(QMainWindow):
 
     def _update_quantity_headers(self) -> None:
         self.formulation_preview.setHorizontalHeaderLabels(
-            ["FDC ID", "Ingrediente", "Cantidad (g)", "Cantidad (%)", "Fijar %"]
+            ["FDC ID", "Ingrediente"]
         )
         self.formulation_table.setHorizontalHeaderLabels(
             [
@@ -864,6 +874,120 @@ class MainWindow(QMainWindow):
         # Preserve only those actually present
         return [h for h in ordered_headers if h in categories], categories
 
+    def _augment_fat_nutrients(self, nutrients: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
+        """
+        Ensure Total lipid (fat) and Total fat (NLEA) mirror each other if one is missing.
+        Insert the cloned entry next to its counterpart to preserve order/category.
+        Ensures there is at most one entry for each of the two names.
+        Returns a new list without mutating the original to avoid duplication on refresh.
+        """
+        if not nutrients:
+            return []
+
+        target_a = "total lipid (fat)"
+        target_b = "total fat (nlea)"
+        mapping = {
+            target_a: ("Total fat (NLEA)", "298"),
+            target_b: ("Total lipid (fat)", "204"),
+        }
+
+        def _norm_name(entry: Dict[str, Any]) -> str:
+            nut = entry.get("nutrient") or {}
+            return (nut.get("name") or "").strip().lower()
+
+        first_lipid_idx = None
+        first_nlea_idx = None
+        lipid_amount = None
+        nlea_amount = None
+        lipid_entry = None
+        nlea_entry = None
+        filtered: list[Dict[str, Any]] = []
+
+        for idx, entry in enumerate(nutrients):
+            name = _norm_name(entry)
+            if name == target_a:
+                if first_lipid_idx is None:
+                    first_lipid_idx = len(filtered)
+                    lipid_amount = entry.get("amount")
+                    lipid_entry = dict(entry)
+                    # normalize key to name to merge originals/clones
+                    lip_nut = dict(lipid_entry.get("nutrient") or {})
+                    lip_nut.pop("id", None)
+                    lip_nut.pop("number", None)
+                    lipid_entry["nutrient"] = lip_nut
+                continue  # skip for now to avoid duplicates
+            if name == target_b:
+                if first_nlea_idx is None:
+                    first_nlea_idx = len(filtered)
+                    nlea_amount = entry.get("amount")
+                    nlea_entry = dict(entry)
+                    # normalize key to name to merge originals/clones
+                    nlea_nut = dict(nlea_entry.get("nutrient") or {})
+                    nlea_nut.pop("id", None)
+                    nlea_nut.pop("number", None)
+                    nlea_entry["nutrient"] = nlea_nut
+                continue
+            filtered.append(entry)
+
+        def _clone_with_name(source: Dict[str, Any], new_name: str, number: str) -> Dict[str, Any]:
+            nut = dict(source.get("nutrient") or {})
+            nut["name"] = new_name
+            # Evitar colisiones en _nutrient_key: quitamos id/number y dejamos que use el nombre
+            nut.pop("id", None)
+            nut.pop("number", None)
+            clone = dict(source)
+            clone["nutrient"] = nut
+            return clone
+
+        # Build final list with controlled insertion
+        result = list(filtered)
+
+        # Decide amounts
+        if lipid_amount is None and nlea_amount is None:
+            return nutrients  # nothing to do
+
+        if lipid_amount is None:
+            # Only NLEA present: clone for lipid
+            source = nlea_entry or {"nutrient": {"name": "Total fat (NLEA)"}}
+            lipid_clone = _clone_with_name(source, *mapping[target_b])
+            lipid_clone["amount"] = nlea_amount
+            insert_at = first_nlea_idx if first_nlea_idx is not None else len(result)
+            result.insert(insert_at, lipid_clone)
+            # Insert original NLEA at same position (already removed)
+            result.insert(insert_at + 1, nlea_entry)
+            return result
+
+        if nlea_amount is None:
+            # Only lipid present: clone for NLEA
+            source = lipid_entry or {"nutrient": {"name": "Total lipid (fat)"}}
+            nlea_clone = _clone_with_name(source, *mapping[target_a])
+            nlea_clone["amount"] = lipid_amount
+            insert_at = first_lipid_idx if first_lipid_idx is not None else len(result)
+            result.insert(insert_at, lipid_entry)
+            result.insert(insert_at + 1, nlea_clone)
+            return result
+
+        # Both present: reinsert originals once, preserving relative order
+        if first_lipid_idx is not None and first_nlea_idx is not None:
+            insert_first = min(first_lipid_idx, first_nlea_idx)
+            insert_second = max(first_lipid_idx, first_nlea_idx)
+            first_entry = lipid_entry if first_lipid_idx < first_nlea_idx else nlea_entry
+            second_entry = nlea_entry if first_entry is lipid_entry else lipid_entry
+            result.insert(insert_first, first_entry)
+            result.insert(insert_second, second_entry)
+            return result
+
+        return result
+
+    def _ensure_fat_pairs_on_items(self) -> None:
+        """Normalize all formulation_items in-place to include both fat entries if one exists."""
+        for idx, item in enumerate(self.formulation_items):
+            original = item.get("nutrients", []) or []
+            augmented = self._augment_fat_nutrients(original)
+            # Replace only if changed to avoid unnecessary updates
+            if len(augmented) != len(original):
+                self.formulation_items[idx]["nutrients"] = augmented
+
     def _split_header_unit(self, header: str) -> tuple[str, str]:
         if header.endswith(")") and " (" in header:
             name, unit = header.rsplit(" (", 1)
@@ -910,7 +1034,9 @@ class MainWindow(QMainWindow):
                     "brand": details.get("brandOwner", "") or item.get("brand", ""),
                     "data_type": details.get("dataType", "") or item.get("data_type", ""),
                     "amount_g": float(item.get("amount_g", 0.0) or 0.0),
-                    "nutrients": details.get("foodNutrients", []) or [],
+                    "nutrients": self._augment_fat_nutrients(
+                        details.get("foodNutrients", []) or []
+                    ),
                     "locked": bool(item.get("locked", False)),
                 }
             )
@@ -928,45 +1054,53 @@ class MainWindow(QMainWindow):
         return re.sub(r"\s+", " ", text).strip().lower()
 
     def _populate_formulation_tables(self) -> None:
-        """Refresh both formulation tables with current items."""
+        """Refresh formulation tables with current items."""
         self._update_quantity_headers()
         total_weight = self._total_weight()
-        tables = [
-            (self.formulation_preview, False),
-            (self.formulation_table, True),
-        ]
-        for table, include_brand in tables:
-            table.blockSignals(True)
-            table.setRowCount(len(self.formulation_items))
-            for idx, item in enumerate(self.formulation_items):
-                self.formulation_items[idx].setdefault("locked", False)
-                amount_g = item.get("amount_g", 0.0) or 0.0
-                percent = self._amount_to_percent(amount_g, total_weight)
 
-                cells: list[QTableWidgetItem] = [
-                    QTableWidgetItem(str(item.get("fdc_id", ""))),
-                    QTableWidgetItem(item.get("description", "")),
-                    QTableWidgetItem(f"{amount_g:.1f}"),
-                    QTableWidgetItem(f"{percent:.2f}"),
-                ]
+        # Left preview (ID + Ingrediente)
+        self.formulation_preview.blockSignals(True)
+        self.formulation_preview.setRowCount(len(self.formulation_items))
+        for idx, item in enumerate(self.formulation_items):
+            self.formulation_items[idx].setdefault("locked", False)
+            self.formulation_preview.setItem(
+                idx, 0, QTableWidgetItem(str(item.get("fdc_id", "")))
+            )
+            self.formulation_preview.setItem(
+                idx, 1, QTableWidgetItem(item.get("description", ""))
+            )
+        self.formulation_preview.blockSignals(False)
 
-                lock_item = QTableWidgetItem("")
-                lock_item.setFlags(
-                    Qt.ItemIsSelectable | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled
-                )
-                lock_item.setCheckState(
-                    Qt.Checked if item.get("locked") else Qt.Unchecked
-                )
-                cells.append(lock_item)
+        # Main formulation table
+        self.formulation_table.blockSignals(True)
+        self.formulation_table.setRowCount(len(self.formulation_items))
+        for idx, item in enumerate(self.formulation_items):
+            amount_g = float(item.get("amount_g", 0.0) or 0.0)
+            percent = self._amount_to_percent(amount_g, total_weight)
 
-                if include_brand:
-                    cells.append(QTableWidgetItem(item.get("brand", "")))
+            cells: list[QTableWidgetItem] = [
+                QTableWidgetItem(str(item.get("fdc_id", ""))),
+                QTableWidgetItem(item.get("description", "")),
+                QTableWidgetItem(f"{amount_g:.1f}"),
+                QTableWidgetItem(f"{percent:.2f}"),
+            ]
 
-                for col, cell in enumerate(cells):
-                    table.setItem(idx, col, cell)
+            lock_item = QTableWidgetItem("")
+            lock_item.setFlags(
+                Qt.ItemIsSelectable | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled
+            )
+            lock_item.setCheckState(
+                Qt.Checked if item.get("locked") else Qt.Unchecked
+            )
+            cells.append(lock_item)
 
-                self._apply_column_state(table, idx)
-            table.blockSignals(False)
+            cells.append(QTableWidgetItem(item.get("brand", "")))
+
+            for col, cell in enumerate(cells):
+                self.formulation_table.setItem(idx, col, cell)
+
+            self._apply_column_state(self.formulation_table, idx)
+        self.formulation_table.blockSignals(False)
 
     def _populate_totals_table(self) -> None:
         totals = self._calculate_totals()
@@ -1030,11 +1164,53 @@ class MainWindow(QMainWindow):
         return QIcon(pixmap)
 
     def _refresh_formulation_views(self) -> None:
+        self._ensure_fat_pairs_on_items()
         self._populate_formulation_tables()
         self._populate_totals_table()
+        self._ensure_preview_selection()
+
+    def _select_preview_row(self, row: int) -> None:
+        if row < 0 or row >= self.formulation_preview.rowCount():
+            return
+        sel_model = self.formulation_preview.selectionModel()
+        if sel_model is None:
+            return
+        sel_model.clearSelection()
+        index = self.formulation_preview.model().index(row, 0)
+        sel_model.select(
+            index, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows
+        )
+        self.formulation_preview.setCurrentIndex(index)
+
+    def _ensure_preview_selection(self) -> None:
+        if not self.formulation_items:
+            self.details_table.setRowCount(0)
+            return
+        self._ensure_fat_pairs_on_items()
+        sel_model = self.formulation_preview.selectionModel()
+        has_sel = sel_model and sel_model.hasSelection()
+        if not has_sel:
+            self._select_preview_row(len(self.formulation_items) - 1)
+        self._show_nutrients_for_selected_preview()
+
+    def _show_nutrients_for_row(self, row: int) -> None:
+        if row < 0 or row >= len(self.formulation_items):
+            self.details_table.setRowCount(0)
+            return
+        nutrients = self.formulation_items[row].get("nutrients", []) or []
+        self._populate_details_table(nutrients)
+
+    def _show_nutrients_for_selected_preview(self) -> None:
+        sel_model = self.formulation_preview.selectionModel()
+        if not sel_model or not sel_model.hasSelection():
+            self._show_nutrients_for_row(-1)
+            return
+        row = sel_model.selectedRows()[0].row()
+        self._show_nutrients_for_row(row)
 
     def _export_formulation_to_excel(self, filepath: str) -> None:
         """Build Excel from scratch with nutrient categories as in USDA view."""
+        self._ensure_fat_pairs_on_items()
         wb = Workbook()
         ws = wb.active
         ws.title = "Ingredientes"
@@ -1195,6 +1371,7 @@ class MainWindow(QMainWindow):
         Assumes nutrient amounts from the API are per 100 g of ingredient.
         Groups by nutrient id/number to merge Foundation + SR Legacy entries.
         """
+        self._ensure_fat_pairs_on_items()
         totals: Dict[str, Dict[str, Any]] = {}
         total_weight = self._total_weight()
         for item in self.formulation_items:
@@ -1607,7 +1784,7 @@ class MainWindow(QMainWindow):
         self.search_button.setEnabled(True)
 
     def _on_details_success(self, details) -> None:
-        nutrients = details.get("foodNutrients", []) or []
+        nutrients = self._augment_fat_nutrients(details.get("foodNutrients", []) or [])
         self._populate_details_table(nutrients)
 
         desc = details.get("description", "") or ""
@@ -1622,7 +1799,7 @@ class MainWindow(QMainWindow):
         self.fdc_id_button.setEnabled(True)
 
     def _on_add_details_loaded(self, details, mode: str, value: float) -> None:
-        nutrients = details.get("foodNutrients", []) or []
+        nutrients = self._augment_fat_nutrients(details.get("foodNutrients", []) or [])
         desc = details.get("description", "") or ""
         brand = details.get("brandOwner", "") or ""
         data_type = details.get("dataType", "") or ""
@@ -1648,6 +1825,7 @@ class MainWindow(QMainWindow):
 
         self._populate_details_table(nutrients)
         self._refresh_formulation_views()
+        self._select_preview_row(len(self.formulation_items) - 1)
         msg_value = (
             self._format_amount_for_status(new_item.get("amount_g", 0.0))
             if mode == "g"
