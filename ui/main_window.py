@@ -979,14 +979,99 @@ class MainWindow(QMainWindow):
 
         return result
 
-    def _ensure_fat_pairs_on_items(self) -> None:
-        """Normalize all formulation_items in-place to include both fat entries if one exists."""
+    def _augment_energy_nutrients(self, nutrients: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
+        """
+        Ensure Energy (kcal/kJ) exists using macros if missing; deduplicate extras.
+        kcal = protein*4 + carbs*4 + fat*9 ; kJ = kcal*4.184
+        """
+        if not nutrients:
+            return []
+
+        def _norm_name(entry: Dict[str, Any]) -> str:
+            nut = entry.get("nutrient") or {}
+            return (nut.get("name") or "").strip().lower()
+
+        def _clone_energy(unit: str, amount: float) -> Dict[str, Any]:
+            nut = {"name": "Energy", "unitName": unit}
+            return {"nutrient": nut, "amount": amount}
+
+        result: list[Dict[str, Any]] = []
+        kcal_entry = None
+        kj_entry = None
+
+        for entry in nutrients:
+            name = _norm_name(entry)
+            if name != "energy":
+                result.append(entry)
+                continue
+            unit = (entry.get("nutrient") or {}).get("unitName", "").lower()
+            if unit == "kcal" and kcal_entry is None:
+                kcal_entry = dict(entry)
+                kcal_entry.get("nutrient", {}).pop("id", None)
+                kcal_entry.get("nutrient", {}).pop("number", None)
+                result.append(kcal_entry)
+            elif unit == "kj" and kj_entry is None:
+                kj_entry = dict(entry)
+                kj_entry.get("nutrient", {}).pop("id", None)
+                kj_entry.get("nutrient", {}).pop("number", None)
+                result.append(kj_entry)
+            # drop duplicates silently
+
+        # Gather macros from current list (which may already include fat clone)
+        def _find_amount(names: list[str]) -> float | None:
+            for entry in result:
+                if _norm_name(entry) in names:
+                    amt = entry.get("amount")
+                    if amt is not None:
+                        return float(amt)
+            return None
+
+        protein = _find_amount(["protein"])
+        carbs = _find_amount(["carbohydrate, by difference"])
+        fat = _find_amount(["total lipid (fat)", "total fat (nlea)"])
+
+        if protein is None and carbs is None and fat is None:
+            kcal_amount = None
+        else:
+            kcal_amount = (protein or 0.0) * 4.0 + (carbs or 0.0) * 4.0 + (fat or 0.0) * 9.0
+
+        insert_pos = 0
+        macro_indices = []
+        for idx, entry in enumerate(result):
+            if _norm_name(entry) in [
+                "protein",
+                "carbohydrate, by difference",
+                "total lipid (fat)",
+                "total fat (nlea)",
+            ]:
+                macro_indices.append(idx)
+        if macro_indices:
+            insert_pos = min(macro_indices)
+
+        if kcal_entry is None and kcal_amount is not None:
+            kcal_entry = _clone_energy("kcal", kcal_amount)
+            result.insert(insert_pos, kcal_entry)
+
+        if kj_entry is None and kcal_amount is not None:
+            kj_entry = _clone_energy("kJ", kcal_amount * 4.184)
+            # place kJ after kcal if inserted together
+            insert_kj = insert_pos + 1 if kcal_entry in result else insert_pos
+            result.insert(insert_kj, kj_entry)
+
+        return result
+
+    def _normalize_nutrients(self, nutrients: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
+        """Apply all nutrient augmentation steps (fat + energy) in order."""
+        return self._augment_energy_nutrients(self._augment_fat_nutrients(nutrients or []))
+
+    def _ensure_normalized_items(self) -> None:
+        """Normalize all formulation_items in-place (fat + energy)."""
         for idx, item in enumerate(self.formulation_items):
             original = item.get("nutrients", []) or []
-            augmented = self._augment_fat_nutrients(original)
-            # Replace only if changed to avoid unnecessary updates
-            if len(augmented) != len(original):
-                self.formulation_items[idx]["nutrients"] = augmented
+            normalized = self._normalize_nutrients(original)
+            if normalized != original:
+                # preserve reference to allow downstream updates
+                item["nutrients"] = normalized
 
     def _split_header_unit(self, header: str) -> tuple[str, str]:
         if header.endswith(")") and " (" in header:
@@ -1164,7 +1249,7 @@ class MainWindow(QMainWindow):
         return QIcon(pixmap)
 
     def _refresh_formulation_views(self) -> None:
-        self._ensure_fat_pairs_on_items()
+        self._ensure_normalized_items()
         self._populate_formulation_tables()
         self._populate_totals_table()
         self._ensure_preview_selection()
@@ -1186,7 +1271,7 @@ class MainWindow(QMainWindow):
         if not self.formulation_items:
             self.details_table.setRowCount(0)
             return
-        self._ensure_fat_pairs_on_items()
+        self._ensure_normalized_items()
         sel_model = self.formulation_preview.selectionModel()
         has_sel = sel_model and sel_model.hasSelection()
         if not has_sel:
@@ -1210,7 +1295,7 @@ class MainWindow(QMainWindow):
 
     def _export_formulation_to_excel(self, filepath: str) -> None:
         """Build Excel from scratch with nutrient categories as in USDA view."""
-        self._ensure_fat_pairs_on_items()
+        self._ensure_normalized_items()
         wb = Workbook()
         ws = wb.active
         ws.title = "Ingredientes"
@@ -1371,7 +1456,7 @@ class MainWindow(QMainWindow):
         Assumes nutrient amounts from the API are per 100 g of ingredient.
         Groups by nutrient id/number to merge Foundation + SR Legacy entries.
         """
-        self._ensure_fat_pairs_on_items()
+        self._ensure_normalized_items()
         totals: Dict[str, Dict[str, Any]] = {}
         total_weight = self._total_weight()
         for item in self.formulation_items:
@@ -1415,11 +1500,16 @@ class MainWindow(QMainWindow):
         Build a consistent key for nutrients, preferring id then number then name.
         This avoids duplicates when some records lack unitName (Foundation vs SR).
         """
+        name_lower = (nutrient.get("name") or "").strip().lower()
+        unit_lower = (nutrient.get("unitName") or "").strip().lower()
+        # Special-case Energy to keep kcal/kJ separated when ids/numbers are missing.
+        if name_lower == "energy" and unit_lower:
+            return f"energy:{unit_lower}"
         if "id" in nutrient and nutrient["id"] is not None:
             return f"id:{nutrient['id']}"
         if nutrient.get("number"):
             return f"num:{nutrient['number']}"
-        name = nutrient.get("name", "").strip().lower()
+        name = name_lower
         return f"name:{name}" if name else ""
 
     def _infer_unit(self, nutrient: Dict[str, Any]) -> str:
@@ -1784,7 +1874,7 @@ class MainWindow(QMainWindow):
         self.search_button.setEnabled(True)
 
     def _on_details_success(self, details) -> None:
-        nutrients = self._augment_fat_nutrients(details.get("foodNutrients", []) or [])
+        nutrients = self._normalize_nutrients(details.get("foodNutrients", []) or [])
         self._populate_details_table(nutrients)
 
         desc = details.get("description", "") or ""
