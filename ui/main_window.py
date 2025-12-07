@@ -1552,7 +1552,7 @@ class MainWindow(QMainWindow):
 
     def _augment_energy_nutrients(self, nutrients: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
         """
-        Ensure Energy (kcal/kJ) exists using macros if missing; deduplicate extras.
+        Ensure Energy (kcal/kJ) is always computed from macros (4/9/4) and deduplicate extras.
         kcal = protein*4 + carbs*4 + fat*9 ; kJ = kcal*4.184
         """
         if not nutrients:
@@ -1597,14 +1597,11 @@ class MainWindow(QMainWindow):
                         return float(amt)
             return None
 
-        protein = _find_amount(["protein"])
-        carbs = _find_amount(["carbohydrate, by difference"])
-        fat = _find_amount(["total lipid (fat)", "total fat (nlea)"])
+        protein = _find_amount(["protein"]) or 0.0
+        carbs = _find_amount(["carbohydrate, by difference"]) or 0.0
+        fat = _find_amount(["total lipid (fat)", "total fat (nlea)"]) or 0.0
 
-        if protein is None and carbs is None and fat is None:
-            kcal_amount = None
-        else:
-            kcal_amount = (protein or 0.0) * 4.0 + (carbs or 0.0) * 4.0 + (fat or 0.0) * 9.0
+        kcal_amount = (protein * 4.0) + (carbs * 4.0) + (fat * 9.0)
 
         insert_pos = 0
         macro_indices = []
@@ -1619,15 +1616,21 @@ class MainWindow(QMainWindow):
         if macro_indices:
             insert_pos = min(macro_indices)
 
-        if kcal_entry is None and kcal_amount is not None:
+        if kcal_entry is None:
             kcal_entry = _clone_energy("kcal", kcal_amount)
             result.insert(insert_pos, kcal_entry)
+        else:
+            kcal_entry["amount"] = kcal_amount
+            kcal_entry.setdefault("nutrient", {})["unitName"] = "kcal"
 
-        if kj_entry is None and kcal_amount is not None:
+        if kj_entry is None:
             kj_entry = _clone_energy("kJ", kcal_amount * 4.184)
             # place kJ after kcal if inserted together
             insert_kj = insert_pos + 1 if kcal_entry in result else insert_pos
             result.insert(insert_kj, kj_entry)
+        else:
+            kj_entry["amount"] = kcal_amount * 4.184
+            kj_entry.setdefault("nutrient", {})["unitName"] = "kJ"
 
         return result
 
