@@ -32,7 +32,15 @@ from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import PatternFill, Alignment
 
+import logging
+
 from services.usda_api import USDAApiError, get_food_details, search_foods
+
+logging.basicConfig(
+    filename="app_debug.log",
+    level=logging.DEBUG,
+    format="%(asctime)s [%(threadName)s] %(levelname)s %(message)s",
+)
 
 
 class ApiWorker(QObject):
@@ -56,14 +64,138 @@ class ApiWorker(QObject):
             self.finished.emit(result)
 
 
+class ImportWorker(QObject):
+    """Hydrate formulation items in a worker thread with retry + progress feedback."""
+
+    progress = Signal(str)
+    finished = Signal(list)
+    error = Signal(str)
+
+    def __init__(
+        self,
+        items: list[Dict[str, Any]],
+        max_attempts: int = 4,
+        read_timeout: float = 8.0,
+    ) -> None:
+        super().__init__()
+        self.items = items
+        self.max_attempts = max_attempts
+        self.read_timeout = read_timeout
+
+    @Slot()
+    def run(self) -> None:
+        hydrated_payload: list[Dict[str, Any]] = []
+        total = len(self.items)
+        for idx, item in enumerate(self.items, start=1):
+            try:
+                fdc_id_int = int(item.get("fdc_id"))
+            except Exception:
+                self.error.emit("Uno de los ingredientes no tiene FDC ID valido.")
+                return
+
+            base_item = dict(item)
+            base_item["fdc_id"] = fdc_id_int
+
+            attempts = 0
+            details: Dict[str, Any] | None = None
+            while attempts < self.max_attempts:
+                attempts += 1
+                self.progress.emit(f"{idx}/{total} ID #{fdc_id_int}")
+                try:
+                    details = get_food_details(
+                        fdc_id_int,
+                        timeout=(3.05, self.read_timeout),
+                        detail_format="full",
+                    )
+                    break
+                except Exception as exc:  # noqa: BLE001 - bubble up the root error
+                    if attempts < self.max_attempts:
+                        self.progress.emit(
+                            f"{idx}/{total} ID #{fdc_id_int} Failed - Retrying ({attempts}/{self.max_attempts})"
+                        )
+                        continue
+                    self.progress.emit(f"{idx}/{total} ID #{fdc_id_int} Failed")
+                    self.error.emit(
+                        f"No se pudo cargar el FDC {fdc_id_int} tras {self.max_attempts} intentos: {exc}"
+                    )
+                    return
+
+            hydrated_payload.append({"base": base_item, "details": details or {}})
+
+        self.finished.emit(hydrated_payload)
+
+
+class AddWorker(QObject):
+    """Fetch a single ingredient with retries and progress feedback."""
+
+    progress = Signal(str)
+    finished = Signal(dict, str, float)
+    error = Signal(str)
+
+    def __init__(
+        self,
+        fdc_id: int,
+        max_attempts: int,
+        read_timeout: float,
+        mode: str,
+        value: float,
+    ) -> None:
+        super().__init__()
+        self.fdc_id = fdc_id
+        self.max_attempts = max_attempts
+        self.read_timeout = read_timeout
+        self.mode = mode
+        self.value = value
+
+    @Slot()
+    def run(self) -> None:
+        logging.debug(f"AddWorker start fdc_id={self.fdc_id} attempts={self.max_attempts}")
+        attempts = 0
+        while attempts < self.max_attempts:
+            attempts += 1
+            self.progress.emit(f"1/1 ID #{self.fdc_id}")
+            try:
+                logging.debug(
+                    f"AddWorker attempt {attempts} fetching fdc_id={self.fdc_id} timeout={self.read_timeout}"
+                )
+                details = get_food_details(
+                    self.fdc_id,
+                    timeout=(3.05, max(self.read_timeout, 20.0)),
+                    detail_format="full",
+                )
+                logging.debug(
+                    f"AddWorker success fdc_id={self.fdc_id} nutrients={len(details.get('foodNutrients', []) or [])}"
+                )
+                self.finished.emit(details, self.mode, self.value)
+                return
+            except Exception as exc:  # noqa: BLE001 - show after retries
+                logging.exception(f"AddWorker error fdc_id={self.fdc_id} attempt={attempts}: {exc}")
+                if attempts < self.max_attempts:
+                    self.progress.emit(
+                        f"1/1 ID #{self.fdc_id} Failed - Retrying ({attempts}/{self.max_attempts})"
+                    )
+                    continue
+                self.progress.emit(f"1/1 ID #{self.fdc_id} Failed")
+                self.error.emit(
+                    f"No se pudo cargar el FDC {self.fdc_id} tras {self.max_attempts} intentos: {exc}"
+                )
+                return
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
 
-        self.setWindowTitle("Food Formulator - Proto")
+        self.base_window_title = "Food Formulator - Proto"
+        self.setWindowTitle(self.base_window_title)
+        self.import_max_attempts = 4
+        self.import_read_timeout = 8.0
         self.resize(900, 600)
         self._threads: list[QThread] = []
-        self._workers: list[ApiWorker] = []
+        self._workers: list[QObject] = []
+        self._current_import_worker: ImportWorker | None = None
+        self._current_add_worker: AddWorker | None = None
+        self._prefetching_fdc_ids: set[int] = set()
         self.formulation_items: List[Dict] = []
         self.quantity_mode: str = "g"
         self.amount_g_column_index = 2
@@ -89,6 +221,13 @@ class MainWindow(QMainWindow):
         }
 
         self._build_ui()
+
+    def _set_window_progress(self, progress: str | None = None) -> None:
+        """Update the window title with progress info or reset it."""
+        title = self.base_window_title
+        if progress:
+            title = f"{title} | {progress}"
+        self.setWindowTitle(title)
 
     def _build_ui(self) -> None:
         central = QWidget(self)
@@ -217,6 +356,7 @@ class MainWindow(QMainWindow):
         self.search_button.clicked.connect(self.on_search_clicked)
         self.search_input.returnPressed.connect(self.on_search_clicked)
         self.table.cellDoubleClicked.connect(self.on_result_double_clicked)
+        self.table.itemSelectionChanged.connect(self.on_search_selection_changed)
         self.remove_preview_button.clicked.connect(self.on_remove_preview_clicked)
         self.formulation_preview.cellDoubleClicked.connect(
             self.on_formulation_preview_double_clicked
@@ -458,7 +598,7 @@ class MainWindow(QMainWindow):
         stripped = query.strip()
         if not all_results and stripped.isdigit():
             try:
-                details = get_food_details(int(stripped))
+                details = get_food_details(int(stripped), detail_format="abridged")
             except Exception:
                 return all_results
             all_results.append(
@@ -497,15 +637,54 @@ class MainWindow(QMainWindow):
                 filtered.append(f)
         return filtered
 
+    def _prefetch_fdc_id(self, fdc_id: Any) -> None:
+        """Warm USDA cache for a given FDC ID in background (no UI impact)."""
+        try:
+            fdc_int = int(fdc_id)
+        except Exception:
+            return
+        if fdc_int in self._prefetching_fdc_ids:
+            return
+        self._prefetching_fdc_ids.add(fdc_int)
+        logging.debug(f"Prefetching fdc_id={fdc_int}")
+
+        def _on_done(_: object) -> None:
+            self._prefetching_fdc_ids.discard(fdc_int)
+            logging.debug(f"Prefetch done fdc_id={fdc_int}")
+
+        self._run_in_thread(
+            fn=lambda fid=fdc_int: get_food_details(
+                fid,
+                timeout=(3.05, 6.0),
+                detail_format="abridged",
+            ),
+            args=(),
+            on_success=_on_done,
+            on_error=_on_done,
+        )
+
     def _show_current_search_page(self) -> None:
         start = (self.search_page - 1) * self.search_page_size
         end = start + self.search_page_size
         slice_results = self.search_results[start:end]
         self._populate_table(slice_results, base_index=start)
+        self._prefetch_visible_results(slice_results)
         total_pages = max(1, (len(self.search_results) + self.search_page_size - 1) // self.search_page_size)
         self.status_label.setText(
             f"Se encontraron {len(self.search_results)} resultados (pagina {self.search_page}/{total_pages})."
         )
+
+    def _prefetch_visible_results(self, foods, limit: int = 2) -> None:
+        """Proactively fetch details for the first results on screen to warm the cache."""
+        count = 0
+        for food in foods:
+            fdc_id = food.get("fdcId")
+            if fdc_id is None:
+                continue
+            self._prefetch_fdc_id(fdc_id)
+            count += 1
+            if count >= limit:
+                break
 
     def _update_paging_buttons(self, count: int) -> None:
         has_query = bool(self.last_query)
@@ -531,7 +710,20 @@ class MainWindow(QMainWindow):
 
     def on_result_double_clicked(self, row: int, _: int) -> None:
         """Double click on a search row -> add to formulation with quantity."""
+        logging.debug(f"UI double click row={row}")
         self._add_row_to_formulation(row)
+
+    def on_search_selection_changed(self) -> None:
+        """Prefetch details for the selected search result to speed up adding."""
+        indexes = self.table.selectionModel().selectedRows()
+        if not indexes:
+            return
+        row = indexes[0].row()
+        fdc_item = self.table.item(row, 0)
+        if not fdc_item:
+            return
+        fdc_id_text = fdc_item.text().strip()
+        self._prefetch_fdc_id(fdc_id_text)
 
     def on_add_selected_clicked(self) -> None:
         self._add_row_to_formulation()
@@ -712,9 +904,9 @@ class MainWindow(QMainWindow):
 
         ext = Path(path).suffix.lower()
         if ext == ".json":
-            success = self._load_state_from_json(path)
+            parsed = self._load_state_from_json(path)
         elif ext in (".xlsx", ".xls"):
-            success = self._load_state_from_excel(path)
+            parsed = self._load_state_from_excel(path)
         else:
             QMessageBox.warning(
                 self,
@@ -723,11 +915,14 @@ class MainWindow(QMainWindow):
             )
             return
 
-        if success:
-            self._refresh_formulation_views()
-            self.status_label.setText(f"Formulación importada desde {path}")
+        if not parsed:
+            return
 
-    def _load_state_from_json(self, path: str) -> bool:
+        base_items, meta = parsed
+        meta.setdefault("path", path)
+        self._start_import_hydration(base_items, meta)
+
+    def _load_state_from_json(self, path: str) -> tuple[list[Dict[str, Any]], Dict[str, Any]] | None:
         try:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
         except Exception as exc:  # noqa: BLE001
@@ -736,7 +931,7 @@ class MainWindow(QMainWindow):
                 "Error al importar",
                 f"No se pudo leer el archivo:\n{exc}",
             )
-            return False
+            return None
 
         if not isinstance(data, dict):
             QMessageBox.warning(
@@ -744,7 +939,7 @@ class MainWindow(QMainWindow):
                 "Formato inválido",
                 "El archivo no contiene una formulación válida.",
             )
-            return False
+            return None
 
         items = data.get("items") or []
         if not isinstance(items, list) or not items:
@@ -753,15 +948,24 @@ class MainWindow(QMainWindow):
                 "Formato inválido",
                 "El archivo no contiene ingredientes válidos.",
             )
-            return False
+            return None
 
         base_items: list[Dict[str, Any]] = []
         for item in items:
             if not isinstance(item, dict):
                 continue
+            try:
+                fdc_int = int(item.get("fdc_id") or item.get("fdcId"))
+            except Exception:
+                QMessageBox.warning(
+                    self,
+                    "FDC ID inválido",
+                    f"FDC ID no numérico: {item.get('fdc_id') or item.get('fdcId')}",
+                )
+                return None
             base_items.append(
                 {
-                    "fdc_id": item.get("fdc_id") or item.get("fdcId"),
+                    "fdc_id": fdc_int,
                     "amount_g": float(item.get("amount_g", 0.0) or 0.0),
                     "locked": bool(item.get("locked", False)),
                     "description": item.get("description", ""),
@@ -770,27 +974,24 @@ class MainWindow(QMainWindow):
                 }
             )
 
-        hydrated = self._hydrate_items(base_items)
-        if hydrated is None:
-            return False
-
-        self.formulation_items = hydrated
-
         flags = data.get("nutrient_export_flags")
-        self.nutrient_export_flags = (
+        nutrient_flags = (
             {k: bool(v) for k, v in flags.items()} if isinstance(flags, dict) else {}
         )
 
         mode = data.get("quantity_mode", "g")
-        self.quantity_mode = "g" if mode != "%" else "%"
-        self.quantity_mode_selector.setCurrentIndex(
-            0 if self.quantity_mode == "g" else 1
-        )
+        quantity_mode = "g" if mode != "%" else "%"
 
-        self.formula_name_input.setText(data.get("formula_name", ""))
-        return True
+        meta = {
+            "nutrient_export_flags": nutrient_flags,
+            "quantity_mode": quantity_mode,
+            "formula_name": data.get("formula_name", ""),
+            "path": path,
+            "respect_existing_formula_name": False,
+        }
+        return base_items, meta
 
-    def _load_state_from_excel(self, path: str) -> bool:
+    def _load_state_from_excel(self, path: str) -> tuple[list[Dict[str, Any]], Dict[str, Any]] | None:
         def _read(sheet: str | int, header_row: int) -> pd.DataFrame:
             return pd.read_excel(path, sheet_name=sheet, header=header_row)
 
@@ -814,7 +1015,7 @@ class MainWindow(QMainWindow):
                 "Sin datos",
                 "El archivo no tiene filas para importar.",
             )
-            return False
+            return None
 
         # Normalize columns for matching
         cols_norm: Dict[str, str] = {self._normalize_label(c): c for c in df.columns}
@@ -846,7 +1047,7 @@ class MainWindow(QMainWindow):
                 "Columnas faltantes",
                 "Se requieren columnas FDC ID y Cantidad (g).",
             )
-            return False
+            return None
 
         base_items: list[Dict[str, Any]] = []
         for _, row in df.iterrows():
@@ -876,19 +1077,123 @@ class MainWindow(QMainWindow):
                 "Sin ingredientes",
                 "No se encontraron filas válidas con FDC ID y Cantidad (g).",
             )
-            return False
+            return None
 
-        hydrated = self._hydrate_items(base_items)
-        if hydrated is None:
-            return False
+        meta = {
+            "nutrient_export_flags": {},
+            "quantity_mode": "g",
+            "formula_name": self.formula_name_input.text() or Path(path).stem,
+            "path": path,
+            "respect_existing_formula_name": True,
+        }
+        return base_items, meta
+
+    def _start_import_hydration(
+        self, base_items: list[Dict[str, Any]], meta: Dict[str, Any]
+    ) -> None:
+        if not base_items:
+            QMessageBox.warning(
+                self,
+                "Sin ingredientes",
+                "El archivo no contiene ingredientes para importar.",
+            )
+            return
+
+        self.import_state_button.setEnabled(False)
+        self.export_state_button.setEnabled(False)
+        self.status_label.setText("Importando ingredientes...")
+        self._set_window_progress("Importando ingredientes")
+
+        thread = QThread(self)
+        worker = ImportWorker(
+            base_items,
+            max_attempts=self.import_max_attempts,
+            read_timeout=self.import_read_timeout,
+        )
+        worker.moveToThread(thread)
+        self._workers.append(worker)
+        self._threads.append(thread)
+        self._current_import_worker = worker
+
+        thread.started.connect(worker.run)
+        worker.progress.connect(self._on_import_progress)
+        worker.finished.connect(lambda payload, m=meta: self._on_import_finished(payload, m))
+        worker.error.connect(self._on_import_error)
+        worker.finished.connect(thread.quit)
+        worker.error.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        worker.error.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+
+        def _cleanup() -> None:
+            if thread in self._threads:
+                self._threads.remove(thread)
+            if worker in self._workers:
+                self._workers.remove(worker)
+            if self._current_import_worker is worker:
+                self._current_import_worker = None
+
+        thread.finished.connect(_cleanup)
+        thread.start()
+
+    def _on_import_progress(self, message: str) -> None:
+        self._set_window_progress(message)
+        self.status_label.setText(f"Importando ingredientes: {message}")
+
+    def _on_import_finished(self, payload: list[Dict[str, Any]], meta: Dict[str, Any]) -> None:
+        self._reset_import_ui_state()
+        hydrated: list[Dict[str, Any]] = []
+        for entry in payload:
+            base = entry.get("base") or {}
+            details = entry.get("details") or {}
+            fdc_id = base.get("fdc_id") or details.get("fdcId")
+            try:
+                fdc_id_int = int(fdc_id) if fdc_id is not None else None
+            except Exception:
+                fdc_id_int = fdc_id
+
+            nutrients = self._augment_fat_nutrients(details.get("foodNutrients", []) or [])
+            hydrated.append(
+                {
+                    "fdc_id": fdc_id_int,
+                    "description": details.get("description", "") or base.get("description", ""),
+                    "brand": details.get("brandOwner", "") or base.get("brand", ""),
+                    "data_type": details.get("dataType", "") or base.get("data_type", ""),
+                    "amount_g": float(base.get("amount_g", 0.0) or 0.0),
+                    "nutrients": nutrients,
+                    "locked": bool(base.get("locked", False)),
+                }
+            )
 
         self.formulation_items = hydrated
-        self.nutrient_export_flags = {}
-        self.quantity_mode = "g"
-        self.quantity_mode_selector.setCurrentIndex(0)
-        if not self.formula_name_input.text().strip():
-            self.formula_name_input.setText(Path(path).stem)
-        return True
+        self.nutrient_export_flags = meta.get("nutrient_export_flags", {})
+        mode = meta.get("quantity_mode", "g")
+        self.quantity_mode = "g" if mode != "%" else "%"
+        self.quantity_mode_selector.blockSignals(True)
+        self.quantity_mode_selector.setCurrentIndex(
+            0 if self.quantity_mode == "g" else 1
+        )
+        self.quantity_mode_selector.blockSignals(False)
+
+        formula_name = meta.get("formula_name", "")
+        respect_existing = meta.get("respect_existing_formula_name", False)
+        if not respect_existing or not self.formula_name_input.text().strip():
+            self.formula_name_input.setText(formula_name)
+
+        self._refresh_formulation_views()
+        source = meta.get("path", "archivo")
+        self.status_label.setText(f"Formulación importada desde {source}")
+
+    def _on_import_error(self, message: str) -> None:
+        self._reset_import_ui_state()
+        self.status_label.setText("Error al importar ingredientes.")
+        QMessageBox.critical(self, "Error al cargar ingrediente", message)
+
+    def _reset_import_ui_state(self) -> None:
+        self.import_state_button.setEnabled(True)
+        self.export_state_button.setEnabled(True)
+        self._set_window_progress(None)
+        self._current_import_worker = None
 
     def _populate_table(self, foods, base_index: int = 0) -> None:
         self.table.setRowCount(0)
@@ -1138,6 +1443,7 @@ class MainWindow(QMainWindow):
         """
         if not nutrients:
             return []
+        logging.debug(f"_augment_fat_nutrients input={len(nutrients)}")
 
         target_a = "total lipid (fat)"
         target_b = "total fat (nlea)"
@@ -1527,6 +1833,7 @@ class MainWindow(QMainWindow):
 
     def _populate_formulation_tables(self) -> None:
         """Refresh formulation tables with current items."""
+        logging.debug(f"_populate_formulation_tables rows={len(self.formulation_items)}")
         self._update_quantity_headers()
         total_weight = self._total_weight()
 
@@ -1573,8 +1880,10 @@ class MainWindow(QMainWindow):
 
             self._apply_column_state(self.formulation_table, idx)
         self.formulation_table.blockSignals(False)
+        logging.debug("_populate_formulation_tables done")
 
     def _populate_totals_table(self) -> None:
+        logging.debug("_populate_totals_table start")
         totals = self._calculate_totals()
         sorted_totals = sorted(
             totals.items(),
@@ -1608,6 +1917,7 @@ class MainWindow(QMainWindow):
         self.nutrient_export_flags = new_flags
         self.totals_table.blockSignals(False)
         self._update_toggle_export_button()
+        logging.debug("_populate_totals_table done")
 
     def _update_toggle_export_button(self) -> None:
         if not hasattr(self, "toggle_export_button"):
@@ -1636,9 +1946,11 @@ class MainWindow(QMainWindow):
         return QIcon(pixmap)
 
     def _refresh_formulation_views(self) -> None:
+        logging.debug(f"_refresh_formulation_views count={len(self.formulation_items)}")
         self._ensure_normalized_items()
         self._populate_formulation_tables()
         self._populate_totals_table()
+        logging.debug("_refresh_formulation_views done")
         self._ensure_preview_selection()
 
     def _select_preview_row(self, row: int) -> None:
@@ -1844,6 +2156,7 @@ class MainWindow(QMainWindow):
         Assumes nutrient amounts from the API are per 100 g of ingredient.
         Groups by nutrient id/number to merge Foundation + SR Legacy entries.
         """
+        logging.debug(f"_calculate_totals start items={len(self.formulation_items)}")
         self._ensure_normalized_items()
         totals: Dict[str, Dict[str, Any]] = {}
         total_weight = self._total_weight()
@@ -1881,6 +2194,7 @@ class MainWindow(QMainWindow):
             factor = 100.0 / total_weight
             for entry in totals.values():
                 entry["amount"] *= factor
+        logging.debug(f"_calculate_totals done nutrients={len(totals)} total_weight={total_weight}")
         return totals
 
     def _nutrient_key(self, nutrient: Dict[str, Any]) -> str:
@@ -2017,6 +2331,7 @@ class MainWindow(QMainWindow):
             return float(fallback)
 
     def _add_row_to_formulation(self, row: int | None = None) -> None:
+        logging.debug(f"_add_row_to_formulation row={row}")
         if row is None:
             indexes = self.table.selectionModel().selectedRows()
             if not indexes:
@@ -2033,6 +2348,7 @@ class MainWindow(QMainWindow):
             return
 
         mode, value = self._prompt_quantity()
+        logging.debug(f"_prompt_quantity returned mode={mode} value={value}")
         if mode is None:
             return
 
@@ -2045,14 +2361,62 @@ class MainWindow(QMainWindow):
             f"Agregando {fdc_id_text} ({display_amount})..."
         )
         self.add_button.setEnabled(False)
-        self._run_in_thread(
-            fn=get_food_details,
-            args=(int(fdc_id_text),),
-            on_success=lambda details, m=mode, v=value: self._on_add_details_loaded(
-                details, m, v
-            ),
-            on_error=self._on_add_error,
+        self._start_add_fetch(int(fdc_id_text), mode, value)
+
+    def _start_add_fetch(self, fdc_id: int, mode: str, value: float) -> None:
+        logging.debug(f"_start_add_fetch fdc_id={fdc_id} mode={mode} value={value}")
+        self._set_window_progress(f"1/1 ID #{fdc_id}")
+        thread = QThread(self)
+        worker = AddWorker(
+            fdc_id,
+            max_attempts=self.import_max_attempts,
+            read_timeout=self.import_read_timeout,
+            mode=mode,
+            value=value,
         )
+        worker.moveToThread(thread)
+        self._workers.append(worker)
+        self._threads.append(thread)
+        self._current_add_worker = worker
+
+        thread.started.connect(worker.run)
+        worker.progress.connect(self._on_add_progress)
+        worker.finished.connect(self._on_add_finished)
+        worker.error.connect(self._on_add_error)
+        worker.finished.connect(thread.quit)
+        worker.error.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        worker.error.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+
+        def _cleanup() -> None:
+            if thread in self._threads:
+                self._threads.remove(thread)
+            if worker in self._workers:
+                self._workers.remove(worker)
+            if self._current_add_worker is worker:
+                self._current_add_worker = None
+
+        thread.finished.connect(_cleanup)
+        thread.start()
+
+    def _on_add_progress(self, message: str) -> None:
+        self._set_window_progress(message)
+        self.status_label.setText(f"Agregando ingrediente: {message}")
+
+    def _on_add_finished(self, details, mode: str, value: float) -> None:
+        logging.debug(
+            f"_on_add_finished fdc_id={details.get('fdcId', '?')} "
+            f"mode={mode} value={value} nutrients={len(details.get('foodNutrients', []) or [])}"
+        )
+        self._reset_add_ui_state()
+        self._on_add_details_loaded(details, mode, value)
+
+    def _reset_add_ui_state(self) -> None:
+        self.add_button.setEnabled(True)
+        self._set_window_progress(None)
+        if self._current_add_worker:
+            self._current_add_worker = None
 
     def _format_amount_for_status(self, amount_g: float, include_new: bool = False) -> str:
         """Return a user-facing label for a quantity using the active mode."""
@@ -2302,6 +2666,10 @@ class MainWindow(QMainWindow):
         self.fdc_id_button.setEnabled(True)
 
     def _on_add_details_loaded(self, details, mode: str, value: float) -> None:
+        logging.debug(
+            f"_on_add_details_loaded fdc_id={details.get('fdcId', '?')} "
+            f"mode={mode} value={value}"
+        )
         nutrients = self._augment_fat_nutrients(details.get("foodNutrients", []) or [])
         desc = details.get("description", "") or ""
         brand = details.get("brandOwner", "") or ""
@@ -2340,8 +2708,9 @@ class MainWindow(QMainWindow):
         self.add_button.setEnabled(True)
 
     def _on_add_error(self, message: str) -> None:
+        self._reset_add_ui_state()
         self.status_label.setText(f"Error al agregar: {message}")
-        self.add_button.setEnabled(True)
+        logging.error(f"_on_add_error: {message}")
 
     def on_totals_checkbox_changed(self, item: QTableWidgetItem) -> None:
         """Sync export checkbox state into memory and update toggle label."""
