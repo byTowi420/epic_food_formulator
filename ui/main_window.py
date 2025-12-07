@@ -34,7 +34,7 @@ from openpyxl.styles import PatternFill, Alignment
 
 import logging
 
-from services.usda_api import USDAApiError, get_food_details, search_foods
+from services.usda_api import USDAApiError, get_food_details, search_foods, has_cached_food
 
 logging.basicConfig(
     filename="app_debug.log",
@@ -160,8 +160,8 @@ class AddWorker(QObject):
                 )
                 details = get_food_details(
                     self.fdc_id,
-                    timeout=(3.05, max(self.read_timeout, 20.0)),
-                    detail_format="full",
+                    timeout=(3.05, max(self.read_timeout, 8.0)),
+                    detail_format="abridged",
                 )
                 logging.debug(
                     f"AddWorker success fdc_id={self.fdc_id} nutrients={len(details.get('foodNutrients', []) or [])}"
@@ -219,6 +219,7 @@ class MainWindow(QMainWindow):
             "Experimental": 3,
             "Branded": 4,
         }
+        self._reference_order_map: Dict[str, Dict[str, Any]] = {}
 
         self._build_ui()
 
@@ -1153,6 +1154,7 @@ class MainWindow(QMainWindow):
                 fdc_id_int = fdc_id
 
             nutrients = self._augment_fat_nutrients(details.get("foodNutrients", []) or [])
+            self._update_reference_from_details(details)
             hydrated.append(
                 {
                     "fdc_id": fdc_id_int,
@@ -1215,7 +1217,7 @@ class MainWindow(QMainWindow):
             )
 
     def _populate_details_table(self, nutrients) -> None:
-        nutrients = self._augment_fat_nutrients(nutrients or [])
+        nutrients = self._sort_nutrients_for_display(self._augment_fat_nutrients(nutrients or []))
         self.details_table.setRowCount(0)
 
         for row_idx, n in enumerate(nutrients):
@@ -1383,6 +1385,14 @@ class MainWindow(QMainWindow):
                 header_key, canonical_name, canonical_unit = self._header_key(nut)
                 if not header_key:
                     continue
+                ref_info = self._reference_info(nut)
+                category_hint = ref_info.get("category")
+                if category_hint:
+                    current_category = category_hint
+                    if current_category not in categories_seen_order:
+                        categories_seen_order[current_category] = len(
+                            categories_seen_order
+                        )
                 header = (
                     f"{canonical_name} ({canonical_unit})"
                     if canonical_unit
@@ -1803,6 +1813,7 @@ class MainWindow(QMainWindow):
                     f"No se pudo cargar el FDC {fdc_id_int}:\n{exc}",
                 )
                 return None
+            self._update_reference_from_details(details)
 
             hydrated.append(
                 {
@@ -2162,7 +2173,7 @@ class MainWindow(QMainWindow):
         total_weight = self._total_weight()
         for item in self.formulation_items:
             qty = item.get("amount_g", 0) or 0
-            for nutrient in item.get("nutrients", []):
+            for nutrient in self._sort_nutrients_for_display(item.get("nutrients", [])):
                 amount = nutrient.get("amount")
                 if amount is None:
                     continue
@@ -2213,6 +2224,52 @@ class MainWindow(QMainWindow):
             return f"num:{nutrient['number']}"
         name = name_lower
         return f"name:{name}" if name else ""
+
+    def _reference_info(self, nutrient: Dict[str, Any]) -> Dict[str, Any]:
+        """Return cached rank/category info for a nutrient key if available."""
+        key = self._nutrient_key(nutrient)
+        return self._reference_order_map.get(key, {})
+
+    def _update_reference_from_details(self, details: Dict[str, Any]) -> None:
+        """Update reference rank/category map from a full USDA response."""
+        nutrients = details.get("foodNutrients", []) or []
+        if not nutrients:
+            return
+        current_category: str | None = None
+        for entry in nutrients:
+            nut = entry.get("nutrient") or {}
+            key = self._nutrient_key(nut)
+            if not key:
+                continue
+            if entry.get("amount") is None:
+                # category row
+                current_category = (nut.get("name") or "").strip() or current_category
+                self._reference_order_map.setdefault(
+                    key,
+                    {
+                        "rank": nut.get("rank"),
+                        "category": current_category,
+                        "unit": nut.get("unitName"),
+                    },
+                )
+                continue
+            self._reference_order_map[key] = {
+                "rank": nut.get("rank"),
+                "category": current_category,
+                "unit": nut.get("unitName"),
+            }
+
+    def _sort_nutrients_for_display(self, nutrients: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
+        """Return nutrients ordered by USDA rank or reference map."""
+        if not nutrients:
+            return []
+        indexed = []
+        for idx, entry in enumerate(nutrients):
+            nut = entry.get("nutrient") or {}
+            order = self._nutrient_order(nut, idx + 10000)
+            indexed.append((order, idx, entry))
+        indexed.sort(key=lambda t: (t[0], t[1]))
+        return [item[2] for item in indexed]
 
     def _header_key(self, nutrient: Dict[str, Any]) -> tuple[str, str, str]:
         """Return a stable header key plus canonical name and unit for a nutrient."""
@@ -2325,6 +2382,9 @@ class MainWindow(QMainWindow):
     def _nutrient_order(self, nutrient: Dict[str, Any], fallback: int) -> float:
         """Return USDA rank if available; otherwise keep insertion order fallback."""
         rank = nutrient.get("rank")
+        if rank is None:
+            ref = self._reference_info(nutrient)
+            rank = ref.get("rank")
         try:
             return float(rank)
         except (TypeError, ValueError):
@@ -2671,6 +2731,7 @@ class MainWindow(QMainWindow):
             f"mode={mode} value={value}"
         )
         nutrients = self._augment_fat_nutrients(details.get("foodNutrients", []) or [])
+        self._update_reference_from_details(details)
         desc = details.get("description", "") or ""
         brand = details.get("brandOwner", "") or ""
         data_type = details.get("dataType", "") or ""
@@ -2706,11 +2767,47 @@ class MainWindow(QMainWindow):
             f"Agregado {fdc_id} - {desc} ({msg_value})"
         )
         self.add_button.setEnabled(True)
+        self._upgrade_item_to_full(len(self.formulation_items) - 1, int(fdc_id))
 
     def _on_add_error(self, message: str) -> None:
         self._reset_add_ui_state()
         self.status_label.setText(f"Error al agregar: {message}")
         logging.error(f"_on_add_error: {message}")
+
+    def _upgrade_item_to_full(self, index: int, fdc_id: int) -> None:
+        """Fetch full details in background to enrich ordering/categorias without bloquear UI."""
+        if has_cached_food(fdc_id, detail_format="full"):
+            return
+
+        def _on_success(details: Dict[str, Any]) -> None:
+            if index < 0 or index >= len(self.formulation_items):
+                return
+            nutrients = self._augment_fat_nutrients(details.get("foodNutrients", []) or [])
+            self._update_reference_from_details(details)
+            item = self.formulation_items[index]
+            item["nutrients"] = nutrients
+            item["description"] = details.get("description", item.get("description", ""))
+            item["brand"] = details.get("brandOwner", item.get("brand", ""))
+            item["data_type"] = details.get("dataType", item.get("data_type", ""))
+            self._refresh_formulation_views()
+            # Si el item sigue seleccionado, actualizar panel de detalles.
+            indexes = self.formulation_preview.selectionModel().selectedRows()
+            if indexes and indexes[0].row() == index:
+                self._populate_details_table(nutrients)
+
+        def _on_error(message: str) -> None:
+            logging.debug(f"Background full fetch failed for {fdc_id}: {message}")
+
+        self._run_in_thread(
+            fn=lambda: get_food_details(
+                fdc_id,
+                timeout=(3.05, 20.0),
+                detail_format="full",
+            ),
+            args=(),
+            on_success=_on_success,
+            on_error=_on_error,
+        )
 
     def on_totals_checkbox_changed(self, item: QTableWidgetItem) -> None:
         """Sync export checkbox state into memory and update toggle label."""

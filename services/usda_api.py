@@ -142,6 +142,17 @@ def _normalize_food_payload(food: Dict[str, Any]) -> Dict[str, Any]:
     return normalized_food
 
 
+def has_cached_food(
+    fdc_id: int, detail_format: str = "full", nutrient_ids: List[int] | None = None
+) -> bool:
+    """Return True if the requested detail is already cached."""
+    fmt = (detail_format or "full").lower()
+    nutrient_tuple = tuple(sorted(set(nutrient_ids))) if nutrient_ids else None
+    cache_key = (fdc_id, fmt, nutrient_tuple)
+    with _cache_lock:
+        return cache_key in _details_cache
+
+
 def search_foods(
     query: str,
     page_size: int = 25,
