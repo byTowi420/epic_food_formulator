@@ -24,6 +24,14 @@ class USDAApiError(Exception):
     """Generic error for USDA API issues."""
 
 
+class USDAHttpError(USDAApiError):
+    """HTTP error with status code context for fallback handling."""
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
 def _ensure_api_key() -> None:
     if not USDA_API_KEY:
         raise USDAApiError(
@@ -84,6 +92,11 @@ def _request_json(
             timeout=timeout or DEFAULT_TIMEOUT,
         )
         response.raise_for_status()
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else None
+        raise USDAHttpError(
+            f"Network error when calling USDA API: {exc}", status_code=status
+        ) from exc
     except requests.RequestException as exc:
         raise USDAApiError(f"Network error when calling USDA API: {exc}") from exc
 
@@ -209,7 +222,7 @@ def search_foods(
 def get_food_details(
     fdc_id: int,
     timeout: tuple[float, float] | float | None = None,
-    detail_format: str = "full",
+    detail_format: str = "abridged",
     nutrient_ids: List[int] | None = None,
 ) -> Dict[str, Any]:
     """
@@ -221,11 +234,11 @@ def get_food_details(
     :param nutrient_ids: Optional list of nutrient IDs to request only those values
     :return: raw JSON dict from the USDA API
     """
-    fmt = (detail_format or "full").lower()
+    fmt = (detail_format or "abridged").lower()
     if fmt not in {"abridged", "full"}:
         raise ValueError("detail_format must be 'abridged' or 'full'")
     nutrient_tuple = tuple(sorted(set(nutrient_ids))) if nutrient_ids else None
-    cache_key = (fdc_id, fmt, nutrient_tuple)
+    cache_key = (fdc_id, "abridged", nutrient_tuple)
 
     with _cache_lock:
         cached = _details_cache.get(cache_key)
@@ -235,19 +248,33 @@ def get_food_details(
             _details_cache[cache_key] = normalized
         return normalized
 
-    if nutrient_tuple:
-        payload = {"fdcIds": [fdc_id], "format": fmt, "nutrients": list(nutrient_tuple)}
-        data_list = _request_json("foods", {}, timeout=timeout, method="POST", json_body=payload)
-        if not isinstance(data_list, list) or not data_list:
-            raise USDAApiError(f"No se recibieron datos para el FDC {fdc_id}.")
-        data = data_list[0]
-    else:
-        params = {"format": fmt}
-        data = _request_json(f"food/{fdc_id}", params, timeout=timeout)
-
-    normalized = _normalize_food_payload(data)
-
-    with _cache_lock:
-        _details_cache[cache_key] = normalized
-
-    return normalized
+    attempt_fmt = fmt
+    tried_fallback = False
+    while True:
+        try:
+            if nutrient_tuple:
+                payload = {
+                    "fdcIds": [fdc_id],
+                    "format": attempt_fmt if attempt_fmt == "abridged" else None,
+                    "nutrients": list(nutrient_tuple),
+                }
+                data_list = _request_json(
+                    "foods", {}, timeout=timeout, method="POST", json_body=payload
+                )
+                if not isinstance(data_list, list) or not data_list:
+                    raise USDAApiError(f"No se recibieron datos para el FDC {fdc_id}.")
+                data = data_list[0]
+            else:
+                params = {"format": attempt_fmt} if attempt_fmt == "abridged" else {}
+                data = _request_json(f"food/{fdc_id}", params, timeout=timeout)
+            normalized = _normalize_food_payload(data)
+            with _cache_lock:
+                _details_cache[cache_key] = normalized
+            return normalized
+        except USDAHttpError as exc:
+            if attempt_fmt == "abridged" and exc.status_code == 404 and not tried_fallback:
+                # Some items (e.g., FNDDS) reject abridged; retry full and cache under abridged key.
+                attempt_fmt = "full"
+                tried_fallback = True
+                continue
+            raise
