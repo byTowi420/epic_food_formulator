@@ -4,21 +4,31 @@ import json
 import re
 import unicodedata
 import os
+from fractions import Fraction
+import math
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot, QEvent, QItemSelectionModel, QCoreApplication
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont, QKeySequence, QShortcut
+from PySide6.QtCore import QObject, QThread, Qt, QItemSelectionModel, QCoreApplication, QTimer, QEvent
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont, QKeySequence, QShortcut, QBrush
 from PySide6.QtWidgets import (
     QComboBox,
     QApplication,
     QFileDialog,
     QHBoxLayout,
+    QGridLayout,
+    QGroupBox,
     QInputDialog,
     QLabel,
     QLineEdit,
     QCheckBox,
     QMainWindow,
     QMessageBox,
+    QDialog,
+    QDialogButtonBox,
+    QListWidget,
+    QListWidgetItem,
+    QPlainTextEdit,
     QPushButton,
+    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QSizePolicy,
@@ -36,151 +46,19 @@ from openpyxl.styles import PatternFill, Alignment
 import logging
 
 from services.usda_api import USDAApiError, get_food_details, search_foods, has_cached_food
+from services.nutrient_normalizer import (
+    augment_fat_nutrients,
+    canonical_alias_name,
+    canonical_unit,
+    normalize_nutrients,
+)
+from ui.workers import ApiWorker, ImportWorker, AddWorker
 
 logging.basicConfig(
     filename="app_debug.log",
     level=logging.DEBUG,
     format="%(asctime)s [%(threadName)s] %(levelname)s %(message)s",
 )
-
-
-class ApiWorker(QObject):
-    """Run a callable in a background thread and emit results via signals."""
-
-    finished = Signal(object)
-    error = Signal(str)
-
-    def __init__(self, fn, *args) -> None:
-        super().__init__()
-        self.fn = fn
-        self.args = args
-
-    @Slot()
-    def run(self) -> None:
-        try:
-            result = self.fn(*self.args)
-        except Exception as exc:  # noqa: BLE001 - surface any API/Value errors to UI
-            self.error.emit(str(exc))
-        else:
-            self.finished.emit(result)
-
-
-class ImportWorker(QObject):
-    """Hydrate formulation items in a worker thread with retry + progress feedback."""
-
-    progress = Signal(str)
-    finished = Signal(list)
-    error = Signal(str)
-
-    def __init__(
-        self,
-        items: list[Dict[str, Any]],
-        max_attempts: int = 4,
-        read_timeout: float = 8.0,
-    ) -> None:
-        super().__init__()
-        self.items = items
-        self.max_attempts = max_attempts
-        self.read_timeout = read_timeout
-
-    @Slot()
-    def run(self) -> None:
-        hydrated_payload: list[Dict[str, Any]] = []
-        total = len(self.items)
-        for idx, item in enumerate(self.items, start=1):
-            try:
-                fdc_id_int = int(item.get("fdc_id"))
-            except Exception:
-                self.error.emit("Uno de los ingredientes no tiene FDC ID valido.")
-                return
-
-            base_item = dict(item)
-            base_item["fdc_id"] = fdc_id_int
-
-            attempts = 0
-            details: Dict[str, Any] | None = None
-            while attempts < self.max_attempts:
-                attempts += 1
-                self.progress.emit(f"{idx}/{total} ID #{fdc_id_int}")
-                try:
-                    details = get_food_details(
-                        fdc_id_int,
-                        timeout=(3.05, self.read_timeout),
-                        detail_format="abridged",
-                    )
-                    break
-                except Exception as exc:  # noqa: BLE001 - bubble up the root error
-                    if attempts < self.max_attempts:
-                        self.progress.emit(
-                            f"{idx}/{total} ID #{fdc_id_int} Failed - Retrying ({attempts}/{self.max_attempts})"
-                        )
-                        continue
-                    self.progress.emit(f"{idx}/{total} ID #{fdc_id_int} Failed")
-                    self.error.emit(
-                        f"No se pudo cargar el FDC {fdc_id_int} tras {self.max_attempts} intentos: {exc}"
-                    )
-                    return
-
-            hydrated_payload.append({"base": base_item, "details": details or {}})
-
-        self.finished.emit(hydrated_payload)
-
-
-class AddWorker(QObject):
-    """Fetch a single ingredient with retries and progress feedback."""
-
-    progress = Signal(str)
-    finished = Signal(dict, str, float)
-    error = Signal(str)
-
-    def __init__(
-        self,
-        fdc_id: int,
-        max_attempts: int,
-        read_timeout: float,
-        mode: str,
-        value: float,
-    ) -> None:
-        super().__init__()
-        self.fdc_id = fdc_id
-        self.max_attempts = max_attempts
-        self.read_timeout = read_timeout
-        self.mode = mode
-        self.value = value
-
-    @Slot()
-    def run(self) -> None:
-        logging.debug(f"AddWorker start fdc_id={self.fdc_id} attempts={self.max_attempts}")
-        attempts = 0
-        while attempts < self.max_attempts:
-            attempts += 1
-            self.progress.emit(f"1/1 ID #{self.fdc_id}")
-            try:
-                logging.debug(
-                    f"AddWorker attempt {attempts} fetching fdc_id={self.fdc_id} timeout={self.read_timeout}"
-                )
-                details = get_food_details(
-                    self.fdc_id,
-                    timeout=(3.05, max(self.read_timeout, 8.0)),
-                    detail_format="abridged",
-                )
-                logging.debug(
-                    f"AddWorker success fdc_id={self.fdc_id} nutrients={len(details.get('foodNutrients', []) or [])}"
-                )
-                self.finished.emit(details, self.mode, self.value)
-                return
-            except Exception as exc:  # noqa: BLE001 - show after retries
-                logging.exception(f"AddWorker error fdc_id={self.fdc_id} attempt={attempts}: {exc}")
-                if attempts < self.max_attempts:
-                    self.progress.emit(
-                        f"1/1 ID #{self.fdc_id} Failed - Retrying ({attempts}/{self.max_attempts})"
-                    )
-                    continue
-                self.progress.emit(f"1/1 ID #{self.fdc_id} Failed")
-                self.error.emit(
-                    f"No se pudo cargar el FDC {self.fdc_id} tras {self.max_attempts} intentos: {exc}"
-                )
-                return
 
 
 class MainWindow(QMainWindow):
@@ -229,6 +107,49 @@ class MainWindow(QMainWindow):
                 self._nutrient_order_map[name.strip().lower()] = idx * 1000 + offset
                 self._nutrient_category_map[name.strip().lower()] = self._nutrient_catalog[idx][0]
 
+        self.label_base_nutrients = self._build_base_label_nutrients()
+        self.household_measure_options = self._build_household_measure_options()
+        self.household_capacity_map = {
+            name: capacity for name, capacity in self.household_measure_options
+        }
+        self._auto_updating_household_amount = False
+        self.label_manual_overrides: dict[str, float] = {}
+        self._last_totals: Dict[str, Dict[str, Any]] = {}
+        self.label_no_significant: list[str] = []
+        self._label_display_nutrients: list[Dict[str, Any]] = []
+        self.label_manual_hint_color = QColor(204, 255, 204)
+        self.label_no_sig_order = [
+            "Energia",
+            "Carbohidratos",
+            "Proteinas",
+            "Grasas totales",
+            "Grasas saturadas",
+            "Grasas trans",
+            "Fibra alimentaria",
+            "Sodio",
+        ]
+        self.label_nutrient_usda_map = {
+            "Energia": "Energy (kcal)",
+            "Carbohidratos": "Carbohydrate, by difference (g)",
+            "Proteinas": "Protein (g)",
+            "Grasas totales": "Total lipid (fat) (g)",
+            "Grasas saturadas": "Fatty acids, total saturated (g)",
+            "Grasas trans": "Fatty acids, total trans (g)",
+            "Fibra alimentaria": "Fiber, total dietary (g)",
+            "Sodio": "Sodium, Na (mg)",
+        }
+        self.label_no_significant_thresholds = {
+            "Energia": {"unit": "kcal", "max": 4.0, "kj_max": 17.0},
+            "Carbohidratos": {"unit": "g", "max": 0.5},
+            "Proteinas": {"unit": "g", "max": 0.5},
+            "Grasas totales": {"unit": "g", "max": 0.5},
+            "Grasas saturadas": {"unit": "g", "max": 0.2},
+            "Grasas trans": {"unit": "g", "max": 0.2},
+            "Fibra alimentaria": {"unit": "g", "max": 0.5},
+            "Sodio": {"unit": "mg", "max": 5.0},
+        }
+        self.label_no_significant_display_map = {"Energia": "Valor energético"}
+
         self._build_ui()
 
     def _set_window_progress(self, progress: str | None = None) -> None:
@@ -247,13 +168,16 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.search_tab = QWidget()
         self.formulation_tab = QWidget()
+        self.label_tab = QWidget()
         self.tabs.addTab(self.search_tab, "Búsqueda")
         self.tabs.addTab(self.formulation_tab, "Formulación")
+        self.tabs.addTab(self.label_tab, "Etiqueta")
 
         main_layout.addWidget(self.tabs)
 
         self._build_search_tab_ui()
         self._build_formulation_tab_ui()
+        self._build_label_tab_ui()
 
     def _build_search_tab_ui(self) -> None:
         layout = QVBoxLayout(self.search_tab)
@@ -490,6 +414,161 @@ class MainWindow(QMainWindow):
 
         self._set_default_column_widths(formulation=True)
 
+    def _build_label_tab_ui(self) -> None:
+        layout = QVBoxLayout(self.label_tab)
+        layout.setSpacing(10)
+
+        top_layout = QHBoxLayout()
+        top_layout.setSpacing(12)
+
+        left_group = QGroupBox("Rotulado Nutricional")
+        left_form = QGridLayout()
+        left_form.setContentsMargins(10, 10, 10, 10)
+        left_form.setHorizontalSpacing(8)
+        left_form.setVerticalSpacing(6)
+        left_group.setLayout(left_form)
+
+        left_form.addWidget(QLabel("Tamaño Porción:"), 0, 0)
+        self.portion_size_input = QSpinBox()
+        self.portion_size_input.setRange(1, 100000)
+        self.portion_size_input.setValue(100)
+        self.portion_unit_combo = QComboBox()
+        self.portion_unit_combo.addItems(["g", "ml"])
+        portion_widget = QWidget()
+        portion_layout = QHBoxLayout(portion_widget)
+        portion_layout.setContentsMargins(0, 0, 0, 0)
+        portion_layout.setSpacing(6)
+        portion_layout.addWidget(self.portion_size_input)
+        portion_layout.addWidget(self.portion_unit_combo)
+        left_form.addWidget(portion_widget, 0, 1, 1, 2)
+
+        left_form.addWidget(QLabel("Medida Casera:"), 1, 0)
+        self.household_amount_input = QLineEdit()
+        self.household_amount_input.setPlaceholderText("1/2, 2/3, 1 1/2")
+        self.household_amount_input.setText("1/2")
+        self.household_unit_combo = QComboBox()
+        for name, _ in self.household_measure_options:
+            self.household_unit_combo.addItem(name)
+        unidad_index = self.household_unit_combo.findText("Unidad")
+        if unidad_index >= 0:
+            self.household_unit_combo.setCurrentIndex(unidad_index)
+        measure_widget = QWidget()
+        measure_layout = QHBoxLayout(measure_widget)
+        measure_layout.setContentsMargins(0, 0, 0, 0)
+        measure_layout.setSpacing(6)
+        measure_layout.addWidget(self.household_amount_input)
+        measure_layout.addWidget(self.household_unit_combo)
+        left_form.addWidget(measure_widget, 1, 1, 1, 2)
+
+        self.custom_household_unit_input = QLineEdit()
+        self.custom_household_unit_input.setPlaceholderText(
+            "Ej.: Envase, Barrita, Paquete"
+        )
+        self.custom_household_unit_input.setVisible(False)
+        left_form.addWidget(self.custom_household_unit_input, 2, 1, 1, 2)
+
+        left_form.addWidget(QLabel("Capacidad o dimensión:"), 3, 0)
+        self.household_capacity_label = QLabel("-")
+        self.household_capacity_label.setStyleSheet("color: gray;")
+        left_form.addWidget(self.household_capacity_label, 3, 1, 1, 2)
+
+        self.breakdown_carb_checkbox = QCheckBox("Desglose Carbohidratos")
+        self.breakdown_carb_checkbox.setEnabled(False)
+        self.breakdown_fat_checkbox = QCheckBox("Desglose Grasas")
+        self.breakdown_fat_checkbox.setEnabled(False)
+        left_form.addWidget(self.breakdown_carb_checkbox, 4, 0, 1, 2)
+        left_form.addWidget(self.breakdown_fat_checkbox, 4, 2)
+
+        left_form.addWidget(QLabel("Sin aportes significativos:"), 5, 0)
+        self.no_significant_display = QLineEdit()
+        self.no_significant_display.setReadOnly(True)
+        self.no_significant_display.setPlaceholderText("Seleccione nutrientes elegibles")
+        self.no_significant_display.setCursor(Qt.PointingHandCursor)
+        left_form.addWidget(self.no_significant_display, 5, 1, 1, 2)
+
+        left_form.addWidget(QLabel("Nutrientes Adicionales:"), 6, 0)
+        self.additional_nutrients_input = QLineEdit()
+        self.additional_nutrients_input.setPlaceholderText("Seleccione Nutrientes")
+        self.additional_nutrients_input.setEnabled(False)
+        left_form.addWidget(self.additional_nutrients_input, 6, 1, 1, 2)
+
+        self.label_placeholder_note = QLabel(
+            "Espacio reservado para botones de desglose y futuras acciones."
+        )
+        self.label_placeholder_note.setStyleSheet("color: gray; font-style: italic;")
+        left_form.addWidget(self.label_placeholder_note, 7, 0, 1, 3)
+        left_form.setRowStretch(8, 1)
+
+        right_group = QGroupBox("Formato Vertical")
+        right_layout = QVBoxLayout()
+        right_group.setLayout(right_layout)
+
+        self.manual_note_label = QLabel("Verde: valor manual (Doble clic para editar)")
+        self.manual_note_label.setStyleSheet("color: #2e7d32; font-style: italic;")
+        note_row = QHBoxLayout()
+        note_row.addStretch()
+        note_row.addWidget(self.manual_note_label)
+        right_layout.addLayout(note_row)
+
+        self.label_table_widget = QTableWidget()
+        self._setup_label_table_widget()
+        right_layout.addWidget(self.label_table_widget)
+
+        export_layout = QHBoxLayout()
+        export_layout.addStretch()
+        export_layout.addWidget(QLabel("Exportar tabla como png:"))
+        self.export_label_no_bg_button = QPushButton("Sin Fondo")
+        self.export_label_with_bg_button = QPushButton("Con Fondo")
+        export_layout.addWidget(self.export_label_no_bg_button)
+        export_layout.addWidget(self.export_label_with_bg_button)
+        export_layout.addStretch()
+        right_layout.addLayout(export_layout)
+
+        top_layout.addWidget(left_group, 1)
+        top_layout.addWidget(right_group, 1)
+        layout.addLayout(top_layout, 3)
+
+        linear_group = QGroupBox("Formato Lineal")
+        linear_layout = QVBoxLayout()
+        linear_group.setLayout(linear_layout)
+        self.linear_format_preview = QPlainTextEdit()
+        self.linear_format_preview.setReadOnly(True)
+        self.linear_format_preview.setStyleSheet(
+            "background-color: #f5f5f5; color: #333;"
+        )
+        self.linear_format_preview.setMinimumHeight(140)
+        linear_layout.addWidget(self.linear_format_preview)
+        layout.addWidget(linear_group, 1)
+
+        self.portion_size_input.valueChanged.connect(self._on_portion_value_changed)
+        self.portion_unit_combo.currentTextChanged.connect(
+            self._on_portion_unit_changed
+        )
+        self.household_unit_combo.currentTextChanged.connect(
+            self._on_household_unit_changed
+        )
+        self.household_amount_input.textChanged.connect(
+            self._on_household_amount_changed
+        )
+        self.custom_household_unit_input.textChanged.connect(
+            self._on_household_unit_changed
+        )
+        self.export_label_no_bg_button.clicked.connect(
+            lambda: self._on_export_label_table_clicked(with_background=False)
+        )
+        self.export_label_with_bg_button.clicked.connect(
+            lambda: self._on_export_label_table_clicked(with_background=True)
+        )
+        self.label_table_widget.cellDoubleClicked.connect(
+            self._on_label_table_cell_double_clicked
+        )
+        self._attach_copy_shortcut(self.label_table_widget)
+        self.no_significant_display.installEventFilter(self)
+
+        self._update_capacity_label()
+        self._auto_fill_household_measure()
+        self._update_label_preview(force_recalc_totals=True)
+
     def _set_default_column_widths(self, formulation: bool = False) -> None:
         """
         Set sensible initial column widths while keeping them resizable.
@@ -531,6 +610,779 @@ class MainWindow(QMainWindow):
         self.totals_table.setColumnWidth(1, 85)   # Total
         self.totals_table.setColumnWidth(2, 60)   # Unidad
         self.totals_table.setColumnWidth(3, 80)   # Exportar
+
+    def _setup_label_table_widget(self) -> None:
+        table = self.label_table_widget
+        self.label_table_title_row = 0
+        self.label_table_portion_row = 1
+        self.label_table_header_row = 2
+        self.label_table_nutrient_start_row = 3
+        self.label_table_footer_row = (
+            self.label_table_nutrient_start_row + len(self.label_base_nutrients)
+        )
+        table.setColumnCount(3)
+        table.setRowCount(self.label_table_footer_row + 2)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setSelectionMode(QTableWidget.ExtendedSelection)
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.horizontalHeader().setVisible(False)
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        table.setMinimumHeight(360)
+        table.setStyleSheet("gridline-color: #c0c0c0;")
+
+    def _build_base_label_nutrients(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": "Energia",
+                "type": "energy",
+                "kcal": 0.0,
+                "kj": 0.0,
+                "vd": 13.0,
+                "vd_reference": 263.0,
+            },
+            {
+                "name": "Carbohidratos",
+                "unit": "g",
+                "amount": 0.0,
+                "vd": 7.0,
+                "vd_reference": 20.0,
+            },
+            {
+                "name": "Proteinas",
+                "unit": "g",
+                "amount": 0.0,
+                "vd": 16.0,
+                "vd_reference": 12.0,
+            },
+            {
+                "name": "Grasas totales",
+                "unit": "g",
+                "amount": 0.0,
+                "vd": 27.0,
+                "vd_reference": 15.0,
+            },
+            {
+                "name": "Grasas saturadas",
+                "unit": "g",
+                "amount": 0.0,
+                "vd": 23.0,
+                "vd_reference": 5.0,
+            },
+            {
+                "name": "Grasas trans",
+                "unit": "g",
+                "amount": 0.0,
+                "vd": None,
+                "vd_reference": 0.0,
+            },
+            {
+                "name": "Fibra alimentaria",
+                "unit": "g",
+                "amount": 0.0,
+                "vd": 12.0,
+                "vd_reference": 3.0,
+            },
+            {
+                "name": "Sodio",
+                "unit": "mg",
+                "amount": 0.0,
+                "vd": 5.0,
+                "vd_reference": 120.0,
+            },
+        ]
+
+    def _build_household_measure_options(self) -> list[tuple[str, int | None]]:
+        return [
+            ("Taza de té", 200),
+            ("Vaso", 200),
+            ("Cuchara de sopa", 10),
+            ("Cuchara de té", 5),
+            ("Plato hondo", 250),
+            ("Unidad", None),
+            ("Otro", None),
+        ]
+
+    def _current_portion_factor(self) -> float:
+        return float(self.portion_size_input.value() or 0) / 100.0
+
+    def _format_fraction_amount(self, value: float) -> str:
+        if value <= 0:
+            return ""
+        frac = Fraction(value).limit_denominator(12)
+        whole, remainder = divmod(frac.numerator, frac.denominator)
+        if remainder == 0:
+            return str(whole)
+        if whole == 0:
+            return f"{remainder}/{frac.denominator}"
+        return f"{whole} {remainder}/{frac.denominator}"
+
+    def _update_capacity_label(self) -> None:
+        unit_name = self.household_unit_combo.currentText()
+        capacity = self.household_capacity_map.get(unit_name)
+        if capacity:
+            label_text = f"{capacity} ml"
+        else:
+            label_text = "-"
+        if unit_name == "Otro" and self.custom_household_unit_input.isVisible():
+            label_text = "Definir capacidad manualmente"
+        self.household_capacity_label.setText(label_text)
+
+    def _auto_fill_household_measure(self) -> None:
+        if self.portion_unit_combo.currentText() != "ml":
+            return
+        unit_name = self.household_unit_combo.currentText()
+        capacity = self.household_capacity_map.get(unit_name)
+        if not capacity:
+            return
+        portion_value = float(self.portion_size_input.value() or 0)
+        if portion_value <= 0:
+            return
+        ratio = portion_value / float(capacity)
+        text = self._format_fraction_amount(ratio)
+        self._auto_updating_household_amount = True
+        try:
+            self.household_amount_input.setText(text or "")
+        finally:
+            self._auto_updating_household_amount = False
+
+    def _on_portion_value_changed(self, _: int) -> None:
+        if self.portion_unit_combo.currentText() == "ml":
+            self._auto_fill_household_measure()
+        self._update_label_preview()
+
+    def _on_portion_unit_changed(self, _: str) -> None:
+        if self.portion_unit_combo.currentText() == "ml":
+            self._auto_fill_household_measure()
+        self._update_capacity_label()
+        self._update_label_preview()
+
+    def _on_household_unit_changed(self, _: str) -> None:
+        is_custom = self.household_unit_combo.currentText() == "Otro"
+        self.custom_household_unit_input.setVisible(is_custom)
+        self._update_capacity_label()
+        if self.portion_unit_combo.currentText() == "ml":
+            self._auto_fill_household_measure()
+        self._update_label_preview()
+
+    def _on_household_amount_changed(self, _: str) -> None:
+        if self._auto_updating_household_amount:
+            return
+        self._update_label_preview()
+
+    def _current_household_unit_label(self) -> str:
+        if self.household_unit_combo.currentText() == "Otro":
+            custom = self.custom_household_unit_input.text().strip()
+            return custom or "Unidad"
+        return self.household_unit_combo.currentText()
+
+    def _portion_description_for_table(self) -> str:
+        measure_amount = self.household_amount_input.text().strip()
+        measure_unit = self._current_household_unit_label()
+        portion_unit = self.portion_unit_combo.currentText()
+        portion_value = self.portion_size_input.value()
+        measure_display = measure_unit if not measure_amount else f"{measure_amount} {measure_unit}"
+        return f"Porción {portion_value} {portion_unit} ({measure_display})"
+
+    def _format_number_for_unit(self, value: float, unit: str) -> str:
+        if unit == "mg":
+            return f"{value:.0f} mg"
+        if unit == "g":
+            if abs(value) < 10:
+                return f"{value:.1f} g"
+            return f"{value:.0f} g"
+        if value >= 10:
+            return f"{value:.0f} {unit}"
+        if value >= 1:
+            return f"{value:.1f} {unit}"
+        return f"{value:.2f} {unit}"
+
+    def _format_nutrient_amount(self, nutrient: Dict[str, Any], factor: float) -> str:
+        if nutrient.get("type") == "energy":
+            kcal_val = nutrient.get("kcal", 0.0) * factor
+            kj_val = nutrient.get("kj", 0.0) * factor
+            kcal_text = f"{kcal_val:.0f}" if kcal_val >= 10 else f"{kcal_val:.1f}"
+            kj_text = f"{kj_val:.0f}" if kj_val >= 10 else f"{kj_val:.1f}"
+            return f"{kcal_text} kcal = {kj_text} kJ"
+        amount = nutrient.get("amount", 0.0) * factor
+        unit = nutrient.get("unit", "")
+        return self._format_number_for_unit(amount, unit)
+
+    def _format_vd_value(self, nutrient: Dict[str, Any], factor: float, effective_amount: float | None = None) -> str:  # type: ignore[override]
+        if nutrient.get("vd") is None:
+            return "-"
+        if nutrient.get("type") == "energy":
+            base_amount = nutrient.get("vd_reference", nutrient.get("kcal", 0.0))
+            eff_amount = effective_amount if effective_amount is not None else nutrient.get("kcal", 0.0)
+        else:
+            base_amount = nutrient.get("vd_reference", nutrient.get("amount", 0.0))
+            eff_amount = effective_amount if effective_amount is not None else nutrient.get("amount", 0.0)
+        portion_amount = eff_amount * factor
+        if base_amount and base_amount > 0:
+            vd_val = nutrient.get("vd", 0.0) * (portion_amount / base_amount)
+        else:
+            vd_val = nutrient.get("vd", 0.0) * factor
+        if vd_val >= 10:
+            return f"{vd_val:.0f}%"
+        return f"{vd_val:.1f}%"
+
+    def _format_manual_amount(self, nutrient: Dict[str, Any], manual_amount: float) -> str:
+        if nutrient.get("type") == "energy":
+            kcal_val = manual_amount
+            kj_val = manual_amount * 4.184
+            kcal_text = f"{kcal_val:.0f}" if kcal_val >= 10 else f"{kcal_val:.1f}"
+            kj_text = f"{kj_val:.0f}" if kj_val >= 10 else f"{kj_val:.1f}"
+            return f"{kcal_text} kcal = {kj_text} kJ"
+        unit = nutrient.get("unit", "")
+        return self._format_number_for_unit(manual_amount, unit)
+
+    def _format_manual_vd(self, nutrient: Dict[str, Any], manual_amount: float) -> str:
+        vd_ref = nutrient.get("vd")
+        if vd_ref is None:
+            return "-"
+        base_amount = nutrient.get("kcal") if nutrient.get("type") == "energy" else nutrient.get("amount")
+        if not base_amount:
+            return "-"
+        vd_val = vd_ref * (manual_amount / base_amount)
+        if vd_val >= 10:
+            return f"{vd_val:.0f}%"
+        return f"{vd_val:.1f}%"
+
+    def _parse_user_float(self, text: str) -> float | None:
+        clean = text.strip().replace(",", ".")
+        if not clean:
+            return None
+        try:
+            return float(clean)
+        except ValueError:
+            return None
+
+    def _on_label_table_cell_double_clicked(self, row: int, _: int) -> None:
+        if (
+            row < self.label_table_nutrient_start_row
+            or row >= self.label_table_nutrient_start_row + len(self._label_display_nutrients)
+        ):
+            return
+        idx = row - self.label_table_nutrient_start_row
+        nutrient = self._label_display_nutrients[idx]
+        self._prompt_manual_value_for_nutrient(nutrient)
+
+    def _prompt_manual_value_for_nutrient(self, nutrient: Dict[str, Any]) -> None:
+        name = nutrient.get("name", "")
+        unit = "kcal" if nutrient.get("type") == "energy" else nutrient.get("unit", "")
+        current = self.label_manual_overrides.get(name)
+        default_text = "" if current is None else str(current)
+        text, ok = QInputDialog.getText(
+            self,
+            "Valor manual",
+            f"Ingrese la cantidad por porción para {name} ({unit}).\n"
+            "Deje vacío para volver al cálculo automático.",
+            text=default_text,
+        )
+        if not ok:
+            return
+        if text.strip() == "":
+            self.label_manual_overrides.pop(name, None)
+            self._update_label_preview()
+            return
+        value = self._parse_user_float(text)
+        if value is None:
+            QMessageBox.warning(self, "Valor inválido", "Ingresa un número válido (ej.: 12.5).")
+            return
+        self.label_manual_overrides[name] = value
+        self._update_label_preview()
+
+    def _eligible_no_significant(self) -> list[str]:
+        eligible: list[str] = []
+        factor = self._current_portion_factor()
+        def portion_amount(name: str) -> float:
+            for nutrient in self.label_base_nutrients:
+                if nutrient.get("name") != name:
+                    continue
+                eff = self._effective_label_nutrient(nutrient)
+                if eff.get("type") == "energy":
+                    return (eff.get("kcal") or 0.0) * factor
+                return (eff.get("amount") or 0.0) * factor
+            return 0.0
+        for nutrient in self.label_base_nutrients:
+            eff = self._effective_label_nutrient(nutrient)
+            name = eff.get("name", nutrient.get("name", ""))
+            thresh = self.label_no_significant_thresholds.get(name)
+            if not thresh:
+                continue
+            if eff.get("type") == "energy":
+                kcal_portion = (eff.get("kcal") or 0.0) * factor
+                kj_portion = (eff.get("kj") or 0.0) * factor
+                if kcal_portion <= thresh.get("max", 0) or kj_portion < thresh.get("kj_max", 0):
+                    eligible.append(name)
+                continue
+            amount_portion = (eff.get("amount") or 0.0) * factor
+            unit = eff.get("unit", nutrient.get("unit", "")).lower()
+            max_allowed = thresh.get("max", 0.0)
+            if name == "Grasas totales":
+                sat = portion_amount("Grasas saturadas")
+                trans = portion_amount("Grasas trans")
+                if (
+                    amount_portion <= max_allowed + 1e-9
+                    and sat <= self.label_no_significant_thresholds["Grasas saturadas"]["max"] + 1e-9
+                    and trans <= self.label_no_significant_thresholds["Grasas trans"]["max"] + 1e-9
+                ):
+                    eligible.append(name)
+            elif amount_portion <= max_allowed + 1e-9:
+                eligible.append(name)
+        return eligible
+
+    def _update_no_significant_controls(self) -> None:
+        eligible = self._eligible_no_significant()
+        self.label_no_significant = self._sort_no_significant_list(
+            [name for name in self.label_no_significant if name in eligible]
+        )
+        display_names = [
+            self.label_no_significant_display_map.get(name, name)
+            for name in self.label_no_significant
+        ]
+        self.no_significant_display.setText(", ".join(display_names))
+        has_options = bool(eligible)
+        self.no_significant_display.setEnabled(has_options)
+        self.no_significant_display.setToolTip(
+            ""
+            if has_options
+            else "No hay nutrientes elegibles con la porción y valores actuales."
+        )
+
+    def _on_select_no_significant_clicked(self) -> None:
+        eligible = self._eligible_no_significant()
+        if not eligible:
+            QMessageBox.information(
+                self,
+                "Sin opciones",
+                "No hay nutrientes elegibles para 'sin aportes significativos' con la porción actual.",
+            )
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Sin aportes significativos")
+        layout = QVBoxLayout(dialog)
+        list_widget = QListWidget(dialog)
+        prev_state_role = Qt.UserRole + 100
+        for name in eligible:
+            item = QListWidgetItem(self.label_no_significant_display_map.get(name, name))
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked if name in self.label_no_significant else Qt.Unchecked)
+            item.setData(Qt.UserRole, name)
+            item.setData(prev_state_role, item.checkState())
+            list_widget.addItem(item)
+        def _remember_state(item: QListWidgetItem) -> None:
+            item.setData(prev_state_role, item.checkState())
+        def _toggle_if_unchanged(item: QListWidgetItem) -> None:
+            prev = item.data(prev_state_role)
+            if prev is None:
+                prev = item.checkState()
+            if item.checkState() == prev:
+                item.setCheckState(
+                    Qt.Unchecked if item.checkState() == Qt.Checked else Qt.Checked
+                )
+            item.setData(prev_state_role, item.checkState())
+        list_widget.itemPressed.connect(_remember_state)
+        list_widget.itemClicked.connect(_toggle_if_unchanged)
+        layout.addWidget(list_widget)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=dialog)
+        layout.addWidget(buttons)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        if dialog.exec() == QDialog.Accepted:
+            selected: list[str] = []
+            for idx in range(list_widget.count()):
+                item = list_widget.item(idx)
+                if item.checkState() == Qt.Checked:
+                    selected.append(item.data(Qt.UserRole))
+            if "Grasas totales" in selected:
+                for dep in ("Grasas saturadas", "Grasas trans"):
+                    if dep not in selected and dep in eligible:
+                        selected.append(dep)
+            self.label_no_significant = self._sort_no_significant_list(selected)
+            self._update_label_preview()
+
+    def eventFilter(self, obj: QObject, event) -> bool:
+        if obj is self.no_significant_display and event.type() == QEvent.MouseButtonPress:
+            if self.no_significant_display.isEnabled():
+                self._on_select_no_significant_clicked()
+            return True
+        return super().eventFilter(obj, event)
+
+    def _human_join(self, items: list[str]) -> str:
+        if not items:
+            return ""
+        if len(items) == 1:
+            return items[0]
+        return ", ".join(items[:-1]) + " y " + items[-1]
+
+    def _sort_no_significant_list(self, names: list[str]) -> list[str]:
+        order_index = {name: idx for idx, name in enumerate(self.label_no_sig_order)}
+        return sorted(
+            names,
+            key=lambda n: (
+                order_index.get(n, len(order_index)),
+                n.lower(),
+            ),
+        )
+
+    def _parse_label_mapping(self, label_name: str) -> tuple[str, str]:
+        mapped = self.label_nutrient_usda_map.get(label_name, "")
+        if "(" in mapped and mapped.endswith(")"):
+            base, unit_part = mapped.split("(", 1)
+            unit = unit_part.rstrip(")").strip()
+            return canonical_alias_name(base.strip()), canonical_unit(unit)
+        return canonical_alias_name(mapped.strip()), ""
+
+    def _find_total_entry(self, canonical_name: str, unit: str) -> Dict[str, Any] | None:
+        if not self._last_totals:
+            self._last_totals = self._calculate_totals()
+        target = canonical_alias_name(canonical_name).lower()
+        target_unit = canonical_unit(unit).lower()
+        target_key = re.sub(r"[^a-z0-9]", "", target)
+        entries = list(self._last_totals.values())
+
+        def _match_entry(entry: Dict[str, Any]) -> bool:
+            entry_name = canonical_alias_name(entry.get("name", "")).lower()
+            entry_unit = canonical_unit(entry.get("unit", "")).lower()
+            entry_key = re.sub(r"[^a-z0-9]", "", entry_name)
+            name_match = (
+                entry_name == target
+                or entry_name.startswith(target)
+                or target in entry_name
+                or entry_key == target_key
+                or entry_key.startswith(target_key)
+                or target_key in entry_key
+            )
+            unit_match = (not target_unit) or entry_unit == target_unit
+            return name_match and unit_match
+
+        for entry in entries:
+            if _match_entry(entry):
+                return entry
+
+        # Fallback: raw substring match (e.g., "total lipid (fat)")
+        raw_target = canonical_name.lower()
+        for entry in entries:
+            raw_name = (entry.get("name") or "").lower()
+            if raw_target in raw_name:
+                if not target_unit or canonical_unit(entry.get("unit", "")).lower() == target_unit:
+                    return entry
+        return None
+
+    def _factor_for_energy(self, name: str) -> float | None:
+        factor_map: list[tuple[str, float]] = [
+            ("alcohol", 7.0),
+            ("ethanol", 7.0),
+            ("protein", 4.0),
+            ("carbohydrate", 4.0),
+            ("carbohydrate, by difference", 4.0),
+            ("polydextrose", 1.0),
+            ("polyol", 2.4),
+            ("sugar alcohol", 2.4),
+            ("organic acid", 3.0),
+            ("total lipid", 9.0),  # Solo lipidos totales, no Fat (NLEA)
+        ]
+        lower = name.lower()
+        for key, factor in factor_map:
+            if key in lower:
+                return factor
+        return None
+
+    def _compute_energy_label_values(self) -> Dict[str, float] | None:
+        if not self._last_totals:
+            self._last_totals = self._calculate_totals()
+        totals = self._last_totals or {}
+        factor = self._current_portion_factor()
+        if factor <= 0:
+            factor = 1.0
+
+        # Build a skip set for manual overrides (so we replace totals with manual)
+        manual_names = {
+            name for name in self.label_manual_overrides.keys() if name != "Energia"
+        }
+
+        kcal_portion = 0.0
+        seen_keys: set[str] = set()
+
+        # First pass: totals contributions (excluding manual overrides)
+        for entry in totals.values():
+            name = entry.get("name", "") or ""
+            if name in manual_names:
+                continue
+            key = f"{canonical_alias_name(name).lower()}|{canonical_unit(entry.get('unit', '')).lower()}"
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            factor_energy = self._factor_for_energy(name)
+            if factor_energy is None:
+                continue
+            unit = (entry.get("unit", "") or "").lower()
+            amount = float(entry.get("amount", 0.0) or 0.0)
+            amount_g = amount / 1000.0 if unit == "mg" else amount
+            # totals are per 100 g producto final; convert to porción
+            amount_portion = amount_g * self._current_portion_factor()
+            kcal_portion += amount_portion * factor_energy
+
+        # Second pass: manual overrides from la etiqueta base (por porción)
+        for base in self.label_base_nutrients:
+            name = base.get("name", "")
+            if name == "Energia":
+                continue
+            if name not in manual_names:
+                continue
+            manual_amount = float(self.label_manual_overrides.get(name, 0.0) or 0.0)
+            factor_energy = self._factor_for_energy(
+                self.label_nutrient_usda_map.get(name, name)
+            )
+            if factor_energy is None:
+                continue
+            unit = (base.get("unit", "") or "").lower()
+            amount_g = manual_amount / 1000.0 if unit == "mg" else manual_amount
+            kcal_portion += amount_g * factor_energy
+
+        if math.isclose(kcal_portion, 0.0, abs_tol=1e-6):
+            return None
+
+        kcal_per_100 = kcal_portion / factor
+        return {"kcal": kcal_per_100, "kj": kcal_per_100 * 4.184}
+
+    def _label_amount_from_totals(self, nutrient: Dict[str, Any]) -> Dict[str, float] | None:
+        name = nutrient.get("name", "")
+        mapped_name, mapped_unit = self._parse_label_mapping(name)
+        if not mapped_name:
+            return None
+        if nutrient.get("type") == "energy":
+            computed = self._compute_energy_label_values()
+            if computed:
+                return computed
+            kcal_entry = self._find_total_entry(mapped_name, "kcal")
+            kj_entry = self._find_total_entry(mapped_name, "kJ")
+            if not kcal_entry and not kj_entry:
+                return None
+            kcal_amount = kcal_entry.get("amount") if kcal_entry else None
+            if kcal_amount is None and kj_entry:
+                kcal_amount = kj_entry.get("amount", 0.0) / 4.184
+            kj_amount = kj_entry.get("amount") if kj_entry else None
+            if kj_amount is None and kcal_entry:
+                kj_amount = kcal_entry.get("amount", 0.0) * 4.184
+            return {"kcal": float(kcal_amount or 0.0), "kj": float(kj_amount or 0.0)}
+        entry = self._find_total_entry(mapped_name, mapped_unit)
+        if not entry and name == "Grasas totales":
+            # Fallback: cualquier nutriente que contenga "total fat" o "total lipid"
+            for e in (self._last_totals or {}).values():
+                raw_name = (e.get("name") or "").lower()
+                if "total lipid" in raw_name:
+                    entry = e
+                    break
+        if not entry:
+            return None
+        return {"amount": float(entry.get("amount", 0.0))}
+
+    def _effective_label_nutrient(self, nutrient: Dict[str, Any]) -> Dict[str, Any]:
+        name = nutrient.get("name", "")
+        manual_amount = self.label_manual_overrides.get(name)
+        if nutrient.get("type") == "energy":
+            manual_amount = None
+        totals_amount = self._label_amount_from_totals(nutrient)
+
+        effective = dict(nutrient)
+        effective["vd_reference"] = nutrient.get("vd_reference") or (
+            nutrient.get("kcal", nutrient.get("amount", 0.0))
+            if nutrient.get("type") == "energy"
+            else nutrient.get("amount", 0.0)
+        )
+
+        if manual_amount is not None:
+            if nutrient.get("type") == "energy":
+                effective["kcal"] = manual_amount
+                effective["kj"] = manual_amount * 4.184
+                effective["amount"] = manual_amount
+            else:
+                effective["amount"] = manual_amount
+            effective["manual"] = True
+            return effective
+
+        if totals_amount:
+            if nutrient.get("type") == "energy":
+                effective["kcal"] = totals_amount.get("kcal", nutrient.get("kcal", 0.0))
+                effective["kj"] = totals_amount.get("kj", nutrient.get("kj", 0.0))
+                effective["amount"] = effective["kcal"]
+            else:
+                effective["amount"] = totals_amount.get("amount", nutrient.get("amount", 0.0))
+            effective["manual"] = False
+            effective["from_totals"] = True
+            return effective
+
+        effective["manual"] = False
+        effective["from_totals"] = False
+        return effective
+
+    def _update_label_table_preview(self) -> None:
+        table = self.label_table_widget
+        factor = self._current_portion_factor()
+        table.clearSpans()
+
+        display_nutrients: list[Dict[str, Any]] = []
+        for nutrient in self.label_base_nutrients:
+            if nutrient.get("name", "") in self.label_no_significant:
+                continue
+            display_nutrients.append(nutrient)
+        self._label_display_nutrients = display_nutrients
+
+        total_rows = 3 + len(display_nutrients) + (1 if self.label_no_significant else 0) + 1
+        table.setRowCount(total_rows)
+
+        title_item = QTableWidgetItem("INFORMACIÓN NUTRICIONAL")
+        title_font = title_item.font()
+        title_font.setBold(True)
+        title_font.setPointSize(title_font.pointSize() + 1)
+        title_item.setFont(title_font)
+        title_item.setTextAlignment(Qt.AlignCenter)
+        table.setItem(0, 0, title_item)
+
+        portion_item = QTableWidgetItem(self._portion_description_for_table())
+        portion_item.setTextAlignment(Qt.AlignCenter)
+        table.setItem(1, 0, portion_item)
+
+        header_font = QFont()
+        header_font.setBold(True)
+        header_item_amount = QTableWidgetItem("Cantidad por porción")
+        header_item_amount.setFont(header_font)
+        header_item_amount.setTextAlignment(Qt.AlignCenter)
+        header_item_vd = QTableWidgetItem("% VD(*)")
+        header_item_vd.setFont(header_font)
+        header_item_vd.setTextAlignment(Qt.AlignCenter)
+        table.setItem(2, 1, header_item_amount)
+        table.setItem(2, 2, header_item_vd)
+
+        for idx, nutrient in enumerate(display_nutrients):
+            row = 3 + idx
+            effective = self._effective_label_nutrient(nutrient)
+            name = effective.get("name", nutrient.get("name", ""))
+            name_item = QTableWidgetItem(name)
+
+            if effective.get("manual"):
+                manual_amount = self.label_manual_overrides.get(name, 0.0)
+                amount_text = self._format_manual_amount(effective, manual_amount)
+                vd_text = self._format_manual_vd(effective, manual_amount)
+            else:
+                amount_text = self._format_nutrient_amount(effective, factor)
+                eff_amount = (
+                    effective.get("kcal", 0.0)
+                    if effective.get("type") == "energy"
+                    else effective.get("amount", 0.0)
+                )
+                vd_text = self._format_vd_value(effective, factor, eff_amount)
+
+            amount_item = QTableWidgetItem(amount_text)
+            vd_item = QTableWidgetItem(vd_text)
+            name_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            amount_item.setTextAlignment(Qt.AlignCenter)
+            vd_item.setTextAlignment(Qt.AlignCenter)
+            if effective.get("manual"):
+                brush = QBrush(self.label_manual_hint_color)
+                for itm in (name_item, amount_item, vd_item):
+                    itm.setBackground(brush)
+            table.setItem(row, 0, name_item)
+            table.setItem(row, 1, amount_item)
+            table.setItem(row, 2, vd_item)
+
+        note_row = 3 + len(display_nutrients)
+        if self.label_no_significant:
+            names = [
+                self.label_no_significant_display_map.get(name, name)
+                for name in self._sort_no_significant_list(self.label_no_significant)
+            ]
+            note_text = (
+                f"No aporta cantidades significativas de {self._human_join(names)}."
+            )
+            note_item = QTableWidgetItem(note_text)
+            note_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            table.setItem(note_row, 0, note_item)
+            table.setSpan(note_row, 0, 1, 3)
+            footer_row = note_row + 1
+        else:
+            footer_row = note_row
+
+        footer_text = (
+            "*% Valores Diarios con base a una dieta de 2000 kcal u 8400 kJ. "
+            "Sus valores diarios pueden ser mayores o menores dependiendo de sus necesidades energéticas."
+        )
+        footer_item = QTableWidgetItem(footer_text)
+        footer_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        table.setItem(footer_row, 0, footer_item)
+        table.setSpan(0, 0, 1, 3)
+        table.setSpan(1, 0, 1, 3)
+        table.setSpan(footer_row, 0, 1, 3)
+        self.label_table_footer_row = footer_row
+        table.resizeRowsToContents()
+
+    def _update_linear_preview(self) -> None:
+        factor = self._current_portion_factor()
+        portion_desc = self._portion_description_for_table()
+        parts: list[str] = []
+        for nutrient in self.label_base_nutrients:
+            if nutrient.get("name", "") in self.label_no_significant:
+                continue
+            effective = self._effective_label_nutrient(nutrient)
+            if effective.get("manual"):
+                manual_amount = self.label_manual_overrides.get(
+                    effective.get("name", ""), 0.0
+                )
+                amount = self._format_manual_amount(effective, manual_amount)
+                vd = self._format_manual_vd(effective, manual_amount)
+            else:
+                amount = self._format_nutrient_amount(effective, factor)
+                eff_amount = (
+                    effective.get("kcal", 0.0)
+                    if effective.get("type") == "energy"
+                    else effective.get("amount", 0.0)
+                )
+                vd = self._format_vd_value(effective, factor, eff_amount)
+            vd_suffix = "" if vd in ("", "-") else f" ({vd} VD*)"
+            parts.append(f"{nutrient.get('name', '')} {amount}{vd_suffix}")
+
+        note_text = ""
+        if self.label_no_significant:
+            names = [
+                self.label_no_significant_display_map.get(name, name)
+                for name in self._sort_no_significant_list(self.label_no_significant)
+            ]
+            note_text = f" No aporta cantidades significativas de {self._human_join(names)}."
+
+        base_text = (
+            "Información Nutricional: "
+            f"{portion_desc}. "
+            + "; ".join(parts)
+            + ";"
+            + note_text
+            + " % Valores Diarios con base a una dieta de 2000 kcal u 8400 kJ. "
+            "Sus valores diarios pueden ser mayores o menores dependiendo de sus necesidades energéticas."
+        )
+        self.linear_format_preview.setPlainText(base_text)
+
+    def _update_label_preview(self, force_recalc_totals: bool = False) -> None:
+        if QThread.currentThread() is not self.thread():
+            QTimer.singleShot(0, lambda: self._update_label_preview(force_recalc_totals))
+            return
+        if force_recalc_totals or not self._last_totals:
+            self._last_totals = self._calculate_totals()
+        self._update_no_significant_controls()
+        self._update_label_table_preview()
+        self._update_linear_preview()
+
+    def _on_export_label_table_clicked(self, with_background: bool) -> None:
+        fondo_text = "con fondo" if with_background else "sin fondo"
+        QMessageBox.information(
+            self,
+            "Exportar tabla",
+            f"La exportación a PNG ({fondo_text}) quedará disponible en el siguiente paso. "
+            "Por ahora se preparó el diseño base solicitado.",
+        )
 
     def _attach_copy_shortcut(self, table: QTableWidget) -> None:
         """Attach Ctrl+C to copy the current selection of a table as TSV to clipboard."""
@@ -1157,6 +2009,8 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Importando ingredientes...")
         self._set_window_progress("Importando ingredientes")
 
+        self._pending_import_meta = meta
+
         thread = QThread(self)
         worker = ImportWorker(
             base_items,
@@ -1170,7 +2024,7 @@ class MainWindow(QMainWindow):
 
         thread.started.connect(worker.run)
         worker.progress.connect(self._on_import_progress)
-        worker.finished.connect(lambda payload, m=meta: self._on_import_finished(payload, m))
+        worker.finished.connect(self._on_import_finished)
         worker.error.connect(self._on_import_error)
         worker.finished.connect(thread.quit)
         worker.error.connect(thread.quit)
@@ -1193,7 +2047,12 @@ class MainWindow(QMainWindow):
         self._set_window_progress(message)
         self.status_label.setText(f"Importando ingredientes: {message}")
 
-    def _on_import_finished(self, payload: list[Dict[str, Any]], meta: Dict[str, Any]) -> None:
+    def _on_import_finished(self, payload: list[Dict[str, Any]]) -> None:
+        meta = getattr(self, "_pending_import_meta", {}) or {}
+        self._pending_import_meta = {}
+        if QThread.currentThread() is not self.thread():
+            QTimer.singleShot(0, lambda p=payload, m=meta: self._on_import_finished(p))
+            return
         self._reset_import_ui_state()
         hydrated: list[Dict[str, Any]] = []
         for entry in payload:
@@ -1205,7 +2064,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 fdc_id_int = fdc_id
 
-            nutrients = self._augment_fat_nutrients(details.get("foodNutrients", []) or [])
+            nutrients = augment_fat_nutrients(details.get("foodNutrients", []) or [])
             self._update_reference_from_details(details)
             hydrated.append(
                 {
@@ -1214,7 +2073,7 @@ class MainWindow(QMainWindow):
                     "brand": details.get("brandOwner", "") or base.get("brand", ""),
                     "data_type": details.get("dataType", "") or base.get("data_type", ""),
                     "amount_g": float(base.get("amount_g", 0.0) or 0.0),
-                    "nutrients": self._normalize_nutrients(
+                    "nutrients": normalize_nutrients(
                         nutrients, details.get("dataType")
                     ),
                     "locked": bool(base.get("locked", False)),
@@ -1271,7 +2130,7 @@ class MainWindow(QMainWindow):
             )
 
     def _populate_details_table(self, nutrients) -> None:
-        nutrients = self._sort_nutrients_for_display(self._augment_fat_nutrients(nutrients or []))
+        nutrients = self._sort_nutrients_for_display(augment_fat_nutrients(nutrients or []))
         self.details_table.setRowCount(0)
 
         row_idx = 0
@@ -1562,474 +2421,6 @@ class MainWindow(QMainWindow):
 
         return ordered_headers, categories, header_key_map
 
-    def _augment_fat_nutrients(self, nutrients: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
-        """
-        Ensure Total lipid (fat) and Total fat (NLEA) mirror each other if one is missing.
-        Insert the cloned entry next to its counterpart to preserve order/category.
-        Ensures there is at most one entry for each of the two names.
-        Returns a new list without mutating the original to avoid duplication on refresh.
-        """
-        if not nutrients:
-            return []
-        logging.debug(f"_augment_fat_nutrients input={len(nutrients)}")
-
-        target_a = "total lipid (fat)"
-        target_b = "total fat (nlea)"
-        mapping = {
-            target_a: ("Total fat (NLEA)", "298"),
-            target_b: ("Total lipid (fat)", "204"),
-        }
-
-        def _norm_name(entry: Dict[str, Any]) -> str:
-            nut = entry.get("nutrient") or {}
-            return (nut.get("name") or "").strip().lower()
-
-        first_lipid_idx = None
-        first_nlea_idx = None
-        lipid_amount = None
-        nlea_amount = None
-        lipid_entry = None
-        nlea_entry = None
-        filtered: list[Dict[str, Any]] = []
-
-        for idx, entry in enumerate(nutrients):
-            name = _norm_name(entry)
-            if name == target_a:
-                if first_lipid_idx is None:
-                    first_lipid_idx = len(filtered)
-                    lipid_amount = entry.get("amount")
-                    lipid_entry = dict(entry)
-                    # normalize key to name to merge originals/clones
-                    lip_nut = dict(lipid_entry.get("nutrient") or {})
-                    lip_nut.pop("id", None)
-                    lip_nut.pop("number", None)
-                    lipid_entry["nutrient"] = lip_nut
-                continue  # skip for now to avoid duplicates
-            if name == target_b:
-                if first_nlea_idx is None:
-                    first_nlea_idx = len(filtered)
-                    nlea_amount = entry.get("amount")
-                    nlea_entry = dict(entry)
-                    # normalize key to name to merge originals/clones
-                    nlea_nut = dict(nlea_entry.get("nutrient") or {})
-                    nlea_nut.pop("id", None)
-                    nlea_nut.pop("number", None)
-                    nlea_entry["nutrient"] = nlea_nut
-                continue
-            filtered.append(entry)
-
-        def _clone_with_name(source: Dict[str, Any], new_name: str, number: str) -> Dict[str, Any]:
-            nut = dict(source.get("nutrient") or {})
-            nut["name"] = new_name
-            # Evitar colisiones en _nutrient_key: quitamos id/number y dejamos que use el nombre
-            nut.pop("id", None)
-            nut.pop("number", None)
-            clone = dict(source)
-            clone["nutrient"] = nut
-            return clone
-
-        # Build final list with controlled insertion
-        result = list(filtered)
-
-        # Decide amounts
-        if lipid_amount is None and nlea_amount is None:
-            return nutrients  # nothing to do
-
-        if lipid_amount is None:
-            # Only NLEA present: clone for lipid
-            source = nlea_entry or {"nutrient": {"name": "Total fat (NLEA)"}}
-            lipid_clone = _clone_with_name(source, *mapping[target_b])
-            lipid_clone["amount"] = nlea_amount
-            insert_at = first_nlea_idx if first_nlea_idx is not None else len(result)
-            result.insert(insert_at, lipid_clone)
-            # Insert original NLEA at same position (already removed)
-            result.insert(insert_at + 1, nlea_entry)
-            return result
-
-        if nlea_amount is None:
-            # Only lipid present: clone for NLEA
-            source = lipid_entry or {"nutrient": {"name": "Total lipid (fat)"}}
-            nlea_clone = _clone_with_name(source, *mapping[target_a])
-            nlea_clone["amount"] = lipid_amount
-            insert_at = first_lipid_idx if first_lipid_idx is not None else len(result)
-            result.insert(insert_at, lipid_entry)
-            result.insert(insert_at + 1, nlea_clone)
-            return result
-
-        # Both present: reinsert originals once, preserving relative order
-        if first_lipid_idx is not None and first_nlea_idx is not None:
-            insert_first = min(first_lipid_idx, first_nlea_idx)
-            insert_second = max(first_lipid_idx, first_nlea_idx)
-            first_entry = lipid_entry if first_lipid_idx < first_nlea_idx else nlea_entry
-            second_entry = nlea_entry if first_entry is lipid_entry else lipid_entry
-            result.insert(insert_first, first_entry)
-            result.insert(insert_second, second_entry)
-            return result
-
-        return result
-
-    def _augment_energy_nutrients(self, nutrients: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
-        """
-        Ensure Energy (kcal/kJ) is always computed from macros (4/9/4) and deduplicate extras.
-        kcal = protein*4 + carbs*4 + fat*9 ; kJ = kcal*4.184
-        """
-        if not nutrients:
-            return []
-
-        def _norm_name(entry: Dict[str, Any]) -> str:
-            nut = entry.get("nutrient") or {}
-            return (nut.get("name") or "").strip().lower()
-
-        def _clone_energy(unit: str, amount: float) -> Dict[str, Any]:
-            nut = {"name": "Energy", "unitName": unit}
-            return {"nutrient": nut, "amount": amount}
-
-        result: list[Dict[str, Any]] = []
-        kcal_entry = None
-        kj_entry = None
-
-        for entry in nutrients:
-            name = _norm_name(entry)
-            if name != "energy":
-                result.append(entry)
-                continue
-            unit = (entry.get("nutrient") or {}).get("unitName", "").lower()
-            if unit == "kcal" and kcal_entry is None:
-                kcal_entry = dict(entry)
-                kcal_entry.get("nutrient", {}).pop("id", None)
-                kcal_entry.get("nutrient", {}).pop("number", None)
-                result.append(kcal_entry)
-            elif unit == "kj" and kj_entry is None:
-                kj_entry = dict(entry)
-                kj_entry.get("nutrient", {}).pop("id", None)
-                kj_entry.get("nutrient", {}).pop("number", None)
-                result.append(kj_entry)
-            # drop duplicates silently
-
-        # Gather macros from current list (which may already include fat clone)
-        def _find_amount(names: list[str]) -> float | None:
-            for entry in result:
-                if _norm_name(entry) in names:
-                    amt = entry.get("amount")
-                    if amt is not None:
-                        return float(amt)
-            return None
-
-        protein = _find_amount(["protein"]) or 0.0
-        carbs = _find_amount(["carbohydrate, by difference"]) or 0.0
-        fat = _find_amount(["total lipid (fat)", "total fat (nlea)"]) or 0.0
-
-        kcal_amount = (protein * 4.0) + (carbs * 4.0) + (fat * 9.0)
-
-        insert_pos = 0
-        macro_indices = []
-        for idx, entry in enumerate(result):
-            if _norm_name(entry) in [
-                "protein",
-                "carbohydrate, by difference",
-                "total lipid (fat)",
-                "total fat (nlea)",
-            ]:
-                macro_indices.append(idx)
-        if macro_indices:
-            insert_pos = min(macro_indices)
-
-        if kcal_entry is None:
-            kcal_entry = _clone_energy("kcal", kcal_amount)
-            result.insert(insert_pos, kcal_entry)
-        else:
-            kcal_entry["amount"] = kcal_amount
-            kcal_entry.setdefault("nutrient", {})["unitName"] = "kcal"
-
-        if kj_entry is None:
-            kj_entry = _clone_energy("kJ", kcal_amount * 4.184)
-            # place kJ after kcal if inserted together
-            insert_kj = insert_pos + 1 if kcal_entry in result else insert_pos
-            result.insert(insert_kj, kj_entry)
-        else:
-            kj_entry["amount"] = kcal_amount * 4.184
-            kj_entry.setdefault("nutrient", {})["unitName"] = "kJ"
-
-        return result
-
-    def _augment_branded_water(self, nutrients: list[Dict[str, Any]], data_type: str | None = None) -> list[Dict[str, Any]]:
-        """
-        For Branded foods missing Water, estimate it as:
-        water = 100 - (fat + protein + carbs + ash + fiber)
-        If result < 0, clamp to 0.
-        """
-        if not nutrients:
-            return []
-        if (data_type or "").strip().lower() != "branded":
-            return nutrients
-
-        def _norm(entry: Dict[str, Any]) -> str:
-            nut = entry.get("nutrient") or {}
-            return (nut.get("name") or "").strip().lower()
-
-        has_water = any(_norm(e) == "water" and e.get("amount") is not None for e in nutrients)
-        if has_water:
-            return nutrients
-
-        def _find(names: list[str]) -> float:
-            for entry in nutrients:
-                if _norm(entry) in names:
-                    amt = entry.get("amount")
-                    if amt is not None:
-                        try:
-                            return float(amt)
-                        except (TypeError, ValueError):
-                            pass
-            return 0.0
-
-        fat = _find(["total lipid (fat)", "total fat (nlea)"])
-        protein = _find(["protein"])
-        carbs = _find(["carbohydrate, by difference"])
-        ash = _find(["ash"])
-        fiber = _find(["fiber, total dietary"])
-
-        water_amount = 100.0 - (fat + protein + carbs + ash + fiber)
-        if water_amount < 0:
-            water_amount = 0.0
-
-        water_entry = {"nutrient": {"name": "Water", "unitName": "g"}, "amount": water_amount}
-
-        insert_pos = 0
-        macro_indices = []
-        macro_names = {
-            "protein",
-            "carbohydrate, by difference",
-            "total lipid (fat)",
-            "total fat (nlea)",
-            "ash",
-            "fiber, total dietary",
-        }
-        for idx, entry in enumerate(nutrients):
-            if _norm(entry) in macro_names:
-                macro_indices.append(idx)
-        if macro_indices:
-            insert_pos = min(macro_indices)
-
-        result = list(nutrients)
-        result.insert(insert_pos, water_entry)
-        return result
-
-    def _augment_nitrogen(self, nutrients: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
-        """
-        Ensure Nitrogen exists; if missing and Protein is present, compute N = Protein/6.25.
-        Insert near Protein to preserve ordering.
-        """
-        if not nutrients:
-            return []
-
-        def _norm(entry: Dict[str, Any]) -> str:
-            nut = entry.get("nutrient") or {}
-            return (nut.get("name") or "").strip().lower()
-
-        has_nitrogen = None
-        protein_amount = None
-        protein_idx = None
-        for idx, entry in enumerate(nutrients):
-            name = _norm(entry)
-            if name == "nitrogen" and entry.get("amount") is not None:
-                has_nitrogen = idx
-                break
-            if name == "protein" and protein_amount is None and entry.get("amount") is not None:
-                protein_amount = float(entry.get("amount") or 0.0)
-                protein_idx = idx
-
-        if has_nitrogen is not None or protein_amount is None:
-            return nutrients
-
-        nitrogen_amount = protein_amount / 6.25
-        nitrogen_entry = {"nutrient": {"name": "Nitrogen", "unitName": "g"}, "amount": nitrogen_amount}
-
-        insert_pos = protein_idx if protein_idx is not None else 0
-        result = list(nutrients)
-        result.insert(insert_pos, nitrogen_entry)
-        return result
-
-    def _augment_pair(self, nutrients: list[Dict[str, Any]], target_a: str, target_b: str) -> list[Dict[str, Any]]:
-        """Generic helper: ensure both targets exist, deduplicate, insert clone next to original."""
-        if not nutrients:
-            return []
-
-        def _norm(entry: Dict[str, Any]) -> str:
-            return (entry.get("nutrient", {}).get("name") or "").strip().lower()
-
-        first_a_idx = None
-        first_b_idx = None
-        a_amt = None
-        b_amt = None
-        a_entry = None
-        b_entry = None
-        filtered: list[Dict[str, Any]] = []
-
-        for entry in nutrients:
-            name = _norm(entry)
-            if name == target_a:
-                if first_a_idx is None:
-                    first_a_idx = len(filtered)
-                    a_amt = entry.get("amount")
-                    a_entry = dict(entry)
-                    a_nut = dict(a_entry.get("nutrient") or {})
-                    a_nut.pop("id", None)
-                    a_nut.pop("number", None)
-                    a_entry["nutrient"] = a_nut
-                continue
-            if name == target_b:
-                if first_b_idx is None:
-                    first_b_idx = len(filtered)
-                    b_amt = entry.get("amount")
-                    b_entry = dict(entry)
-                    b_nut = dict(b_entry.get("nutrient") or {})
-                    b_nut.pop("id", None)
-                    b_nut.pop("number", None)
-                    b_entry["nutrient"] = b_nut
-                continue
-            filtered.append(entry)
-
-        def _clone(source: Dict[str, Any], new_name: str, amount: float | None) -> Dict[str, Any]:
-            nut = dict(source.get("nutrient") or {})
-            nut["name"] = new_name
-            nut.pop("id", None)
-            nut.pop("number", None)
-            clone = dict(source)
-            clone["nutrient"] = nut
-            clone["amount"] = amount
-            return clone
-
-        result = list(filtered)
-
-        if a_amt is None and b_amt is None:
-            return nutrients
-
-        if a_amt is None:
-            # only B present
-            a_clone = _clone(b_entry or {"nutrient": {"name": target_b}}, target_a, b_amt)
-            insert_at = first_b_idx if first_b_idx is not None else len(result)
-            result.insert(insert_at, a_clone)
-            result.insert(insert_at + 1, b_entry)
-            return result
-
-        if b_amt is None:
-            # only A present
-            b_clone = _clone(a_entry or {"nutrient": {"name": target_a}}, target_b, a_amt)
-            insert_at = first_a_idx if first_a_idx is not None else len(result)
-            result.insert(insert_at, a_entry)
-            result.insert(insert_at + 1, b_clone)
-            return result
-
-        # both present: reinsert once each preserving original order
-        if first_a_idx is not None and first_b_idx is not None:
-            insert_first = min(first_a_idx, first_b_idx)
-            insert_second = max(first_a_idx, first_b_idx)
-            first_entry = a_entry if first_a_idx < first_b_idx else b_entry
-            second_entry = b_entry if first_entry is a_entry else a_entry
-            result.insert(insert_first, first_entry)
-            result.insert(insert_second, second_entry)
-            return result
-
-        return result
-
-    def _augment_alias_nutrients(self, nutrients: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
-        """
-        Normalize aliases choosing one canonical entry (no duplicates):
-        - sugars, total / total sugars -> Sugars, Total
-        - cystine / cysteine -> Cysteine
-        - carbohydrate by summation -> carbohydrate by difference
-        - drop Atwater energy rows
-        - fix minor name typos (phosphotidyl -> phosphatidyl)
-        """
-        if not nutrients:
-            return []
-
-        canonical_map = {
-            "total sugars": "Sugars, Total",
-            "sugars, total": "Sugars, Total",
-            "cystine": "Cysteine",
-            "cysteine": "Cysteine",
-            "carbohydrate, by summation": "Carbohydrate, by difference",
-            "choline, from phosphotidyl choline": "Choline, from phosphatidyl choline",
-        }
-        drop_names = {
-            "energy (atwater general factors)",
-            "energy (atwater specific factors)",
-        }
-        merged: dict[str, Dict[str, Any]] = {}
-
-        def _key(name: str) -> str:
-            lower = (name or "").strip().lower()
-            if lower in drop_names:
-                return ""
-            mapped = canonical_map.get(lower)
-            return (mapped or name).strip()
-
-        for entry in nutrients:
-            nut = entry.get("nutrient") or {}
-            name = (nut.get("name") or "").strip()
-            canonical = _key(name)
-            if not canonical:
-                continue
-            existing = merged.get(canonical)
-            if existing is None:
-                new_entry = dict(entry)
-                new_nut = dict(nut)
-                new_nut["name"] = canonical
-                new_entry["nutrient"] = new_nut
-                merged[canonical] = new_entry
-            else:
-                # prefer non-null amount; otherwise keep existing
-                amt = entry.get("amount")
-                if amt is not None and existing.get("amount") is None:
-                    existing["amount"] = amt
-        return list(merged.values())
-
-    def _canonical_alias_name(self, name: str) -> str:
-        """Return a display name for known aliases to keep one column in Excel."""
-        lower = (name or "").strip().lower()
-        mapping = {
-            "sugars, total": "Sugars, Total",
-            "total sugars": "Sugars, Total",
-            "carbohydrate, by difference": "Carbohydrate, by difference",
-            "carbohydrate, by summation": "Carbohydrate, by difference",
-            "carbohydrate by summation": "Carbohydrate, by difference",
-            "energy (atwater general factors)": "",
-            "energy (atwater specific factors)": "",
-            "choline, from phosphotidyl choline": "Choline, from phosphatidyl choline",
-        }
-        return mapping.get(lower, name)
-
-    def _canonical_unit(self, unit: str | None) -> str:
-        """Normalize unit strings to avoid duplicate columns (ug vs µg, mcg)."""
-        if not unit:
-            return ""
-        u = unit.strip()
-        lower = u.lower()
-        if lower in {"ug", "µg", "mcg"}:
-            return "µg"
-        if lower == "iu":
-            return "iu"
-        if lower == "kj":
-            return "kJ"
-        return lower
-
-    def _normalize_nutrients(self, nutrients: list[Dict[str, Any]], data_type: str | None = None) -> list[Dict[str, Any]]:
-        """Apply all nutrient augmentation steps (fat + alias + nitrogen + branded water + energy) in order."""
-        normalized = self._augment_fat_nutrients(nutrients or [])
-        # Canonicalize units early to merge duplicate columns (ug vs µg)
-        for entry in normalized:
-            nut = entry.get("nutrient") or {}
-            unit = nut.get("unitName")
-            canonical_unit = self._canonical_unit(unit)
-            if canonical_unit:
-                nut["unitName"] = canonical_unit
-                entry["nutrient"] = nut
-        normalized = self._augment_alias_nutrients(normalized)
-        normalized = self._augment_nitrogen(normalized)
-        normalized = self._augment_branded_water(normalized, data_type=data_type)
-        return self._augment_energy_nutrients(normalized)
-
     def _load_last_path(self) -> str:
         try:
             data = json.loads(Path("last_path.json").read_text(encoding="utf-8"))
@@ -2053,7 +2444,7 @@ class MainWindow(QMainWindow):
         """Normalize all formulation_items in-place (fat + energy)."""
         for idx, item in enumerate(self.formulation_items):
             original = item.get("nutrients", []) or []
-            normalized = self._normalize_nutrients(original, item.get("data_type"))
+            normalized = normalize_nutrients(original, item.get("data_type"))
             if normalized != original:
                 # preserve reference to allow downstream updates
                 item["nutrients"] = normalized
@@ -2110,7 +2501,7 @@ class MainWindow(QMainWindow):
                     "brand": details.get("brandOwner", "") or item.get("brand", ""),
                     "data_type": details.get("dataType", "") or item.get("data_type", ""),
                     "amount_g": float(item.get("amount_g", 0.0) or 0.0),
-                    "nutrients": self._normalize_nutrients(
+                    "nutrients": normalize_nutrients(
                         details.get("foodNutrients", []) or [], details.get("dataType")
                     ),
                     "locked": bool(item.get("locked", False)),
@@ -2183,6 +2574,7 @@ class MainWindow(QMainWindow):
     def _populate_totals_table(self) -> None:
         logging.debug("_populate_totals_table start")
         totals = self._calculate_totals()
+        self._last_totals = totals
 
         category_order = [cat for cat, _ in self._nutrient_catalog]
 
@@ -2261,9 +2653,13 @@ class MainWindow(QMainWindow):
 
     def _refresh_formulation_views(self) -> None:
         logging.debug(f"_refresh_formulation_views count={len(self.formulation_items)}")
+        if QThread.currentThread() is not self.thread():
+            QTimer.singleShot(0, self._refresh_formulation_views)
+            return
         self._ensure_normalized_items()
         self._populate_formulation_tables()
         self._populate_totals_table()
+        self._update_label_preview(force_recalc_totals=True)
         logging.debug("_refresh_formulation_views done")
         self._ensure_preview_selection()
 
@@ -2828,8 +3224,8 @@ class MainWindow(QMainWindow):
 
     def _header_key(self, nutrient: Dict[str, Any]) -> tuple[str, str, str]:
         """Return a stable header key plus canonical name and unit for a nutrient."""
-        name = self._canonical_alias_name(nutrient.get("name", "") or "")
-        unit = self._canonical_unit(nutrient.get("unitName") or self._infer_unit(nutrient) or "")
+        name = canonical_alias_name(nutrient.get("name", "") or "")
+        unit = canonical_unit(nutrient.get("unitName") or self._infer_unit(nutrient) or "")
         unit_part = unit.strip().lower()
         name_part = name.strip().lower()
         if name_part:
@@ -3269,7 +3665,7 @@ class MainWindow(QMainWindow):
         self._update_paging_buttons(self._last_results_count)
 
     def _on_details_success(self, details) -> None:
-        nutrients = self._normalize_nutrients(
+        nutrients = normalize_nutrients(
             details.get("foodNutrients", []) or [], details.get("dataType")
         )
         self._populate_details_table(nutrients)
@@ -3290,7 +3686,7 @@ class MainWindow(QMainWindow):
             f"_on_add_details_loaded fdc_id={details.get('fdcId', '?')} "
             f"mode={mode} value={value}"
         )
-        nutrients = self._normalize_nutrients(details.get("foodNutrients", []) or [], details.get("dataType"))
+        nutrients = normalize_nutrients(details.get("foodNutrients", []) or [], details.get("dataType"))
         self._update_reference_from_details(details)
         desc = details.get("description", "") or ""
         brand = details.get("brandOwner", "") or ""
