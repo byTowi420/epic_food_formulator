@@ -228,6 +228,10 @@ class MainWindow(QMainWindow):
         self.label_nutrient_usda_map = {
             "Energia": "Energy (kcal)",
             "Carbohidratos": "Carbohydrate, by difference (g)",
+            "Azúcares": "Sugars, Total (g)",
+            "Polialcoholes": "Sugar alcohol (g)",
+            "Almidón": "Starch (g)",
+            "Polidextrosas": "Polydextrose (g)",
             "Proteinas": "Protein (g)",
             "Grasas totales": "Total lipid (fat) (g)",
             "Grasas saturadas": "Fatty acids, total saturated (g)",
@@ -601,7 +605,7 @@ class MainWindow(QMainWindow):
         left_form.addWidget(self.household_capacity_label, 3, 1, 1, 2)
 
         self.breakdown_carb_checkbox = QCheckBox("Desglose Carbohidratos")
-        self.breakdown_carb_checkbox.setEnabled(False)
+        self.breakdown_carb_checkbox.setEnabled(True)
         self.breakdown_fat_checkbox = QCheckBox("Desglose Grasas")
         self.breakdown_fat_checkbox.setEnabled(True)
         left_form.addWidget(self.breakdown_carb_checkbox, 4, 0, 1, 2)
@@ -686,6 +690,7 @@ class MainWindow(QMainWindow):
         self.custom_household_unit_input.textChanged.connect(
             self._on_household_unit_changed
         )
+        self.breakdown_carb_checkbox.toggled.connect(self._on_breakdown_carb_toggled)
         self.breakdown_fat_checkbox.toggled.connect(self._on_breakdown_fat_toggled)
         self.export_label_no_bg_button.clicked.connect(
             lambda: self._on_export_label_table_clicked(with_background=False)
@@ -765,7 +770,38 @@ class MainWindow(QMainWindow):
         table.verticalHeader().setVisible(False)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         table.setMinimumHeight(360)
-        table.setStyleSheet("gridline-color: #c0c0c0;")
+        table.setAutoFillBackground(False)
+        table.viewport().setAutoFillBackground(False)
+        table.setAttribute(Qt.WA_TranslucentBackground, True)
+        table.viewport().setAttribute(Qt.WA_TranslucentBackground, True)
+        palette = table.palette()
+        palette.setColor(QPalette.Base, Qt.transparent)
+        palette.setColor(QPalette.Window, Qt.transparent)
+        palette.setColor(QPalette.AlternateBase, Qt.transparent)
+        table.setPalette(palette)
+        table.setStyleSheet(
+            """
+            QTableWidget {
+                gridline-color: #c0c0c0;
+                background-color: transparent;
+                alternate-background-color: transparent;
+            }
+            QTableWidget::item:selected {
+                background-color: rgba(0, 0, 0, 30);
+                color: #000;
+            }
+            QTableWidget::item:selected:!active {
+                background-color: rgba(0, 0, 0, 20);
+                color: #000;
+            }
+            QHeaderView::section {
+                background-color: transparent;
+            }
+            QTableCornerButton::section {
+                background-color: transparent;
+            }
+            """
+        )
         table.setShowGrid(False)
         table.setWordWrap(True)
         table.setItemDelegate(LabelTableDelegate(self._fat_row_role, table))
@@ -786,6 +822,43 @@ class MainWindow(QMainWindow):
                 "amount": 0.0,
                 "vd": 7.0,
                 "vd_reference": 20.0,
+                "carb_parent": True,
+            },
+            {
+                "name": "Azúcares",
+                "unit": "g",
+                "amount": 0.0,
+                "vd": None,
+                "vd_reference": 0.0,
+                "carb_child": True,
+                "carb_breakdown_only": True,
+            },
+            {
+                "name": "Polialcoholes",
+                "unit": "g",
+                "amount": 0.0,
+                "vd": None,
+                "vd_reference": 0.0,
+                "carb_child": True,
+                "carb_breakdown_only": True,
+            },
+            {
+                "name": "Almidón",
+                "unit": "g",
+                "amount": 0.0,
+                "vd": None,
+                "vd_reference": 0.0,
+                "carb_child": True,
+                "carb_breakdown_only": True,
+            },
+            {
+                "name": "Polidextrosas",
+                "unit": "g",
+                "amount": 0.0,
+                "vd": None,
+                "vd_reference": 0.0,
+                "carb_child": True,
+                "carb_breakdown_only": True,
             },
             {
                 "name": "Proteinas",
@@ -995,6 +1068,17 @@ class MainWindow(QMainWindow):
         self.label_no_significant = [n for n in self.label_no_significant if n not in fat_names]
         self._update_label_preview()
 
+    def _on_breakdown_carb_toggled(self, _: bool) -> None:
+        carb_names = {
+            "Carbohidratos",
+            "Azúcares",
+            "Polialcoholes",
+            "Almidón",
+            "Polidextrosas",
+        }
+        self.label_no_significant = [n for n in self.label_no_significant if n not in carb_names]
+        self._update_label_preview()
+
     def _current_household_unit_label(self) -> str:
         if self.household_unit_combo.currentText() == "Otro":
             custom = self.custom_household_unit_input.text().strip()
@@ -1102,16 +1186,24 @@ class MainWindow(QMainWindow):
             return None
 
     def _active_label_nutrients(self) -> list[Dict[str, Any]]:
-        breakdown = self.breakdown_fat_checkbox.isChecked()
+        breakdown_fat = self.breakdown_fat_checkbox.isChecked()
+        breakdown_carb = self.breakdown_carb_checkbox.isChecked()
         display: list[Dict[str, Any]] = []
         for nutrient in self.label_base_nutrients:
             name = nutrient.get("name", "")
             if name in self.label_no_significant:
                 continue
-            if nutrient.get("fat_breakdown_only") and not breakdown:
+            if nutrient.get("fat_breakdown_only") and not breakdown_fat:
+                continue
+            if nutrient.get("carb_breakdown_only") and not breakdown_carb:
                 continue
             entry = dict(nutrient)
-            indent = 1 if (breakdown and entry.get("fat_child") and not entry.get("fat_parent")) else 0
+            indent = 0
+            if (
+                (breakdown_fat and entry.get("fat_child") and not entry.get("fat_parent"))
+                or (breakdown_carb and entry.get("carb_child") and not entry.get("carb_parent"))
+            ):
+                indent = 1
             entry["indent_level"] = indent
             display.append(entry)
         return display
@@ -1176,6 +1268,14 @@ class MainWindow(QMainWindow):
             eff = self._effective_label_nutrient(nutrient)
             name = eff.get("name", nutrient.get("name", ""))
             if fat_locked and name in fat_names:
+                continue
+            if self.breakdown_carb_checkbox.isChecked() and name in {
+                "Carbohidratos",
+                "Azúcares",
+                "Polialcoholes",
+                "Almidón",
+                "Polidextrosas",
+            }:
                 continue
             thresh = self.label_no_significant_thresholds.get(name)
             if not thresh:
@@ -1574,11 +1674,26 @@ class MainWindow(QMainWindow):
         table.clearSpans()
 
         display_nutrients = self._active_label_nutrients()
-        self._label_display_nutrients = display_nutrients
+        filtered_nutrients: list[tuple[Dict[str, Any], Dict[str, Any]]] = []
+        carb_children_present = False
+        hide_zero_carb = {"Polialcoholes", "Polidextrosas"}
+        for nutrient in display_nutrients:
+            effective = self._effective_label_nutrient(nutrient)
+            name = effective.get("name", nutrient.get("name", ""))
+            if (
+                nutrient.get("carb_child")
+                and name in hide_zero_carb
+                and math.isclose(effective.get("amount", 0.0) or 0.0, 0.0, abs_tol=1e-9)
+            ):
+                continue
+            if nutrient.get("carb_child") and not nutrient.get("carb_parent"):
+                carb_children_present = True
+            filtered_nutrients.append((nutrient, effective))
+        self._label_display_nutrients = [n for n, _ in filtered_nutrients]
 
         total_rows = (
             3
-            + len(display_nutrients)
+            + len(filtered_nutrients)
             + len(self.label_additional_selected)
             + (1 if self.label_no_significant else 0)
             + 1
@@ -1614,9 +1729,8 @@ class MainWindow(QMainWindow):
         table.setItem(2, 2, header_item_vd)
         table.setItem(2, 0, header_placeholder)
 
-        for idx, nutrient in enumerate(display_nutrients):
+        for idx, (nutrient, effective) in enumerate(filtered_nutrients):
             row = 3 + idx
-            effective = self._effective_label_nutrient(nutrient)
             name = effective.get("name", nutrient.get("name", ""))
             indent_level = nutrient.get("indent_level", 0)
             display_name = ("    " * indent_level) + name
@@ -1636,6 +1750,12 @@ class MainWindow(QMainWindow):
                 vd_text = self._format_vd_value(effective, factor, eff_amount)
             if self.breakdown_fat_checkbox.isChecked() and nutrient.get("fat_parent"):
                 amount_text = f"{amount_text}, de las cuales"
+            if (
+                self.breakdown_carb_checkbox.isChecked()
+                and nutrient.get("carb_parent")
+                and carb_children_present
+            ):
+                amount_text = f"{amount_text}, de los cuales"
 
             amount_item = QTableWidgetItem(amount_text)
             vd_item = QTableWidgetItem(vd_text)
@@ -1646,13 +1766,12 @@ class MainWindow(QMainWindow):
                 brush = QBrush(self.label_manual_hint_color)
                 for itm in (name_item, amount_item, vd_item):
                     itm.setBackground(brush)
-            is_fat_child_row = bool(
-                self.breakdown_fat_checkbox.isChecked()
-                and nutrient.get("fat_child")
-                and not nutrient.get("fat_parent")
+            is_breakdown_child_row = bool(
+                (self.breakdown_fat_checkbox.isChecked() and nutrient.get("fat_child") and not nutrient.get("fat_parent"))
+                or (self.breakdown_carb_checkbox.isChecked() and nutrient.get("carb_child") and not nutrient.get("carb_parent"))
             )
             for itm in (name_item, amount_item, vd_item):
-                itm.setData(self._fat_row_role, is_fat_child_row)
+                itm.setData(self._fat_row_role, is_breakdown_child_row)
             table.setItem(row, 0, name_item)
             table.setItem(row, 1, amount_item)
             table.setItem(row, 2, vd_item)
@@ -1676,7 +1795,7 @@ class MainWindow(QMainWindow):
             table.setItem(row, 1, amount_item)
             table.setItem(row, 2, vd_item)
 
-        note_row = 3 + len(display_nutrients) + len(self.label_additional_selected)
+        note_row = 3 + len(filtered_nutrients) + len(self.label_additional_selected)
         if self.label_no_significant:
             names = [
                 self.label_no_significant_display_map.get(name, name)
@@ -1723,6 +1842,10 @@ class MainWindow(QMainWindow):
         fat_children: list[str] = []
         fat_parent_text = None
         fat_parent_index = None
+        carb_children: list[str] = []
+        carb_parent_text = None
+        carb_parent_index = None
+        hide_zero_carb = {"Polialcoholes", "Polidextrosas"}
 
         for nutrient in display_nutrients:
             effective = self._effective_label_nutrient(nutrient)
@@ -1756,6 +1879,23 @@ class MainWindow(QMainWindow):
                 fat_parent_index = len(parts)
                 continue
 
+            if (
+                self.breakdown_carb_checkbox.isChecked()
+                and nutrient.get("carb_child")
+                and not nutrient.get("carb_parent")
+            ):
+                if nutrient.get("name", "") in hide_zero_carb and math.isclose(
+                    effective.get("amount", 0.0) or 0.0, 0.0, abs_tol=1e-9
+                ):
+                    continue
+                carb_children.append(line_text)
+                continue
+
+            if self.breakdown_carb_checkbox.isChecked() and nutrient.get("carb_parent"):
+                carb_parent_text = line_text
+                carb_parent_index = len(parts)
+                continue
+
             parts.append(line_text)
 
         if self.breakdown_fat_checkbox.isChecked() and fat_parent_text:
@@ -1764,6 +1904,13 @@ class MainWindow(QMainWindow):
                 fat_block = f"{fat_block}, de los cuales: " + ", ".join(fat_children)
             insert_idx = fat_parent_index if fat_parent_index is not None else len(parts)
             parts.insert(insert_idx, fat_block)
+
+        if self.breakdown_carb_checkbox.isChecked() and carb_parent_text:
+            carb_block = carb_parent_text
+            if carb_children:
+                carb_block = f"{carb_block}, de los cuales: " + ", ".join(carb_children)
+            insert_idx = carb_parent_index if carb_parent_index is not None else len(parts)
+            parts.insert(insert_idx, carb_block)
 
         for add_name in self.label_additional_selected:
             nutrient = next((n for n in self.label_additional_catalog if n["name"] == add_name), None)
@@ -1823,6 +1970,7 @@ class MainWindow(QMainWindow):
         original_style = table.styleSheet()
         original_palette = table.palette()
         original_autofill = table.autoFillBackground()
+        original_viewport_autofill = table.viewport().autoFillBackground()
         original_h_policy = table.horizontalScrollBarPolicy()
         original_v_policy = table.verticalScrollBarPolicy()
         original_table_attr = table.testAttribute(Qt.WA_TranslucentBackground)
@@ -1848,45 +1996,71 @@ class MainWindow(QMainWindow):
             table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             table.setAttribute(Qt.WA_TranslucentBackground, True)
             table.viewport().setAttribute(Qt.WA_TranslucentBackground, True)
+            table.viewport().setAutoFillBackground(False)
+            table.setAutoFillBackground(False)
 
             pal = QPalette(table.palette())
+            pal.setColor(QPalette.Text, QColor("#272727"))
+            pal.setColor(QPalette.WindowText, QColor("#272727"))
+            grid_color = "#c0c0c0"
             if with_background:
                 pal.setColor(QPalette.Base, Qt.white)
                 pal.setColor(QPalette.Window, Qt.white)
-                fill_color = QColor(Qt.white)
-                grid_color = "rgba(0,0,0,90)"
+                pal.setColor(QPalette.AlternateBase, Qt.white)
+                fill_color = Qt.white
+                bg_style = "background-color: white; alternate-background-color: white;"
             else:
-                # Pintamos sobre blanco y luego retiramos el fondo para lograr transparencia real
-                white_bg = QColor(Qt.white)
-                pal.setColor(QPalette.Base, white_bg)
-                pal.setColor(QPalette.Window, white_bg)
-                fill_color = white_bg
-                grid_color = "rgba(0,0,0,70)"
+                pal.setColor(QPalette.Base, Qt.transparent)
+                pal.setColor(QPalette.Window, Qt.transparent)
+                pal.setColor(QPalette.AlternateBase, Qt.transparent)
+                fill_color = Qt.transparent
+                bg_style = (
+                    "background-color: transparent; "
+                    "alternate-background-color: transparent; "
+                    "selection-background-color: transparent;"
+                )
 
             table.setAutoFillBackground(False)
             table.setPalette(pal)
             table.setStyleSheet(
                 f"{original_style} "
-                f"QTableWidget {{ background-color: transparent; gridline-color: {grid_color}; }} "
-                "QTableWidget::item { background-color: transparent; } "
+                f"QTableWidget {{ {bg_style} gridline-color: {grid_color}; }} "
+                "QTableWidget::viewport { background: transparent; } "
+                "QHeaderView::section { background-color: transparent; } "
+                "QTableCornerButton::section { background-color: transparent; } "
             )
 
             table.resize(content_width, content_height)
 
-            image = QImage(export_width, export_height, QImage.Format_ARGB32)
+            scale = 1.0 if with_background else 2.0
+            scaled_width = int(export_width * scale)
+            scaled_height = int(export_height * scale)
+            image = QImage(scaled_width, scaled_height, QImage.Format_ARGB32_Premultiplied)
             image.fill(fill_color)
 
             painter = QPainter(image)
-            table.render(painter, QPoint(padding, padding))
-            painter.end()
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QPainter.TextAntialiasing)
             if not with_background:
-                image = self._remove_image_background(image, tolerance=6)
+                painter.setCompositionMode(QPainter.CompositionMode_Source)
+            painter.translate(padding * scale, padding * scale)
+            painter.scale(scale, scale)
+            table.render(painter, QPoint(0, 0))
+            painter.end()
+            if scale != 1.0:
+                image = image.scaled(
+                    export_width,
+                    export_height,
+                    Qt.IgnoreAspectRatio,
+                    Qt.SmoothTransformation,
+                )
             return QPixmap.fromImage(image)
         finally:
             table.resize(original_size)
             table.setStyleSheet(original_style)
             table.setPalette(original_palette)
             table.setAutoFillBackground(original_autofill)
+            table.viewport().setAutoFillBackground(original_viewport_autofill)
             table.setHorizontalScrollBarPolicy(original_h_policy)
             table.setVerticalScrollBarPolicy(original_v_policy)
             table.setAttribute(Qt.WA_TranslucentBackground, original_table_attr)
@@ -1917,6 +2091,58 @@ class MainWindow(QMainWindow):
                     and abs(c.green() - bg.green()) <= tolerance
                     and abs(c.blue() - bg.blue()) <= tolerance
                 ):
+                    c.setAlpha(0)
+                    result.setPixelColor(x, y, c)
+        return result
+
+    def _strip_to_strokes(self, image: QImage) -> QImage:
+        """
+        Deja solo trazos (texto y líneas) eliminando fondos claros residuales.
+        Conserva píxeles cercanos al color de texto (#272727) o líneas (#c0c0c0) y elimina el resto.
+        """
+        text_color = QColor("#272727")
+        grid_color = QColor("#c0c0c0")
+        text_r, text_g, text_b = text_color.red(), text_color.green(), text_color.blue()
+        grid_r, grid_g, grid_b = grid_color.red(), grid_color.green(), grid_color.blue()
+        text_tol = 45  # distancia máxima para conservar texto (cubre antialias y #8F8F8F/#9B9B9B)
+        grid_tol = 8   # líneas muy cercanas al gris exacto
+        result = QImage(image.size(), QImage.Format_ARGB32)
+        result.fill(Qt.transparent)
+        width = image.width()
+        height = image.height()
+
+        for y in range(height):
+            for x in range(width):
+                c = image.pixelColor(x, y)
+                if c.alpha() == 0:
+                    continue
+                r, g, b = c.red(), c.green(), c.blue()
+                dist_text = ((r - text_r) ** 2 + (g - text_g) ** 2 + (b - text_b) ** 2) ** 0.5
+                dist_grid = ((r - grid_r) ** 2 + (g - grid_g) ** 2 + (b - grid_b) ** 2) ** 0.5
+                if dist_text <= text_tol:
+                    out = QColor(text_color)
+                    out.setAlpha(c.alpha())
+                    result.setPixelColor(x, y, out)
+                    continue
+                if dist_grid <= grid_tol:
+                    out = QColor(grid_color)
+                    out.setAlpha(c.alpha())
+                    result.setPixelColor(x, y, out)
+                    continue
+                # otherwise leave transparent
+        return result
+
+    def _clear_white_background(self, image: QImage, threshold: int = 245) -> QImage:
+        """
+        Hace transparente cualquier pixel casi blanco (>= threshold en R,G,B), preservando otros colores.
+        """
+        result = QImage(image)
+        width = result.width()
+        height = result.height()
+        for y in range(height):
+            for x in range(width):
+                c = result.pixelColor(x, y)
+                if c.red() >= threshold and c.green() >= threshold and c.blue() >= threshold:
                     c.setAlpha(0)
                     result.setPixelColor(x, y, c)
         return result
