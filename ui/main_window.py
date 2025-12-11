@@ -7,8 +7,20 @@ import os
 from fractions import Fraction
 import math
 
-from PySide6.QtCore import QObject, QThread, Qt, QItemSelectionModel, QCoreApplication, QTimer, QEvent
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont, QKeySequence, QShortcut, QBrush
+from PySide6.QtCore import QObject, QThread, Qt, QItemSelectionModel, QCoreApplication, QTimer, QEvent, QPoint
+from PySide6.QtGui import (
+    QIcon,
+    QPixmap,
+    QPainter,
+    QColor,
+    QFont,
+    QKeySequence,
+    QShortcut,
+    QBrush,
+    QPalette,
+    QImage,
+    QPen,
+)
 from PySide6.QtWidgets import (
     QComboBox,
     QApplication,
@@ -37,6 +49,9 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QVBoxLayout,
     QWidget,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QStyle,
 )
 import pandas as pd
 from openpyxl import Workbook
@@ -61,6 +76,85 @@ logging.basicConfig(
 )
 
 
+class LabelTableDelegate(QStyledItemDelegate):
+    """Custom grid painter to hide vertical separators for fat breakdown rows."""
+
+    def __init__(self, fat_row_role: int, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.fat_row_role = fat_row_role
+        self.header_span_role = None
+        self.grid_color = QColor("#c0c0c0")
+
+    def paint(self, painter: QPainter, option, index) -> None:  # type: ignore[override]
+        is_fat_child = bool(index.data(self.fat_row_role))
+        is_header_span = bool(self.header_span_role and index.data(self.header_span_role))
+
+        # For fat-child name column, avoid elide and draw across the adjacent amount column.
+        if (is_fat_child and index.column() == 0) or (is_header_span and index.column() == 1):
+            opt = QStyleOptionViewItem(option)
+            self.initStyleOption(opt, index)
+            opt.text = ""
+            opt.icon = QIcon()
+            style = opt.widget.style() if opt.widget else QApplication.style()
+            style.drawControl(QStyle.CE_ItemViewItem, opt, painter, opt.widget)
+
+            painter.save()
+            text_rect = opt.rect
+            extra = 0
+            if is_fat_child:
+                try:
+                    extra = opt.widget.columnWidth(1) - 6  # leave small gap before amount text
+                except Exception:
+                    extra = 0
+                if extra > 0:
+                    text_rect.setWidth(text_rect.width() + extra)
+                text_rect.adjust(4, 0, -2, 0)  # small padding, avoid hitting amount text
+                align = Qt.AlignLeft | Qt.AlignVCenter
+            else:
+                # Header span: extend into VD column to avoid elide, keep centered on its own column.
+                try:
+                    extra = opt.widget.columnWidth(2) - 6
+                except Exception:
+                    extra = 0
+                if extra > 0:
+                    shift = extra // 2
+                    text_rect.adjust(-shift, 0, extra - shift, 0)
+                text_rect.adjust(0, 0, -2, 0)
+                align = Qt.AlignCenter
+            painter.setPen(opt.palette.color(QPalette.Text))
+            painter.setFont(opt.font)
+            painter.drawText(text_rect, align, str(index.data() or ""))
+            painter.restore()
+        else:
+            super().paint(painter, option, index)
+
+        painter.save()
+        pen = QPen(self.grid_color)
+        painter.setPen(pen)
+        rect = option.rect
+        last_col = index.model().columnCount() - 1
+
+        # Horizontal lines
+        painter.drawLine(rect.bottomLeft(), rect.bottomRight())
+        if index.row() == 0:
+            painter.drawLine(rect.topLeft(), rect.topRight())
+
+        # Left border on first column
+        if index.column() == 0:
+            painter.drawLine(rect.topLeft(), rect.bottomLeft())
+
+        # Right border (skip inner separators for fat breakdown rows and header span left edge)
+        skip_right = False
+        if is_fat_child and index.column() < last_col:
+            skip_right = True
+        if is_header_span and index.column() in (0, 1):
+            skip_right = True
+        if not skip_right:
+            painter.drawLine(rect.topRight(), rect.bottomRight())
+
+        painter.restore()
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -75,6 +169,8 @@ class MainWindow(QMainWindow):
         self._current_import_worker: ImportWorker | None = None
         self._current_add_worker: AddWorker | None = None
         self._prefetching_fdc_ids: set[int] = set()
+        self._fat_row_role = Qt.UserRole + 501
+        self._header_span_role = Qt.UserRole + 502
         self.formulation_items: List[Dict] = []
         self.quantity_mode: str = "g"
         self.amount_g_column_index = 2
@@ -116,6 +212,7 @@ class MainWindow(QMainWindow):
         self.label_manual_overrides: dict[str, float] = {}
         self._last_totals: Dict[str, Dict[str, Any]] = {}
         self.label_no_significant: list[str] = []
+        self.label_additional_selected: list[str] = []
         self._label_display_nutrients: list[Dict[str, Any]] = []
         self.label_manual_hint_color = QColor(204, 255, 204)
         self.label_no_sig_order = [
@@ -134,9 +231,38 @@ class MainWindow(QMainWindow):
             "Proteinas": "Protein (g)",
             "Grasas totales": "Total lipid (fat) (g)",
             "Grasas saturadas": "Fatty acids, total saturated (g)",
+            "Grasas monoinsaturadas": "Fatty acids, total monounsaturated (g)",
+            "Grasas poliinsaturadas": "Fatty acids, total polyunsaturated (g)",
             "Grasas trans": "Fatty acids, total trans (g)",
+            "Colesterol": "Cholesterol (mg)",
             "Fibra alimentaria": "Fiber, total dietary (g)",
             "Sodio": "Sodium, Na (mg)",
+            "Vitamina A": "Vitamin A, RAE (µg)",
+            "Vitamina D": "Vitamin D (D2 + D3)",
+            "Vitamina C": "Vitamin C, total ascorbic acid (mg)",
+            "Vitamina E": "Vitamin E (alpha-tocopherol) (mg)",
+            "Tiamina": "Thiamin (mg)",
+            "Riboflavina": "Riboflavin (mg)",
+            "Niacina": "Niacin (mg)",
+            "Vitamina B6": "Vitamin B-6 (mg)",
+            "Acido fólico": "Folate, DFE (µg)",
+            "Vitaminia B12": "Vitamin B-12 (µg)",
+            "Biotina": "Biotin (µg)",
+            "Acido pantoténico": "Pantothenic acid (mg)",
+            "Calcio": "Calcium, Ca (mg)",
+            "Hierro": "Iron, Fe (mg)",
+            "Magnesio": "Magnesium, Mg (mg)",
+            "Zinc": "Zinc, Zn (mg)",
+            "Yodo": "Iodine, I (µg)",
+            "Vitamina K": "Vitamin K (phylloquinone) (µg)",
+            "Fósforo": "Phosphorus, P (mg)",
+            "Flúor": "Fluoride, F (mg)",
+            "Cobre": "Copper, Cu (mg)",
+            "Selenio": "Selenium, Se (µg)",
+            "Molibdeno": "Molybdenum, Mo (µg)",
+            "Cromo": "Chromium, Cr (µg)",
+            "Manganeso": "Manganese, Mn (mg)",
+            "Colina": "Choline, total (mg)",
         }
         self.label_no_significant_thresholds = {
             "Energia": {"unit": "kcal", "max": 4.0, "kj_max": 17.0},
@@ -149,6 +275,8 @@ class MainWindow(QMainWindow):
             "Sodio": {"unit": "mg", "max": 5.0},
         }
         self.label_no_significant_display_map = {"Energia": "Valor energético"}
+        self.label_additional_catalog = self._build_additional_nutrients()
+        self.label_additional_refs = {item["name"]: item.get("ref", "") for item in self.label_additional_catalog}
 
         self._build_ui()
 
@@ -475,7 +603,7 @@ class MainWindow(QMainWindow):
         self.breakdown_carb_checkbox = QCheckBox("Desglose Carbohidratos")
         self.breakdown_carb_checkbox.setEnabled(False)
         self.breakdown_fat_checkbox = QCheckBox("Desglose Grasas")
-        self.breakdown_fat_checkbox.setEnabled(False)
+        self.breakdown_fat_checkbox.setEnabled(True)
         left_form.addWidget(self.breakdown_carb_checkbox, 4, 0, 1, 2)
         left_form.addWidget(self.breakdown_fat_checkbox, 4, 2)
 
@@ -487,10 +615,11 @@ class MainWindow(QMainWindow):
         left_form.addWidget(self.no_significant_display, 5, 1, 1, 2)
 
         left_form.addWidget(QLabel("Nutrientes Adicionales:"), 6, 0)
-        self.additional_nutrients_input = QLineEdit()
-        self.additional_nutrients_input.setPlaceholderText("Seleccione Nutrientes")
-        self.additional_nutrients_input.setEnabled(False)
-        left_form.addWidget(self.additional_nutrients_input, 6, 1, 1, 2)
+        self.additional_nutrients_display = QLineEdit()
+        self.additional_nutrients_display.setReadOnly(True)
+        self.additional_nutrients_display.setPlaceholderText("Seleccione nutrientes adicionales")
+        self.additional_nutrients_display.setCursor(Qt.PointingHandCursor)
+        left_form.addWidget(self.additional_nutrients_display, 6, 1, 1, 2)
 
         self.label_placeholder_note = QLabel(
             "Espacio reservado para botones de desglose y futuras acciones."
@@ -512,6 +641,10 @@ class MainWindow(QMainWindow):
 
         self.label_table_widget = QTableWidget()
         self._setup_label_table_widget()
+        # Link delegate with header span role
+        delegate = self.label_table_widget.itemDelegate()
+        if isinstance(delegate, LabelTableDelegate):
+            delegate.header_span_role = self._header_span_role
         right_layout.addWidget(self.label_table_widget)
 
         export_layout = QHBoxLayout()
@@ -553,6 +686,7 @@ class MainWindow(QMainWindow):
         self.custom_household_unit_input.textChanged.connect(
             self._on_household_unit_changed
         )
+        self.breakdown_fat_checkbox.toggled.connect(self._on_breakdown_fat_toggled)
         self.export_label_no_bg_button.clicked.connect(
             lambda: self._on_export_label_table_clicked(with_background=False)
         )
@@ -564,6 +698,7 @@ class MainWindow(QMainWindow):
         )
         self._attach_copy_shortcut(self.label_table_widget)
         self.no_significant_display.installEventFilter(self)
+        self.additional_nutrients_display.installEventFilter(self)
 
         self._update_capacity_label()
         self._auto_fill_household_measure()
@@ -625,11 +760,15 @@ class MainWindow(QMainWindow):
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.setSelectionMode(QTableWidget.ExtendedSelection)
         table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         table.horizontalHeader().setVisible(False)
         table.verticalHeader().setVisible(False)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         table.setMinimumHeight(360)
         table.setStyleSheet("gridline-color: #c0c0c0;")
+        table.setShowGrid(False)
+        table.setWordWrap(True)
+        table.setItemDelegate(LabelTableDelegate(self._fat_row_role, table))
 
     def _build_base_label_nutrients(self) -> list[dict[str, Any]]:
         return [
@@ -661,6 +800,7 @@ class MainWindow(QMainWindow):
                 "amount": 0.0,
                 "vd": 27.0,
                 "vd_reference": 15.0,
+                "fat_parent": True,
             },
             {
                 "name": "Grasas saturadas",
@@ -668,6 +808,25 @@ class MainWindow(QMainWindow):
                 "amount": 0.0,
                 "vd": 23.0,
                 "vd_reference": 5.0,
+                "fat_child": True,
+            },
+            {
+                "name": "Grasas monoinsaturadas",
+                "unit": "g",
+                "amount": 0.0,
+                "vd": None,
+                "vd_reference": 0.0,
+                "fat_child": True,
+                "fat_breakdown_only": True,
+            },
+            {
+                "name": "Grasas poliinsaturadas",
+                "unit": "g",
+                "amount": 0.0,
+                "vd": None,
+                "vd_reference": 0.0,
+                "fat_child": True,
+                "fat_breakdown_only": True,
             },
             {
                 "name": "Grasas trans",
@@ -675,6 +834,16 @@ class MainWindow(QMainWindow):
                 "amount": 0.0,
                 "vd": None,
                 "vd_reference": 0.0,
+                "fat_child": True,
+            },
+            {
+                "name": "Colesterol",
+                "unit": "mg",
+                "amount": 0.0,
+                "vd": None,
+                "vd_reference": 0.0,
+                "fat_child": True,
+                "fat_breakdown_only": True,
             },
             {
                 "name": "Fibra alimentaria",
@@ -690,6 +859,36 @@ class MainWindow(QMainWindow):
                 "vd": 5.0,
                 "vd_reference": 120.0,
             },
+        ]
+
+    def _build_additional_nutrients(self) -> list[dict[str, Any]]:
+        return [
+            {"name": "Vitamina A", "unit": "µg", "vd_reference": 600.0, "ref": "(2)"},
+            {"name": "Vitamina D", "unit": "µg", "vd_reference": 5.0, "ref": "(2)"},
+            {"name": "Vitamina C", "unit": "mg", "vd_reference": 45.0, "ref": "(2)"},
+            {"name": "Vitamina E", "unit": "mg", "vd_reference": 10.0, "ref": "(2)"},
+            {"name": "Tiamina", "unit": "mg", "vd_reference": 1.2, "ref": "(2)"},
+            {"name": "Riboflavina", "unit": "mg", "vd_reference": 1.3, "ref": "(2)"},
+            {"name": "Niacina", "unit": "mg", "vd_reference": 16.0, "ref": "(2)"},
+            {"name": "Vitamina B6", "unit": "mg", "vd_reference": 1.3, "ref": "(2)"},
+            {"name": "Acido fólico", "unit": "µg", "vd_reference": 400.0, "ref": "(2)"},
+            {"name": "Vitaminia B12", "unit": "µg", "vd_reference": 2.4, "ref": "(2)"},
+            {"name": "Biotina", "unit": "µg", "vd_reference": 30.0, "ref": "(2)"},
+            {"name": "Acido pantoténico", "unit": "mg", "vd_reference": 5.0, "ref": "(2)"},
+            {"name": "Calcio", "unit": "mg", "vd_reference": 1000.0, "ref": "(2)"},
+            {"name": "Hierro", "unit": "mg", "vd_reference": 14.0, "ref": "(2) (*)"},
+            {"name": "Magnesio", "unit": "mg", "vd_reference": 260.0, "ref": "(2)"},
+            {"name": "Zinc", "unit": "mg", "vd_reference": 7.0, "ref": "(2) (**)"},
+            {"name": "Yodo", "unit": "µg", "vd_reference": 130.0, "ref": "(2)"},
+            {"name": "Vitamina K", "unit": "µg", "vd_reference": 65.0, "ref": "(2)"},
+            {"name": "Fósforo", "unit": "mg", "vd_reference": 700.0, "ref": "(3)"},
+            {"name": "Flúor", "unit": "mg", "vd_reference": 4.0, "ref": "(3)"},
+            {"name": "Cobre", "unit": "mg", "vd_reference": 0.9, "ref": "(3)"},
+            {"name": "Selenio", "unit": "µg", "vd_reference": 34.0, "ref": "(2)"},
+            {"name": "Molibdeno", "unit": "µg", "vd_reference": 45.0, "ref": "(3)"},
+            {"name": "Cromo", "unit": "µg", "vd_reference": 35.0, "ref": "(3)"},
+            {"name": "Manganeso", "unit": "mg", "vd_reference": 2.3, "ref": "(3)"},
+            {"name": "Colina", "unit": "mg", "vd_reference": 550.0, "ref": "(3)"},
         ]
 
     def _build_household_measure_options(self) -> list[tuple[str, int | None]]:
@@ -717,6 +916,20 @@ class MainWindow(QMainWindow):
             return f"{remainder}/{frac.denominator}"
         return f"{whole} {remainder}/{frac.denominator}"
 
+    def _fraction_from_ratio(self, ratio: float) -> str:
+        percent = ratio * 100.0
+        if percent <= 30:
+            return "1/4"
+        if percent <= 70:
+            return "1/2"
+        if percent <= 130:
+            return "1"
+        if percent <= 170:
+            return "1 1/2"
+        if percent <= 230:
+            return "2"
+        return self._format_fraction_amount(ratio)
+
     def _update_capacity_label(self) -> None:
         unit_name = self.household_unit_combo.currentText()
         capacity = self.household_capacity_map.get(unit_name)
@@ -739,7 +952,7 @@ class MainWindow(QMainWindow):
         if portion_value <= 0:
             return
         ratio = portion_value / float(capacity)
-        text = self._format_fraction_amount(ratio)
+        text = self._fraction_from_ratio(ratio)
         self._auto_updating_household_amount = True
         try:
             self.household_amount_input.setText(text or "")
@@ -770,6 +983,18 @@ class MainWindow(QMainWindow):
             return
         self._update_label_preview()
 
+    def _on_breakdown_fat_toggled(self, _: bool) -> None:
+        fat_names = {
+            "Grasas totales",
+            "Grasas saturadas",
+            "Grasas trans",
+            "Grasas monoinsaturadas",
+            "Grasas poliinsaturadas",
+            "Colesterol",
+        }
+        self.label_no_significant = [n for n in self.label_no_significant if n not in fat_names]
+        self._update_label_preview()
+
     def _current_household_unit_label(self) -> str:
         if self.household_unit_combo.currentText() == "Otro":
             custom = self.custom_household_unit_input.text().strip()
@@ -785,6 +1010,8 @@ class MainWindow(QMainWindow):
         return f"Porción {portion_value} {portion_unit} ({measure_display})"
 
     def _format_number_for_unit(self, value: float, unit: str) -> str:
+        if math.isclose(value, 0.0, abs_tol=1e-9):
+            return f"0 {unit}".strip()
         if unit == "mg":
             return f"{value:.0f} mg"
         if unit == "g":
@@ -797,41 +1024,58 @@ class MainWindow(QMainWindow):
             return f"{value:.1f} {unit}"
         return f"{value:.2f} {unit}"
 
+    def _format_additional_amount(self, value: float, unit: str) -> str:
+        unit = unit.lower()
+        if unit == "mg":
+            if math.isclose(value, 0.0, abs_tol=1e-9):
+                return "0 mg"
+            if value < 10:
+                return f"{value:.1f} mg"
+            return f"{value:.0f} mg"
+        if unit in ("µg", "ug"):
+            if math.isclose(value, 0.0, abs_tol=1e-9):
+                return "0 µg"
+            if value < 10:
+                return f"{value:.1f} µg"
+            return f"{value:.0f} µg"
+        return self._format_number_for_unit(value, unit)
+
     def _format_nutrient_amount(self, nutrient: Dict[str, Any], factor: float) -> str:
         if nutrient.get("type") == "energy":
             kcal_val = nutrient.get("kcal", 0.0) * factor
             kj_val = nutrient.get("kj", 0.0) * factor
-            kcal_text = f"{kcal_val:.0f}" if kcal_val >= 10 else f"{kcal_val:.1f}"
-            kj_text = f"{kj_val:.0f}" if kj_val >= 10 else f"{kj_val:.1f}"
+            kcal_text = f"{kcal_val:.0f}"
+            kj_text = f"{kj_val:.0f}"
             return f"{kcal_text} kcal = {kj_text} kJ"
         amount = nutrient.get("amount", 0.0) * factor
         unit = nutrient.get("unit", "")
         return self._format_number_for_unit(amount, unit)
 
     def _format_vd_value(self, nutrient: Dict[str, Any], factor: float, effective_amount: float | None = None) -> str:  # type: ignore[override]
-        if nutrient.get("vd") is None:
-            return "-"
+        vd_percent = nutrient.get("vd")
+        base_amount = nutrient.get("vd_reference", nutrient.get("amount", 0.0))
+        eff_amount = (
+            effective_amount if effective_amount is not None else nutrient.get("amount", 0.0)
+        )
         if nutrient.get("type") == "energy":
             base_amount = nutrient.get("vd_reference", nutrient.get("kcal", 0.0))
             eff_amount = effective_amount if effective_amount is not None else nutrient.get("kcal", 0.0)
-        else:
-            base_amount = nutrient.get("vd_reference", nutrient.get("amount", 0.0))
-            eff_amount = effective_amount if effective_amount is not None else nutrient.get("amount", 0.0)
+
         portion_amount = eff_amount * factor
-        if base_amount and base_amount > 0:
-            vd_val = nutrient.get("vd", 0.0) * (portion_amount / base_amount)
+        if vd_percent is None and base_amount and base_amount > 0:
+            vd_val = portion_amount * 100.0 / base_amount
+        elif vd_percent is not None and base_amount and base_amount > 0:
+            vd_val = vd_percent * (portion_amount / base_amount)
         else:
-            vd_val = nutrient.get("vd", 0.0) * factor
-        if vd_val >= 10:
-            return f"{vd_val:.0f}%"
-        return f"{vd_val:.1f}%"
+            return "-"
+        return f"{vd_val:.0f}%"
 
     def _format_manual_amount(self, nutrient: Dict[str, Any], manual_amount: float) -> str:
         if nutrient.get("type") == "energy":
             kcal_val = manual_amount
             kj_val = manual_amount * 4.184
-            kcal_text = f"{kcal_val:.0f}" if kcal_val >= 10 else f"{kcal_val:.1f}"
-            kj_text = f"{kj_val:.0f}" if kj_val >= 10 else f"{kj_val:.1f}"
+            kcal_text = f"{kcal_val:.0f}"
+            kj_text = f"{kj_val:.0f}"
             return f"{kcal_text} kcal = {kj_text} kJ"
         unit = nutrient.get("unit", "")
         return self._format_number_for_unit(manual_amount, unit)
@@ -856,6 +1100,21 @@ class MainWindow(QMainWindow):
             return float(clean)
         except ValueError:
             return None
+
+    def _active_label_nutrients(self) -> list[Dict[str, Any]]:
+        breakdown = self.breakdown_fat_checkbox.isChecked()
+        display: list[Dict[str, Any]] = []
+        for nutrient in self.label_base_nutrients:
+            name = nutrient.get("name", "")
+            if name in self.label_no_significant:
+                continue
+            if nutrient.get("fat_breakdown_only") and not breakdown:
+                continue
+            entry = dict(nutrient)
+            indent = 1 if (breakdown and entry.get("fat_child") and not entry.get("fat_parent")) else 0
+            entry["indent_level"] = indent
+            display.append(entry)
+        return display
 
     def _on_label_table_cell_double_clicked(self, row: int, _: int) -> None:
         if (
@@ -895,6 +1154,15 @@ class MainWindow(QMainWindow):
     def _eligible_no_significant(self) -> list[str]:
         eligible: list[str] = []
         factor = self._current_portion_factor()
+        fat_locked = self.breakdown_fat_checkbox.isChecked()
+        fat_names = {
+            "Grasas totales",
+            "Grasas saturadas",
+            "Grasas trans",
+            "Grasas monoinsaturadas",
+            "Grasas poliinsaturadas",
+            "Colesterol",
+        }
         def portion_amount(name: str) -> float:
             for nutrient in self.label_base_nutrients:
                 if nutrient.get("name") != name:
@@ -907,6 +1175,8 @@ class MainWindow(QMainWindow):
         for nutrient in self.label_base_nutrients:
             eff = self._effective_label_nutrient(nutrient)
             name = eff.get("name", nutrient.get("name", ""))
+            if fat_locked and name in fat_names:
+                continue
             thresh = self.label_no_significant_thresholds.get(name)
             if not thresh:
                 continue
@@ -949,6 +1219,16 @@ class MainWindow(QMainWindow):
             if has_options
             else "No hay nutrientes elegibles con la porción y valores actuales."
         )
+
+    def _update_additional_controls(self) -> None:
+        display = [
+            name
+            for name in self.label_additional_selected
+            if any(c["name"] == name for c in self.label_additional_catalog)
+        ]
+        self.label_additional_selected = display
+        display_names = [name for name in display]
+        self.additional_nutrients_display.setText(", ".join(display_names))
 
     def _on_select_no_significant_clicked(self) -> None:
         eligible = self._eligible_no_significant()
@@ -1005,10 +1285,71 @@ class MainWindow(QMainWindow):
             self.label_no_significant = self._sort_no_significant_list(selected)
             self._update_label_preview()
 
+    def _on_select_additional_clicked(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Nutrientes adicionales")
+        layout = QVBoxLayout(dialog)
+        list_widget = QListWidget(dialog)
+        prev_state_role = Qt.UserRole + 200
+        for nutrient in self.label_additional_catalog:
+            name = nutrient["name"]
+            ref = nutrient.get("ref", "")
+            display = f"{name} {ref}".strip()
+            item = QListWidgetItem(display)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked if name in self.label_additional_selected else Qt.Unchecked)
+            item.setData(Qt.UserRole, name)
+            item.setData(prev_state_role, item.checkState())
+            list_widget.addItem(item)
+        def _remember_state(item: QListWidgetItem) -> None:
+            item.setData(prev_state_role, item.checkState())
+        def _toggle_if_unchanged(item: QListWidgetItem) -> None:
+            prev = item.data(prev_state_role)
+            if prev is None:
+                prev = item.checkState()
+            if item.checkState() == prev:
+                item.setCheckState(
+                    Qt.Unchecked if item.checkState() == Qt.Checked else Qt.Checked
+                )
+            item.setData(prev_state_role, item.checkState())
+        list_widget.itemPressed.connect(_remember_state)
+        list_widget.itemClicked.connect(_toggle_if_unchanged)
+        layout.addWidget(list_widget)
+
+        notes = QLabel(
+            "(* ) 10% de biodisponibilidad\n"
+            "(**) Moderada biodisponibilidad\n\n"
+            "NOTAS:\n\n"
+            "(1) FAO/OMS -Diet, Nutrition and Prevention of Chronic Diseases. WHO Technical Report Series 916 Geneva, 2003.\n\n"
+            "(2) Human Vitamin and Mineral Requirements, Report 07ª Joint FAO/OMS Expert Consultation Bangkok, Thailand, 2001\n\n"
+            "(3) Dietary Reference Intake, Food and Nutrition Broad, Institute of Medicine. 1999-2001."
+        )
+        notes.setStyleSheet("color: gray; font-size: 10px;")
+        notes.setWordWrap(True)
+        layout.addWidget(notes)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=dialog)
+        layout.addWidget(buttons)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        if dialog.exec() == QDialog.Accepted:
+            selected: list[str] = []
+            for idx in range(list_widget.count()):
+                item = list_widget.item(idx)
+                if item.checkState() == Qt.Checked:
+                    selected.append(item.data(Qt.UserRole))
+            self.label_additional_selected = selected
+            self._update_label_preview()
+
     def eventFilter(self, obj: QObject, event) -> bool:
         if obj is self.no_significant_display and event.type() == QEvent.MouseButtonPress:
             if self.no_significant_display.isEnabled():
                 self._on_select_no_significant_clicked()
+            return True
+        if obj is self.additional_nutrients_display and event.type() == QEvent.MouseButtonPress:
+            if self.additional_nutrients_display.isEnabled():
+                self._on_select_additional_clicked()
             return True
         return super().eventFilter(obj, event)
 
@@ -1031,11 +1372,17 @@ class MainWindow(QMainWindow):
 
     def _parse_label_mapping(self, label_name: str) -> tuple[str, str]:
         mapped = self.label_nutrient_usda_map.get(label_name, "")
-        if "(" in mapped and mapped.endswith(")"):
-            base, unit_part = mapped.split("(", 1)
-            unit = unit_part.rstrip(")").strip()
-            return canonical_alias_name(base.strip()), canonical_unit(unit)
-        return canonical_alias_name(mapped.strip()), ""
+        mapped_clean = mapped.strip()
+        if not mapped_clean:
+            return "", ""
+        # Si el paréntesis final es una unidad, úsalo; de lo contrario, ignora paréntesis de aclaración.
+        m = re.search(r"\(([^()]*)\)\s*$", mapped_clean)
+        if m:
+            unit_candidate = m.group(1).strip()
+            if re.fullmatch(r"(?i)(mg|g|µg|ug|kcal|kj)", unit_candidate):
+                base = mapped_clean[: m.start()].strip()
+                return canonical_alias_name(base), canonical_unit(unit_candidate)
+        return canonical_alias_name(mapped_clean), ""
 
     def _find_total_entry(self, canonical_name: str, unit: str) -> Dict[str, Any] | None:
         if not self._last_totals:
@@ -1226,14 +1573,16 @@ class MainWindow(QMainWindow):
         factor = self._current_portion_factor()
         table.clearSpans()
 
-        display_nutrients: list[Dict[str, Any]] = []
-        for nutrient in self.label_base_nutrients:
-            if nutrient.get("name", "") in self.label_no_significant:
-                continue
-            display_nutrients.append(nutrient)
+        display_nutrients = self._active_label_nutrients()
         self._label_display_nutrients = display_nutrients
 
-        total_rows = 3 + len(display_nutrients) + (1 if self.label_no_significant else 0) + 1
+        total_rows = (
+            3
+            + len(display_nutrients)
+            + len(self.label_additional_selected)
+            + (1 if self.label_no_significant else 0)
+            + 1
+        )
         table.setRowCount(total_rows)
 
         title_item = QTableWidgetItem("INFORMACIÓN NUTRICIONAL")
@@ -1256,14 +1605,22 @@ class MainWindow(QMainWindow):
         header_item_vd = QTableWidgetItem("% VD(*)")
         header_item_vd.setFont(header_font)
         header_item_vd.setTextAlignment(Qt.AlignCenter)
+        header_placeholder = QTableWidgetItem("")
+        header_placeholder.setFlags(header_placeholder.flags() & ~Qt.ItemIsSelectable & ~Qt.ItemIsEditable)
+        header_placeholder.setData(self._header_span_role, True)
+        header_item_amount.setData(self._header_span_role, True)
+        header_item_vd.setData(self._header_span_role, True)
         table.setItem(2, 1, header_item_amount)
         table.setItem(2, 2, header_item_vd)
+        table.setItem(2, 0, header_placeholder)
 
         for idx, nutrient in enumerate(display_nutrients):
             row = 3 + idx
             effective = self._effective_label_nutrient(nutrient)
             name = effective.get("name", nutrient.get("name", ""))
-            name_item = QTableWidgetItem(name)
+            indent_level = nutrient.get("indent_level", 0)
+            display_name = ("    " * indent_level) + name
+            name_item = QTableWidgetItem(display_name)
 
             if effective.get("manual"):
                 manual_amount = self.label_manual_overrides.get(name, 0.0)
@@ -1277,6 +1634,8 @@ class MainWindow(QMainWindow):
                     else effective.get("amount", 0.0)
                 )
                 vd_text = self._format_vd_value(effective, factor, eff_amount)
+            if self.breakdown_fat_checkbox.isChecked() and nutrient.get("fat_parent"):
+                amount_text = f"{amount_text}, de las cuales"
 
             amount_item = QTableWidgetItem(amount_text)
             vd_item = QTableWidgetItem(vd_text)
@@ -1287,11 +1646,37 @@ class MainWindow(QMainWindow):
                 brush = QBrush(self.label_manual_hint_color)
                 for itm in (name_item, amount_item, vd_item):
                     itm.setBackground(brush)
+            is_fat_child_row = bool(
+                self.breakdown_fat_checkbox.isChecked()
+                and nutrient.get("fat_child")
+                and not nutrient.get("fat_parent")
+            )
+            for itm in (name_item, amount_item, vd_item):
+                itm.setData(self._fat_row_role, is_fat_child_row)
             table.setItem(row, 0, name_item)
             table.setItem(row, 1, amount_item)
             table.setItem(row, 2, vd_item)
 
-        note_row = 3 + len(display_nutrients)
+        additional_rows_start = 3 + len(display_nutrients)
+        for add_idx, add_name in enumerate(self.label_additional_selected):
+            nutrient = next((n for n in self.label_additional_catalog if n["name"] == add_name), None)
+            if not nutrient:
+                continue
+            effective = self._effective_label_nutrient(nutrient)
+            row = additional_rows_start + add_idx
+            name_item = QTableWidgetItem(add_name)
+            amount_portion = (effective.get("amount", 0.0) or 0.0) * factor
+            amount_item = QTableWidgetItem(self._format_additional_amount(amount_portion, nutrient.get("unit", "")))
+            eff_amount = effective.get("amount", 0.0) or 0.0
+            vd_item = QTableWidgetItem(self._format_vd_value(effective, factor, eff_amount))
+            name_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            amount_item.setTextAlignment(Qt.AlignCenter)
+            vd_item.setTextAlignment(Qt.AlignCenter)
+            table.setItem(row, 0, name_item)
+            table.setItem(row, 1, amount_item)
+            table.setItem(row, 2, vd_item)
+
+        note_row = 3 + len(display_nutrients) + len(self.label_additional_selected)
         if self.label_no_significant:
             names = [
                 self.label_no_significant_display_map.get(name, name)
@@ -1319,15 +1704,27 @@ class MainWindow(QMainWindow):
         table.setSpan(1, 0, 1, 3)
         table.setSpan(footer_row, 0, 1, 3)
         self.label_table_footer_row = footer_row
-        table.resizeRowsToContents()
+        # Fix height for single-line rows (all menos notas/final), allow wrapping only on notes/footer.
+        base_height = table.fontMetrics().height() + 6
+        wrap_rows = {footer_row}
+        if self.label_no_significant:
+            wrap_rows.add(note_row)
+        for r in range(table.rowCount()):
+            if r in wrap_rows:
+                table.resizeRowToContents(r)
+            else:
+                table.setRowHeight(r, base_height)
 
     def _update_linear_preview(self) -> None:
         factor = self._current_portion_factor()
         portion_desc = self._portion_description_for_table()
+        display_nutrients = self._active_label_nutrients()
         parts: list[str] = []
-        for nutrient in self.label_base_nutrients:
-            if nutrient.get("name", "") in self.label_no_significant:
-                continue
+        fat_children: list[str] = []
+        fat_parent_text = None
+        fat_parent_index = None
+
+        for nutrient in display_nutrients:
             effective = self._effective_label_nutrient(nutrient)
             if effective.get("manual"):
                 manual_amount = self.label_manual_overrides.get(
@@ -1344,7 +1741,41 @@ class MainWindow(QMainWindow):
                 )
                 vd = self._format_vd_value(effective, factor, eff_amount)
             vd_suffix = "" if vd in ("", "-") else f" ({vd} VD*)"
-            parts.append(f"{nutrient.get('name', '')} {amount}{vd_suffix}")
+            line_text = f"{nutrient.get('name', '')} {amount}{vd_suffix}"
+
+            if (
+                self.breakdown_fat_checkbox.isChecked()
+                and nutrient.get("fat_child")
+                and not nutrient.get("fat_parent")
+            ):
+                fat_children.append(line_text)
+                continue
+
+            if self.breakdown_fat_checkbox.isChecked() and nutrient.get("fat_parent"):
+                fat_parent_text = line_text
+                fat_parent_index = len(parts)
+                continue
+
+            parts.append(line_text)
+
+        if self.breakdown_fat_checkbox.isChecked() and fat_parent_text:
+            fat_block = fat_parent_text
+            if fat_children:
+                fat_block = f"{fat_block}, de los cuales: " + ", ".join(fat_children)
+            insert_idx = fat_parent_index if fat_parent_index is not None else len(parts)
+            parts.insert(insert_idx, fat_block)
+
+        for add_name in self.label_additional_selected:
+            nutrient = next((n for n in self.label_additional_catalog if n["name"] == add_name), None)
+            if not nutrient:
+                continue
+            effective = self._effective_label_nutrient(nutrient)
+            amount_portion = (effective.get("amount", 0.0) or 0.0) * factor
+            amount = self._format_additional_amount(amount_portion, nutrient.get("unit", ""))
+            eff_amount = effective.get("amount", 0.0) or 0.0
+            vd = self._format_vd_value(effective, factor, eff_amount)
+            vd_suffix = "" if vd in ("", "-") else f" ({vd} VD*)"
+            parts.append(f"{add_name} {amount}{vd_suffix}")
 
         note_text = ""
         if self.label_no_significant:
@@ -1360,10 +1791,135 @@ class MainWindow(QMainWindow):
             + "; ".join(parts)
             + ";"
             + note_text
-            + " % Valores Diarios con base a una dieta de 2000 kcal u 8400 kJ. "
+            + " (*) % Valores Diarios con base a una dieta de 2.000 kcal u 8.400 kJ. "
             "Sus valores diarios pueden ser mayores o menores dependiendo de sus necesidades energéticas."
         )
         self.linear_format_preview.setPlainText(base_text)
+
+    def _render_label_pixmap(self, with_background: bool) -> QPixmap | None:
+        table = self.label_table_widget
+        table.resizeRowsToContents()
+
+        header = table.horizontalHeader()
+        content_width = header.length()
+        if content_width <= 0:
+            content_width = sum(table.columnWidth(c) for c in range(table.columnCount()))
+
+        v_header = table.verticalHeader()
+        content_height = v_header.length()
+        if content_height <= 0:
+            content_height = sum(table.rowHeight(r) for r in range(table.rowCount()))
+
+        padding = 2
+        content_width += table.frameWidth() * 2
+        content_height += table.frameWidth() * 2
+        export_width = content_width + padding * 2
+        export_height = content_height + padding * 2
+
+        if content_width <= 0 or content_height <= 0:
+            return None
+
+        original_size = table.size()
+        original_style = table.styleSheet()
+        original_palette = table.palette()
+        original_autofill = table.autoFillBackground()
+        original_h_policy = table.horizontalScrollBarPolicy()
+        original_v_policy = table.verticalScrollBarPolicy()
+        original_table_attr = table.testAttribute(Qt.WA_TranslucentBackground)
+        original_viewport_attr = table.viewport().testAttribute(Qt.WA_TranslucentBackground)
+
+        sel_model = table.selectionModel()
+        selected_indexes = list(sel_model.selectedIndexes()) if sel_model else []
+        table.clearSelection()
+
+        cleared_backgrounds: list[tuple[int, int, QBrush]] = []
+        for r in range(table.rowCount()):
+            for c in range(table.columnCount()):
+                item = table.item(r, c)
+                if not item:
+                    continue
+                bg = item.background()
+                if bg.style() != Qt.NoBrush:
+                    cleared_backgrounds.append((r, c, bg))
+                    item.setBackground(QBrush(Qt.transparent))
+
+        try:
+            table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            table.setAttribute(Qt.WA_TranslucentBackground, True)
+            table.viewport().setAttribute(Qt.WA_TranslucentBackground, True)
+
+            pal = QPalette(table.palette())
+            if with_background:
+                pal.setColor(QPalette.Base, Qt.white)
+                pal.setColor(QPalette.Window, Qt.white)
+                fill_color = QColor(Qt.white)
+                grid_color = "rgba(0,0,0,90)"
+            else:
+                # Pintamos sobre blanco y luego retiramos el fondo para lograr transparencia real
+                white_bg = QColor(Qt.white)
+                pal.setColor(QPalette.Base, white_bg)
+                pal.setColor(QPalette.Window, white_bg)
+                fill_color = white_bg
+                grid_color = "rgba(0,0,0,70)"
+
+            table.setAutoFillBackground(False)
+            table.setPalette(pal)
+            table.setStyleSheet(
+                f"{original_style} "
+                f"QTableWidget {{ background-color: transparent; gridline-color: {grid_color}; }} "
+                "QTableWidget::item { background-color: transparent; } "
+            )
+
+            table.resize(content_width, content_height)
+
+            image = QImage(export_width, export_height, QImage.Format_ARGB32)
+            image.fill(fill_color)
+
+            painter = QPainter(image)
+            table.render(painter, QPoint(padding, padding))
+            painter.end()
+            if not with_background:
+                image = self._remove_image_background(image, tolerance=6)
+            return QPixmap.fromImage(image)
+        finally:
+            table.resize(original_size)
+            table.setStyleSheet(original_style)
+            table.setPalette(original_palette)
+            table.setAutoFillBackground(original_autofill)
+            table.setHorizontalScrollBarPolicy(original_h_policy)
+            table.setVerticalScrollBarPolicy(original_v_policy)
+            table.setAttribute(Qt.WA_TranslucentBackground, original_table_attr)
+            table.viewport().setAttribute(Qt.WA_TranslucentBackground, original_viewport_attr)
+            for r, c, bg in cleared_backgrounds:
+                item = table.item(r, c)
+                if item:
+                    item.setBackground(bg)
+            if sel_model:
+                for idx in selected_indexes:
+                    sel_model.select(idx, QItemSelectionModel.Select)
+
+    def _remove_image_background(self, image: QImage, tolerance: int = 6) -> QImage:
+        """
+        Convierte en transparente los píxeles que coinciden con el color de fondo dentro de una tolerancia.
+        Esto permite exportar la tabla sin fondo (solo texto y líneas).
+        """
+        bg = image.pixelColor(0, 0)
+        result = QImage(image)
+        width = result.width()
+        height = result.height()
+
+        for y in range(height):
+            for x in range(width):
+                c = result.pixelColor(x, y)
+                if (
+                    abs(c.red() - bg.red()) <= tolerance
+                    and abs(c.green() - bg.green()) <= tolerance
+                    and abs(c.blue() - bg.blue()) <= tolerance
+                ):
+                    c.setAlpha(0)
+                    result.setPixelColor(x, y, c)
+        return result
 
     def _update_label_preview(self, force_recalc_totals: bool = False) -> None:
         if QThread.currentThread() is not self.thread():
@@ -1376,13 +1932,31 @@ class MainWindow(QMainWindow):
         self._update_linear_preview()
 
     def _on_export_label_table_clicked(self, with_background: bool) -> None:
-        fondo_text = "con fondo" if with_background else "sin fondo"
-        QMessageBox.information(
-            self,
-            "Exportar tabla",
-            f"La exportación a PNG ({fondo_text}) quedará disponible en el siguiente paso. "
-            "Por ahora se preparó el diseño base solicitado.",
+        default_name = "etiqueta_con_fondo.png" if with_background else "etiqueta_sin_fondo.png"
+        initial_path = (
+            str(Path(self.last_path or "").with_name(default_name)) if self.last_path else default_name
         )
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Guardar tabla como PNG",
+            initial_path,
+            f"PNG (*.png);;Todos los archivos (*)",
+        )
+        if not path:
+            return
+
+        pixmap = self._render_label_pixmap(with_background)
+        if pixmap is None:
+            QMessageBox.warning(self, "Error", "No se pudo generar la imagen.")
+            return
+        if not path.lower().endswith(".png"):
+            path += ".png"
+        if pixmap.save(path, "PNG"):
+            self.last_path = Path(path).parent
+            self._save_last_path(self.last_path)
+            QMessageBox.information(self, "Exportado", f"Tabla guardada en:\n{path}")
+        else:
+            QMessageBox.warning(self, "Error", "No se pudo guardar la imagen.")
 
     def _attach_copy_shortcut(self, table: QTableWidget) -> None:
         """Attach Ctrl+C to copy the current selection of a table as TSV to clipboard."""
