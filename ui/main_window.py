@@ -3753,52 +3753,69 @@ class MainWindow(QMainWindow):
 
     def _calculate_totals(self) -> Dict[str, Dict[str, Any]]:
         """
-        Sum nutrients across all ingredients and normalize to 100 g de producto final.
-        Assumes nutrient amounts from the API are per 100 g of ingredient.
-        Groups by nutrient id/number to merge Foundation + SR Legacy entries.
+        Calculate nutrient totals using Clean Architecture presenter.
+        During migration: syncs presenter state from UI state before calculating.
         """
         logging.debug(f"_calculate_totals start items={len(self.formulation_items)}")
-        self._ensure_normalized_items()
-        totals: Dict[str, Dict[str, Any]] = {}
-        total_weight = self._total_weight()
-        for item in self.formulation_items:
-            qty = item.get("amount_g", 0) or 0
-            for nutrient in self._sort_nutrients_for_display(item.get("nutrients", [])):
-                amount = nutrient.get("amount")
-                if amount is None:
-                    continue
-                nut = nutrient.get("nutrient") or {}
-                header_key, canonical_name, canonical_unit = self._header_key(nut)
-                if not header_key:
-                    continue
-                entry = totals.setdefault(
-                    header_key,
-                    {
-                        "name": canonical_name or nut.get("name", ""),
-                        "unit": canonical_unit or "",
-                        "amount": 0.0,
-                        "order": self._nutrient_order(nut, len(totals)),
-                    },
-                )
-                if canonical_name and not entry["name"]:
-                    entry["name"] = canonical_name
-                if canonical_unit and not entry["unit"]:
-                    entry["unit"] = canonical_unit
-                inferred_unit = self._infer_unit(nut)
-                if inferred_unit and not entry["unit"]:
-                    entry["unit"] = inferred_unit
-                entry["order"] = min(
-                    entry.get("order", float("inf")),
-                    self._nutrient_order(nut, len(totals)),
-                )
-                entry["amount"] += amount * qty / 100.0
 
-        if total_weight > 0:
-            factor = 100.0 / total_weight
-            for entry in totals.values():
-                entry["amount"] *= factor
-        logging.debug(f"_calculate_totals done nutrients={len(totals)} total_weight={total_weight}")
-        return totals
+        # Sync presenter's formulation from UI state (during migration period)
+        try:
+            if self.formulation_items:
+                formulation_name = getattr(self, 'formulation_name', 'Current Formulation')
+                self.formulation_presenter.load_from_ui_items(
+                    self.formulation_items,
+                    formulation_name
+                )
+
+            # Use presenter's calculate_totals (Clean Architecture)
+            totals = self.formulation_presenter.calculate_totals()
+            logging.debug(f"_calculate_totals done (via presenter) nutrients={len(totals)}")
+            return totals
+
+        except Exception as e:
+            logging.error(f"Error calculating totals via presenter: {e}")
+            # Fallback to old implementation
+            self._ensure_normalized_items()
+            totals: Dict[str, Dict[str, Any]] = {}
+            total_weight = self._total_weight()
+            for item in self.formulation_items:
+                qty = item.get("amount_g", 0) or 0
+                for nutrient in self._sort_nutrients_for_display(item.get("nutrients", [])):
+                    amount = nutrient.get("amount")
+                    if amount is None:
+                        continue
+                    nut = nutrient.get("nutrient") or {}
+                    header_key, canonical_name, canonical_unit = self._header_key(nut)
+                    if not header_key:
+                        continue
+                    entry = totals.setdefault(
+                        header_key,
+                        {
+                            "name": canonical_name or nut.get("name", ""),
+                            "unit": canonical_unit or "",
+                            "amount": 0.0,
+                            "order": self._nutrient_order(nut, len(totals)),
+                        },
+                    )
+                    if canonical_name and not entry["name"]:
+                        entry["name"] = canonical_name
+                    if canonical_unit and not entry["unit"]:
+                        entry["unit"] = canonical_unit
+                    inferred_unit = self._infer_unit(nut)
+                    if inferred_unit and not entry["unit"]:
+                        entry["unit"] = inferred_unit
+                    entry["order"] = min(
+                        entry.get("order", float("inf")),
+                        self._nutrient_order(nut, len(totals)),
+                    )
+                    entry["amount"] += amount * qty / 100.0
+
+            if total_weight > 0:
+                factor = 100.0 / total_weight
+                for entry in totals.values():
+                    entry["amount"] *= factor
+            logging.debug(f"_calculate_totals done (fallback) nutrients={len(totals)} total_weight={total_weight}")
+            return totals
 
     def _nutrient_key(self, nutrient: Dict[str, Any]) -> str:
         """
