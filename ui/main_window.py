@@ -4577,41 +4577,56 @@ class MainWindow(QMainWindow):
             f"_on_add_details_loaded fdc_id={details.get('fdcId', '?')} "
             f"mode={mode} value={value}"
         )
-        nutrients = normalize_nutrients(details.get("foodNutrients", []) or [], details.get("dataType"))
-        self._update_reference_from_details(details)
-        desc = details.get("description", "") or ""
-        brand = details.get("brandOwner", "") or ""
-        data_type = details.get("dataType", "") or ""
+        # Use presenter to add ingredient to domain formulation
+        # (AddWorker already fetched details, presenter will use cached data)
         fdc_id = details.get("fdcId", "")
+        amount_g = value if mode == "g" else 100.0  # Use 100g as base for percent mode
 
-        new_item = {
-            "fdc_id": fdc_id,
-            "description": desc,
-            "brand": brand,
-            "data_type": data_type,
-            "amount_g": value if mode == "g" else 0.0,
-            "nutrients": nutrients,
-            "locked": False,
-        }
-        self.formulation_items.append(new_item)
+        try:
+            ui_item = self.formulation_presenter.add_ingredient(fdc_id, amount_g)
+        except Exception as e:
+            logging.error(f"Error adding ingredient via presenter: {e}")
+            # Fallback to old method
+            nutrients = normalize_nutrients(details.get("foodNutrients", []) or [], details.get("dataType"))
+            self._update_reference_from_details(details)
+            desc = details.get("description", "") or ""
+            brand = details.get("brandOwner", "") or ""
+            data_type = details.get("dataType", "") or ""
+            ui_item = {
+                "fdc_id": fdc_id,
+                "description": desc,
+                "brand": brand,
+                "data_type": data_type,
+                "amount_g": value if mode == "g" else 0.0,
+                "nutrients": nutrients,
+                "locked": False,
+            }
+
+        # Keep UI state in sync during migration period
+        self.formulation_items.append(ui_item)
+        self._update_reference_from_details(details)
 
         if mode == "percent":
             success = self._apply_percent_edit(len(self.formulation_items) - 1, value)
             if not success:
                 self.formulation_items.pop()
+                # Also remove from presenter's formulation
+                self.formulation_presenter.remove_ingredient(
+                    self.formulation_presenter.get_ingredient_count() - 1
+                )
                 self.add_button.setEnabled(True)
                 return
 
-        self._populate_details_table(nutrients)
+        self._populate_details_table(ui_item.get("nutrients", []))
         self._refresh_formulation_views()
         self._select_preview_row(len(self.formulation_items) - 1)
         msg_value = (
-            self._format_amount_for_status(new_item.get("amount_g", 0.0))
+            self._format_amount_for_status(ui_item.get("amount_g", 0.0))
             if mode == "g"
             else f"{value:.2f} %"
         )
         self.status_label.setText(
-            f"Agregado {fdc_id} - {desc} ({msg_value})"
+            f"Agregado {fdc_id} - {ui_item.get('description', '')} ({msg_value})"
         )
         self.add_button.setEnabled(True)
         self._upgrade_item_to_full(len(self.formulation_items) - 1, int(fdc_id))
