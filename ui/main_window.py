@@ -69,6 +69,10 @@ from services.nutrient_normalizer import (
 )
 from ui.workers import ApiWorker, ImportWorker, AddWorker
 
+# Clean Architecture presenters
+from ui.presenters.formulation_presenter import FormulationPresenter
+from ui.presenters.search_presenter import SearchPresenter
+
 logging.basicConfig(
     filename="app_debug.log",
     level=logging.DEBUG,
@@ -218,6 +222,10 @@ class LabelTableDelegate(QStyledItemDelegate):
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
+
+        # Initialize Clean Architecture presenters
+        self.formulation_presenter = FormulationPresenter()
+        self.search_presenter = SearchPresenter()
 
         self.base_window_title = "Food Formulator - Proto"
         self.setWindowTitle(self.base_window_title)
