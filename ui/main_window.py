@@ -79,20 +79,55 @@ logging.basicConfig(
 class LabelTableDelegate(QStyledItemDelegate):
     """Custom grid painter to hide vertical separators for fat breakdown rows."""
 
-    def __init__(self, fat_row_role: int, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        fat_row_role: int,
+        parent: QWidget | None = None,
+        manual_role: int | None = None,
+        manual_color: QColor | None = None,
+    ) -> None:
         super().__init__(parent)
         self.fat_row_role = fat_row_role
         self.header_span_role = None
+        self.manual_role = manual_role
+        self.manual_color = manual_color or QColor(204, 255, 204)
+        self.manual_overlay = QColor(0, 0, 0, 50)
+        self.selection_fill_active = QColor(0, 0, 0, 22)
+        self.selection_fill_inactive = QColor(0, 0, 0, 12)
+        # Color fijo para la barrita de selección personalizada
+        self.handle_color = QColor("#1f6fbd")
         self.grid_color = QColor("#c0c0c0")
 
     def paint(self, painter: QPainter, option, index) -> None:  # type: ignore[override]
         is_fat_child = bool(index.data(self.fat_row_role))
         is_header_span = bool(self.header_span_role and index.data(self.header_span_role))
+        is_manual = bool(self.manual_role and index.data(self.manual_role))
+        is_selected = bool(option.state & QStyle.State_Selected)
+        is_active = bool(option.state & QStyle.State_Active)
+
+        # Base fill for manual values (under the text/content).
+        if is_manual:
+            painter.save()
+            painter.fillRect(option.rect, self.manual_color)
+            if is_selected:
+                painter.fillRect(option.rect, self.manual_overlay)
+            painter.restore()
+        elif is_selected:
+            painter.save()
+            painter.fillRect(option.rect, self.selection_fill_active if is_active else self.selection_fill_inactive)
+            painter.restore()
 
         # For fat-child name column, avoid elide and draw across the adjacent amount column.
         if (is_fat_child and index.column() == 0) or (is_header_span and index.column() == 1):
             opt = QStyleOptionViewItem(option)
             self.initStyleOption(opt, index)
+            opt.state &= ~(QStyle.State_HasFocus | QStyle.State_Selected)
+            opt.palette.setBrush(QPalette.Base, Qt.transparent)
+            opt.palette.setBrush(QPalette.Window, Qt.transparent)
+            opt.palette.setBrush(QPalette.AlternateBase, Qt.transparent)
+            opt.palette.setBrush(QPalette.Highlight, Qt.transparent)
+            opt.palette.setBrush(QPalette.HighlightedText, opt.palette.brush(QPalette.Text))
+            opt.backgroundBrush = QBrush(Qt.transparent)
             opt.text = ""
             opt.icon = QIcon()
             style = opt.widget.style() if opt.widget else QApplication.style()
@@ -126,7 +161,20 @@ class LabelTableDelegate(QStyledItemDelegate):
             painter.drawText(text_rect, align, str(index.data() or ""))
             painter.restore()
         else:
-            super().paint(painter, option, index)
+            # Camino normal sin super().paint para evitar que Qt re-inserte State_Selected
+            base_opt = QStyleOptionViewItem(option)
+            self.initStyleOption(base_opt, index)
+            # Quitar selección/foco para que Qt no pinte su highlight nativo
+            base_opt.state &= ~(QStyle.State_HasFocus | QStyle.State_Selected)
+            base_opt.palette.setBrush(QPalette.Base, Qt.transparent)
+            base_opt.palette.setBrush(QPalette.Window, Qt.transparent)
+            base_opt.palette.setBrush(QPalette.AlternateBase, Qt.transparent)
+            base_opt.palette.setBrush(QPalette.Highlight, Qt.transparent)
+            base_opt.palette.setBrush(QPalette.HighlightedText, base_opt.palette.brush(QPalette.Text))
+            base_opt.backgroundBrush = QBrush(Qt.transparent)
+            # Dibujar manualmente el item (lo que hace QStyledItemDelegate por dentro)
+            style = base_opt.widget.style() if base_opt.widget else QApplication.style()
+            style.drawControl(QStyle.CE_ItemViewItem, base_opt, painter, base_opt.widget)
 
         painter.save()
         pen = QPen(self.grid_color)
@@ -154,6 +202,18 @@ class LabelTableDelegate(QStyledItemDelegate):
 
         painter.restore()
 
+        # Draw selection bar on all selected cells (our custom handle)
+        if is_selected:
+            painter.save()
+            self._draw_selection_handles(painter, option.rect, option.palette, index)
+            painter.restore()
+
+    def _draw_selection_handles(self, painter: QPainter, rect, palette: QPalette, index) -> None:
+        """Draw thin selection marker on the left edge of the cell."""
+        color = self.handle_color
+        width = 2
+        painter.fillRect(rect.left(), rect.top(), width, rect.height(), color)
+
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
@@ -171,6 +231,7 @@ class MainWindow(QMainWindow):
         self._prefetching_fdc_ids: set[int] = set()
         self._fat_row_role = Qt.UserRole + 501
         self._header_span_role = Qt.UserRole + 502
+        self._manual_role = Qt.UserRole + 503
         self.formulation_items: List[Dict] = []
         self.quantity_mode: str = "g"
         self.amount_g_column_index = 2
@@ -649,6 +710,8 @@ class MainWindow(QMainWindow):
         delegate = self.label_table_widget.itemDelegate()
         if isinstance(delegate, LabelTableDelegate):
             delegate.header_span_role = self._header_span_role
+            delegate.manual_role = self._manual_role
+            delegate.manual_color = self.label_manual_hint_color
         right_layout.addWidget(self.label_table_widget)
 
         export_layout = QHBoxLayout()
@@ -774,11 +837,17 @@ class MainWindow(QMainWindow):
         table.viewport().setAutoFillBackground(False)
         table.setAttribute(Qt.WA_TranslucentBackground, True)
         table.viewport().setAttribute(Qt.WA_TranslucentBackground, True)
+
         palette = table.palette()
         palette.setColor(QPalette.Base, Qt.transparent)
         palette.setColor(QPalette.Window, Qt.transparent)
         palette.setColor(QPalette.AlternateBase, Qt.transparent)
+        # Highlight nativo -> transparente, mantiene color de texto
+        text_color = palette.color(QPalette.Text)
+        palette.setColor(QPalette.Highlight, Qt.transparent)
+        palette.setColor(QPalette.HighlightedText, text_color)
         table.setPalette(palette)
+        table.viewport().setPalette(palette)
         table.setStyleSheet(
             """
             QTableWidget {
@@ -786,13 +855,19 @@ class MainWindow(QMainWindow):
                 background-color: transparent;
                 alternate-background-color: transparent;
             }
-            QTableWidget::item:selected {
-                background-color: rgba(0, 0, 0, 30);
-                color: #000;
-            }
+            /* Desactiva el highlight nativo (fondo/borde) para que solo se use el delegado */
+            QTableWidget::item:selected,
             QTableWidget::item:selected:!active {
-                background-color: rgba(0, 0, 0, 20);
+                selection-background-color: transparent;
+                selection-color: #000;
+                background-color: transparent;
                 color: #000;
+                border: none;
+                outline: none;
+            }
+            QTableWidget::item:focus {
+                border: none;
+                outline: none;
             }
             QHeaderView::section {
                 background-color: transparent;
@@ -1766,12 +1841,15 @@ class MainWindow(QMainWindow):
                 brush = QBrush(self.label_manual_hint_color)
                 for itm in (name_item, amount_item, vd_item):
                     itm.setBackground(brush)
+                    itm.setData(self._manual_role, True)
             is_breakdown_child_row = bool(
                 (self.breakdown_fat_checkbox.isChecked() and nutrient.get("fat_child") and not nutrient.get("fat_parent"))
                 or (self.breakdown_carb_checkbox.isChecked() and nutrient.get("carb_child") and not nutrient.get("carb_parent"))
             )
             for itm in (name_item, amount_item, vd_item):
                 itm.setData(self._fat_row_role, is_breakdown_child_row)
+                if not itm.data(self._manual_role):
+                    itm.setData(self._manual_role, False)
             table.setItem(row, 0, name_item)
             table.setItem(row, 1, amount_item)
             table.setItem(row, 2, vd_item)
@@ -1791,6 +1869,10 @@ class MainWindow(QMainWindow):
             name_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             amount_item.setTextAlignment(Qt.AlignCenter)
             vd_item.setTextAlignment(Qt.AlignCenter)
+            for itm in (name_item, amount_item, vd_item):
+                itm.setData(self._manual_role, bool(effective.get("manual")))
+                if effective.get("manual"):
+                    itm.setBackground(QBrush(self.label_manual_hint_color))
             table.setItem(row, 0, name_item)
             table.setItem(row, 1, amount_item)
             table.setItem(row, 2, vd_item)
@@ -1945,7 +2027,6 @@ class MainWindow(QMainWindow):
 
     def _render_label_pixmap(self, with_background: bool) -> QPixmap | None:
         table = self.label_table_widget
-        table.resizeRowsToContents()
 
         header = table.horizontalHeader()
         content_width = header.length()
