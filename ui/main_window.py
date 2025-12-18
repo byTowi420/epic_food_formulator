@@ -2375,10 +2375,12 @@ class MainWindow(QMainWindow):
         all_results: List[Dict[str, Any]] = []
         page = 1
         while page <= self.search_max_pages:
-            batch = search_foods(
-                query,
+            # Use presenter instead of direct API call
+            include_branded = data_types is None
+            batch = self.search_presenter.search(
+                query=query,
                 page_size=self.search_fetch_page_size,
-                data_types=data_types,
+                include_branded=include_branded,
                 page_number=page,
             )
             if not batch:
