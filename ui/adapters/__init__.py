@@ -1,0 +1,1 @@
+"""UI adapters package."""
