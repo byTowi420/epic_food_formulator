@@ -6,6 +6,8 @@ Generates nutrition facts label data in FDA/NLEA format.
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
+from services.nutrient_normalizer import canonical_alias_name
+
 
 class LabelRow:
     """Represents a row in the nutrition facts label."""
@@ -254,12 +256,23 @@ class LabelGenerator:
         nutrients: Dict[str, Decimal],
         possible_names: List[str],
     ) -> Optional[Decimal]:
-        """Get nutrient value trying multiple possible names (case-insensitive)."""
+        """Get nutrient value trying multiple possible names (normalized and case-insensitive)."""
+        # Normalize all search names
+        normalized_search_names = [canonical_alias_name(name).lower() for name in possible_names]
+
+        # Also try exact case-insensitive match for backwards compatibility
         for name in possible_names:
             name_lower = name.lower()
             for key, value in nutrients.items():
                 if key.lower() == name_lower:
                     return value
+
+        # Try normalized match
+        for key, value in nutrients.items():
+            normalized_key = canonical_alias_name(key).lower()
+            if normalized_key in normalized_search_names:
+                return value
+
         return None
 
     def _format_amount(self, amount: Decimal, unit: str) -> str:

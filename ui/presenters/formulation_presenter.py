@@ -135,7 +135,7 @@ class FormulationPresenter:
             Dict of nutrient name -> display dict
         """
         totals = self._container.calculate_totals.execute(self._formulation)
-        return NutrientDisplayMapper.totals_to_display_dict(totals)
+        return NutrientDisplayMapper.totals_to_display_dict(totals, self._formulation)
 
     def get_label_rows(self, serving_size_g: float = 100.0) -> List[LabelRow]:
         """Get FDA nutrition label rows.

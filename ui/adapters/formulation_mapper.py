@@ -146,22 +146,31 @@ class NutrientDisplayMapper:
     @staticmethod
     def totals_to_display_dict(
         totals: Dict[str, Decimal],
+        formulation: Formulation | None = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Convert nutrient totals to UI display format.
 
         Args:
             totals: Dict of nutrient name -> amount (Decimal)
+            formulation: Optional formulation to extract units from
 
         Returns:
             Dict compatible with UI nutrient tables
         """
-        result = {}
+        # Build map of nutrient name -> unit from formulation
+        nutrient_units: Dict[str, str] = {}
+        if formulation:
+            for ingredient in formulation.ingredients:
+                for nutrient in ingredient.food.nutrients:
+                    if nutrient.name not in nutrient_units:
+                        nutrient_units[nutrient.name] = nutrient.unit
 
+        result = {}
         for name, amount in totals.items():
             result[name] = {
                 "name": name,
                 "amount": float(amount),
-                "unit": "",  # Will be filled by normalizer or UI
+                "unit": nutrient_units.get(name, ""),
             }
 
         return result
