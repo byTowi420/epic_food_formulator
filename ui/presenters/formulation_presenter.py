@@ -216,6 +216,46 @@ class FormulationPresenter:
         """
         return self._formulation.ingredient_count
 
+    def has_ingredients(self) -> bool:
+        """Check if formulation has any ingredients.
+
+        Returns:
+            True if formulation has ingredients
+        """
+        return self._formulation.ingredient_count > 0
+
+    def get_ui_item(self, index: int) -> Dict[str, Any]:
+        """Get single UI item by index.
+
+        Args:
+            index: Ingredient index
+
+        Returns:
+            UI item dict
+
+        Raises:
+            IndexError: If index out of range
+        """
+        ingredient = self._formulation.get_ingredient(index)
+        return FormulationMapper.ingredient_to_ui_item(ingredient, index)
+
+    def get_locked_count(self, exclude_index: Optional[int] = None) -> int:
+        """Count locked ingredients.
+
+        Args:
+            exclude_index: Optional index to exclude from count
+
+        Returns:
+            Number of locked ingredients
+        """
+        count = 0
+        for idx, ingredient in enumerate(self._formulation.ingredients):
+            if exclude_index is not None and idx == exclude_index:
+                continue
+            if ingredient.locked:
+                count += 1
+        return count
+
     def load_from_ui_items(
         self,
         ui_items: List[Dict[str, Any]],

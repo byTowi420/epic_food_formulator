@@ -240,7 +240,7 @@ class MainWindow(QMainWindow):
         self._fat_row_role = Qt.UserRole + 501
         self._header_span_role = Qt.UserRole + 502
         self._manual_role = Qt.UserRole + 503
-        # self.formulation_items: List[Dict] = []  # REMOVED: Using presenter instead
+        self.formulation_items: List[Dict] = []
         self.quantity_mode: str = "g"
         self.amount_g_column_index = 2
         self.percent_column_index = 3
@@ -2556,12 +2556,12 @@ class MainWindow(QMainWindow):
         if table not in (self.formulation_table, self.formulation_preview):
             return
         row = item.row()
-        if row < 0 or row >= self.formulation_presenter.get_ingredient_count():
+        if row < 0 or row >= len(self.formulation_items):
             return
 
         desired_locked = item.checkState() == Qt.Checked
         if desired_locked and self._locked_count(exclude_row=row) >= len(
-            self.formulation_presenter.get_ui_items()
+            self.formulation_items
         ) - 1:
             # Avoid all items locked: keep one free.
             table.blockSignals(True)
@@ -2571,11 +2571,13 @@ class MainWindow(QMainWindow):
             return
 
         # Update in both UI state and presenter (Clean Architecture)
-        # Locked state managed by presenter
+        self.formulation_items[row]["locked"] = desired_locked
         try:
             # Sync presenter and toggle lock
-            # Lock toggled directly via presenter (no reload needed)
-
+            self.formulation_presenter.load_from_ui_items(
+                self.formulation_items,
+                self.formula_name_input.text() or "Current Formulation"
+            )
             self.formulation_presenter.toggle_lock(row)
         except Exception as e:
             logging.error(f"Error toggling lock via presenter: {e}")
@@ -2598,7 +2600,7 @@ class MainWindow(QMainWindow):
 
     def on_export_to_excel_clicked(self) -> None:
         """Export current formulation and totals to an Excel file."""
-        if not self.formulation_presenter.has_ingredients():
+        if not self.formulation_items:
             QMessageBox.information(
                 self,
                 "Exportar a Excel",
@@ -2642,7 +2644,7 @@ class MainWindow(QMainWindow):
 
     def on_export_state_clicked(self) -> None:
         """Export formulation state (ingredientes + cantidades + flags) a JSON."""
-        if not self.formulation_presenter.has_ingredients():
+        if not self.formulation_items:
             QMessageBox.information(
                 self,
                 "Exportar formulación",
@@ -2668,7 +2670,7 @@ class MainWindow(QMainWindow):
         try:
             # Sync presenter's formulation from UI state
             formulation_name = self.formula_name_input.text() or "Current Formulation"
-            self.formulation_presenter.load_from_ui_items(self.formulation_presenter.get_ui_items(), formulation_name)
+            self.formulation_presenter.load_from_ui_items(self.formulation_items, formulation_name)
 
             # Save using presenter (handles JSON format)
             self.formulation_presenter.save_to_file(path)
@@ -2973,7 +2975,7 @@ class MainWindow(QMainWindow):
                 }
             )
 
-        self.formulation_presenter.load_from_ui_items(hydrated, self.formula_name_input.text() or "Imported")
+        self.formulation_items = hydrated
         self.nutrient_export_flags = meta.get("nutrient_export_flags", {})
         mode = meta.get("quantity_mode", "g")
         self.quantity_mode = "g" if mode != "%" else "%"
@@ -3044,12 +3046,12 @@ class MainWindow(QMainWindow):
 
     def _total_weight(self) -> float:
         """Total weight of current formulation in grams."""
-        return self.formulation_presenter.get_total_weight()
+        return sum((item.get("amount_g", 0) or 0) for item in self.formulation_items)
 
     def _locked_count(self, exclude_row: int | None = None) -> int:
         """How many items are locked, optionally ignoring one row."""
         count = 0
-        for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
+        for idx, item in enumerate(self.formulation_items):
             if exclude_row is not None and idx == exclude_row:
                 continue
             if item.get("locked"):
@@ -3236,7 +3238,7 @@ class MainWindow(QMainWindow):
         preferred_order = [cat for cat, _ in self._nutrient_catalog]
         preferred_count = len(preferred_order)
 
-        for item in self.formulation_presenter.get_ui_items():
+        for item in self.formulation_items:
             data_priority = self.data_type_priority.get(
                 (item.get("data_type") or "").strip(), len(self.data_type_priority)
             )
@@ -3335,7 +3337,7 @@ class MainWindow(QMainWindow):
 
     def _ensure_normalized_items(self) -> None:
         """Normalize all formulation_items in-place (fat + energy)."""
-        for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
+        for idx, item in enumerate(self.formulation_items):
             original = item.get("nutrients", []) or []
             normalized = normalize_nutrients(original, item.get("data_type"))
             if normalized != original:
@@ -3415,15 +3417,15 @@ class MainWindow(QMainWindow):
 
     def _populate_formulation_tables(self) -> None:
         """Refresh formulation tables with current items."""
-        logging.debug(f"_populate_formulation_tables rows={self.formulation_presenter.get_ingredient_count()}")
+        logging.debug(f"_populate_formulation_tables rows={len(self.formulation_items)}")
         self._update_quantity_headers()
         total_weight = self._total_weight()
 
         # Left preview (ID + Ingrediente)
         self.formulation_preview.blockSignals(True)
-        self.formulation_preview.setRowCount(self.formulation_presenter.get_ingredient_count())
-        for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
-            # Locked default handled by domain model
+        self.formulation_preview.setRowCount(len(self.formulation_items))
+        for idx, item in enumerate(self.formulation_items):
+            self.formulation_items[idx].setdefault("locked", False)
             self.formulation_preview.setItem(
                 idx, 0, QTableWidgetItem(str(item.get("fdc_id", "")))
             )
@@ -3434,8 +3436,8 @@ class MainWindow(QMainWindow):
 
         # Main formulation table
         self.formulation_table.blockSignals(True)
-        self.formulation_table.setRowCount(self.formulation_presenter.get_ingredient_count())
-        for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
+        self.formulation_table.setRowCount(len(self.formulation_items))
+        for idx, item in enumerate(self.formulation_items):
             amount_g = float(item.get("amount_g", 0.0) or 0.0)
             percent = self._amount_to_percent(amount_g, total_weight)
 
@@ -3545,7 +3547,7 @@ class MainWindow(QMainWindow):
         return QIcon(pixmap)
 
     def _refresh_formulation_views(self) -> None:
-        logging.debug(f"_refresh_formulation_views count={self.formulation_presenter.get_ingredient_count()}")
+        logging.debug(f"_refresh_formulation_views count={len(self.formulation_items)}")
         if QThread.currentThread() is not self.thread():
             QTimer.singleShot(0, self._refresh_formulation_views)
             return
@@ -3570,21 +3572,21 @@ class MainWindow(QMainWindow):
         self.formulation_preview.setCurrentIndex(index)
 
     def _ensure_preview_selection(self) -> None:
-        if not self.formulation_presenter.has_ingredients():
+        if not self.formulation_items:
             self.details_table.setRowCount(0)
             return
         self._ensure_normalized_items()
         sel_model = self.formulation_preview.selectionModel()
         has_sel = sel_model and sel_model.hasSelection()
         if not has_sel:
-            self._select_preview_row(self.formulation_presenter.get_ingredient_count() - 1)
+            self._select_preview_row(len(self.formulation_items) - 1)
         self._show_nutrients_for_selected_preview()
 
     def _show_nutrients_for_row(self, row: int) -> None:
-        if row < 0 or row >= self.formulation_presenter.get_ingredient_count():
+        if row < 0 or row >= len(self.formulation_items):
             self.details_table.setRowCount(0)
             return
-        nutrients = self.formulation_presenter.get_ui_item(row).get("nutrients", []) or []
+        nutrients = self.formulation_items[row].get("nutrients", []) or []
         self._populate_details_table(nutrients)
 
     def _show_nutrients_for_selected_preview(self) -> None:
@@ -3600,7 +3602,7 @@ class MainWindow(QMainWindow):
         # Sync presenter's formulation from UI state
         try:
             formulation_name = self.formula_name_input.text() or "Current Formulation"
-            self.formulation_presenter.load_from_ui_items(self.formulation_presenter.get_ui_items(), formulation_name)
+            self.formulation_presenter.load_from_ui_items(self.formulation_items, formulation_name)
 
             # Use presenter's export (Clean Architecture)
             self.formulation_presenter.export_to_excel(filepath)
@@ -3675,11 +3677,11 @@ class MainWindow(QMainWindow):
         start_row = 3
         grams_col = base_headers.index("Cantidad (g)") + 1
         percent_col = base_headers.index("Cantidad (%)") + 1
-        data_rows = self.formulation_presenter.get_ingredient_count()
+        data_rows = len(self.formulation_items)
         end_row = start_row + data_rows - 1
 
         # Write ingredient rows
-        for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
+        for idx, item in enumerate(self.formulation_items):
             row = start_row + idx
             values = [
                 item.get("fdc_id", ""),
@@ -3771,11 +3773,17 @@ class MainWindow(QMainWindow):
         Calculate nutrient totals using Clean Architecture presenter.
         During migration: syncs presenter state from UI state before calculating.
         """
-        logging.debug(f"_calculate_totals start items={self.formulation_presenter.get_ingredient_count()}")
+        logging.debug(f"_calculate_totals start items={len(self.formulation_items)}")
 
         # Sync presenter's formulation from UI state (during migration period)
         try:
-            # Presenter is source of truth (no reload needed)
+            if self.formulation_items:
+                formulation_name = getattr(self, 'formulation_name', 'Current Formulation')
+                self.formulation_presenter.load_from_ui_items(
+                    self.formulation_items,
+                    formulation_name
+                )
+
             # Use presenter's calculate_totals (Clean Architecture)
             totals = self.formulation_presenter.calculate_totals()
             logging.debug(f"_calculate_totals done (via presenter) nutrients={len(totals)}")
@@ -3787,7 +3795,7 @@ class MainWindow(QMainWindow):
             self._ensure_normalized_items()
             totals: Dict[str, Dict[str, Any]] = {}
             total_weight = self._total_weight()
-            for item in self.formulation_presenter.get_ui_items():
+            for item in self.formulation_items:
                 qty = item.get("amount_g", 0) or 0
                 for nutrient in self._sort_nutrients_for_display(item.get("nutrients", [])):
                     amount = nutrient.get("amount")
@@ -4400,11 +4408,11 @@ class MainWindow(QMainWindow):
 
     def _edit_quantity_for_row(self, row: int) -> None:
         """Prompt the user to update the quantity of a specific row."""
-        if row < 0 or row >= self.formulation_presenter.get_ingredient_count():
+        if row < 0 or row >= len(self.formulation_items):
             self.status_label.setText("Fila seleccionada inválida.")
             return
 
-        item = self.formulation_presenter.get_ui_item(row)
+        item = self.formulation_items[row]
         default_amount = item.get("amount_g", 0.0)
         mode, value = self._prompt_quantity(default_amount, editing_index=row)
         if mode is None:
@@ -4412,10 +4420,25 @@ class MainWindow(QMainWindow):
 
         if mode == "g":
             item["amount_g"] = value
-            # Presenter updated directly (no sync needed)
+            # Sync with presenter (Clean Architecture)
+            try:
+                self.formulation_presenter.load_from_ui_items(
+                    self.formulation_items,
+                    self.formula_name_input.text() or "Current Formulation"
+                )
+            except Exception as e:
+                logging.error(f"Error syncing with presenter after quantity edit: {e}")
         else:
             if not self._apply_percent_edit(row, value):
                 return
+            # Sync with presenter after percent edit
+            try:
+                self.formulation_presenter.load_from_ui_items(
+                    self.formulation_items,
+                    self.formula_name_input.text() or "Current Formulation"
+                )
+            except Exception as e:
+                logging.error(f"Error syncing with presenter after percent edit: {e}")
 
         self._refresh_formulation_views()
         if mode == "g":
@@ -4432,7 +4455,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Porcentaje inválido", "Ingresa un valor entre 0 y 100.")
             return False
 
-        if target_idx < 0 or target_idx >= self.formulation_presenter.get_ingredient_count():
+        if target_idx < 0 or target_idx >= len(self.formulation_items):
             self.status_label.setText("Fila seleccionada inválida.")
             return False
 
@@ -4448,12 +4471,12 @@ class MainWindow(QMainWindow):
 
         current_percents = [
             (item.get("amount_g", 0.0) or 0.0) * 100.0 / base_total
-            for item in self.formulation_presenter.get_ui_items()
+            for item in self.formulation_items
         ]
 
         locked_sum = sum(
             current_percents[idx]
-            for idx, item in enumerate(self.formulation_presenter.get_ui_items())
+            for idx, item in enumerate(self.formulation_items)
             if item.get("locked") and idx != target_idx
         )
         if locked_sum > 100.0:
@@ -4467,7 +4490,7 @@ class MainWindow(QMainWindow):
         remaining = 100.0 - locked_sum - target_percent
         free_indices = [
             idx
-            for idx, item in enumerate(self.formulation_presenter.get_ui_items())
+            for idx, item in enumerate(self.formulation_items)
             if not item.get("locked") and idx != target_idx
         ]
 
@@ -4488,9 +4511,9 @@ class MainWindow(QMainWindow):
             return False
 
         cur_free_sum = sum(current_percents[idx] for idx in free_indices)
-        new_percents = [0.0 for _ in range(self.formulation_presenter.get_ingredient_count())]
+        new_percents = [0.0 for _ in self.formulation_items]
 
-        for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
+        for idx, item in enumerate(self.formulation_items):
             if item.get("locked") and idx != target_idx:
                 new_percents[idx] = current_percents[idx]
             elif idx == target_idx:
@@ -4513,9 +4536,7 @@ class MainWindow(QMainWindow):
 
         for idx, pct in enumerate(new_percents):
             safe_pct = max(pct, 0.0)
-            # Amount updated via presenter.update_ingredient_amount(idx, safe_pct * base_total / 100.0)
-
-            self.formulation_presenter.update_ingredient_amount(idx, safe_pct * base_total / 100.0)
+            self.formulation_items[idx]["amount_g"] = safe_pct * base_total / 100.0
         return True
 
     def _remove_selected_from_formulation(self, table: QTableWidget) -> None:
@@ -4524,10 +4545,8 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Selecciona un ingrediente para eliminar.")
             return
         row = indexes[0].row()
-        if 0 <= row < self.formulation_presenter.get_ingredient_count():
-            # Ingredient removed via presenter
-
-            removed = {"fdc_id": "", "description": "Removed"}
+        if 0 <= row < len(self.formulation_items):
+            removed = self.formulation_items.pop(row)
 
             # Also remove from presenter (Clean Architecture)
             try:
@@ -4535,14 +4554,10 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 logging.error(f"Error removing ingredient via presenter: {e}")
 
-            if self.formulation_presenter.has_ingredients() and self._locked_count() == self.formulation_presenter.get_ingredient_count(
-                self.formulation_presenter.get_ui_items()
+            if self.formulation_items and self._locked_count() == len(
+                self.formulation_items
             ):
-                # First ingredient unlocked via presenter
-
-                if self.formulation_presenter.get_ingredient_count() > 0:
-
-                    self.formulation_presenter.toggle_lock(0)  # Ensure first is unlocked
+                self.formulation_items[0]["locked"] = False
             self._refresh_formulation_views()
             self.status_label.setText(
                 f"Eliminado {removed.get('fdc_id', '')} - {removed.get('description', '')}"
@@ -4681,13 +4696,14 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logging.error(f"Error syncing ingredient to presenter: {e}")
 
-        # Ingredient added to presenter (no dual state)
+        # Keep UI state in sync during migration period
+        self.formulation_items.append(ui_item)
         self._update_reference_from_details(details)
 
         if mode == "percent":
-            success = self._apply_percent_edit(self.formulation_presenter.get_ingredient_count() - 1, value)
+            success = self._apply_percent_edit(len(self.formulation_items) - 1, value)
             if not success:
-                # Last ingredient removed via presenter
+                self.formulation_items.pop()
                 # Also remove from presenter's formulation
                 self.formulation_presenter.remove_ingredient(
                     self.formulation_presenter.get_ingredient_count() - 1
@@ -4697,7 +4713,7 @@ class MainWindow(QMainWindow):
 
         self._populate_details_table(ui_item.get("nutrients", []))
         self._refresh_formulation_views()
-        self._select_preview_row(self.formulation_presenter.get_ingredient_count() - 1)
+        self._select_preview_row(len(self.formulation_items) - 1)
         msg_value = (
             self._format_amount_for_status(ui_item.get("amount_g", 0.0))
             if mode == "g"
@@ -4707,7 +4723,7 @@ class MainWindow(QMainWindow):
             f"Agregado {fdc_id} - {ui_item.get('description', '')} ({msg_value})"
         )
         self.add_button.setEnabled(True)
-        self._upgrade_item_to_full(self.formulation_presenter.get_ingredient_count() - 1, int(fdc_id))
+        self._upgrade_item_to_full(len(self.formulation_items) - 1, int(fdc_id))
 
     def _on_add_error(self, message: str) -> None:
         self._reset_add_ui_state()
