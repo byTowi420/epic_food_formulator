@@ -38,11 +38,13 @@ class FormulationMapper:
         )
 
         # Create Food
+        # UI uses "brand" but domain uses "brand_owner", handle both
+        brand = ui_item.get("brand_owner") or ui_item.get("brand", "")
         food = Food(
             fdc_id=int(ui_item.get("fdc_id", 0)),
             description=ui_item.get("description", ""),
             data_type=ui_item.get("data_type", ""),
-            brand_owner=ui_item.get("brand_owner", ""),
+            brand_owner=brand,
             nutrients=nutrients,
         )
 
@@ -115,7 +117,8 @@ class FormulationMapper:
             "fdc_id": ingredient.food.fdc_id,
             "description": ingredient.food.description,
             "data_type": ingredient.food.data_type,
-            "brand_owner": ingredient.food.brand_owner,
+            "brand": ingredient.food.brand_owner,  # UI expects "brand", not "brand_owner"
+            "brand_owner": ingredient.food.brand_owner,  # Keep both for compatibility
             "amount_g": float(ingredient.amount_g),
             "locked": ingredient.locked,
             "nutrients": nutrients,
