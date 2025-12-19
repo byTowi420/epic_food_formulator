@@ -68,8 +68,6 @@ from services.nutrient_normalizer import (
     normalize_nutrients,
 )
 from ui.workers import ApiWorker, ImportWorker, AddWorker
-
-# Clean Architecture presenters
 from ui.presenters.formulation_presenter import FormulationPresenter
 from ui.presenters.search_presenter import SearchPresenter
 
@@ -223,7 +221,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
 
-        # Initialize Clean Architecture presenters
+        # Initialize presenters
         self.formulation_presenter = FormulationPresenter()
         self.search_presenter = SearchPresenter()
 
@@ -2560,9 +2558,9 @@ class MainWindow(QMainWindow):
             return
 
         desired_locked = item.checkState() == Qt.Checked
-        if desired_locked and self._locked_count(exclude_row=row) >= len(
-            self.formulation_presenter.get_ui_items()
-        ) - 1:
+        if desired_locked and self.formulation_presenter.get_locked_count(exclude_index=row) >= (
+            self.formulation_presenter.get_ingredient_count() - 1
+        ):
             # Avoid all items locked: keep one free.
             table.blockSignals(True)
             item.setCheckState(Qt.Unchecked)
@@ -2570,12 +2568,8 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Debe quedar al menos un ingrediente sin fijar.")
             return
 
-        # Update in both UI state and presenter (Clean Architecture)
-        # Locked state managed by presenter
+        # Toggle lock via presenter
         try:
-            # Sync presenter and toggle lock
-            # Lock toggled directly via presenter (no reload needed)
-
             self.formulation_presenter.toggle_lock(row)
         except Exception as e:
             logging.error(f"Error toggling lock via presenter: {e}")
@@ -2664,13 +2658,12 @@ class MainWindow(QMainWindow):
 
         self._save_last_path(path)
 
-        # Use presenter to save formulation (Clean Architecture)
         try:
-            # Sync presenter's formulation from UI state
+            # Update formulation name from UI input
             formulation_name = self.formula_name_input.text() or "Current Formulation"
-            self.formulation_presenter.load_from_ui_items(self.formulation_presenter.get_ui_items(), formulation_name)
+            self.formulation_presenter.formulation_name = formulation_name
 
-            # Save using presenter (handles JSON format)
+            # Save formulation via presenter
             self.formulation_presenter.save_to_file(path)
 
             # Add UI-specific metadata (not handled by presenter yet)
@@ -2722,9 +2715,8 @@ class MainWindow(QMainWindow):
         self._start_import_hydration(base_items, meta)
 
     def _load_state_from_json(self, path: str) -> tuple[list[Dict[str, Any]], Dict[str, Any]] | None:
-        # Use presenter to load formulation (Clean Architecture)
         try:
-            # Load using presenter
+            # Load formulation via presenter
             self.formulation_presenter.load_from_file(path)
 
             # Read file again for UI metadata (quantity_mode, nutrient_export_flags)
@@ -3046,16 +3038,6 @@ class MainWindow(QMainWindow):
         """Total weight of current formulation in grams."""
         return self.formulation_presenter.get_total_weight()
 
-    def _locked_count(self, exclude_row: int | None = None) -> int:
-        """How many items are locked, optionally ignoring one row."""
-        count = 0
-        for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
-            if exclude_row is not None and idx == exclude_row:
-                continue
-            if item.get("locked"):
-                count += 1
-        return count
-
     def _amount_to_percent(self, amount_g: float, total: float | None = None) -> float:
         total_weight = self._total_weight() if total is None else total
         if total_weight <= 0:
@@ -3334,7 +3316,7 @@ class MainWindow(QMainWindow):
             pass
 
     def _ensure_normalized_items(self) -> None:
-        """Normalize all formulation_items in-place (fat + energy)."""
+        """Normalize all ingredients' nutrients in-place (fat + energy)."""
         for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
             original = item.get("nutrients", []) or []
             normalized = normalize_nutrients(original, item.get("data_type"))
@@ -3596,13 +3578,13 @@ class MainWindow(QMainWindow):
         self._show_nutrients_for_row(row)
 
     def _export_formulation_to_excel(self, filepath: str) -> None:
-        """Export formulation to Excel using Clean Architecture presenter."""
-        # Sync presenter's formulation from UI state
+        """Export formulation to Excel via presenter."""
         try:
+            # Update formulation name from UI input
             formulation_name = self.formula_name_input.text() or "Current Formulation"
-            self.formulation_presenter.load_from_ui_items(self.formulation_presenter.get_ui_items(), formulation_name)
+            self.formulation_presenter.formulation_name = formulation_name
 
-            # Use presenter's export (Clean Architecture)
+            # Export via presenter
             self.formulation_presenter.export_to_excel(filepath)
             return
 
@@ -3767,16 +3749,11 @@ class MainWindow(QMainWindow):
         wb.save(filepath)
 
     def _calculate_totals(self) -> Dict[str, Dict[str, Any]]:
-        """
-        Calculate nutrient totals using Clean Architecture presenter.
-        During migration: syncs presenter state from UI state before calculating.
-        """
+        """Calculate nutrient totals via presenter."""
         logging.debug(f"_calculate_totals start items={self.formulation_presenter.get_ingredient_count()}")
 
-        # Sync presenter's formulation from UI state (during migration period)
         try:
-            # Presenter is source of truth (no reload needed)
-            # Use presenter's calculate_totals (Clean Architecture)
+            # Calculate totals via presenter
             totals = self.formulation_presenter.calculate_totals()
             logging.debug(f"_calculate_totals done (via presenter) nutrients={len(totals)}")
             return totals
@@ -4412,7 +4389,6 @@ class MainWindow(QMainWindow):
 
         if mode == "g":
             item["amount_g"] = value
-            # Presenter updated directly (no sync needed)
         else:
             if not self._apply_percent_edit(row, value):
                 return
@@ -4529,20 +4505,16 @@ class MainWindow(QMainWindow):
 
             removed = {"fdc_id": "", "description": "Removed"}
 
-            # Also remove from presenter (Clean Architecture)
+            # Remove from presenter
             try:
                 self.formulation_presenter.remove_ingredient(row)
             except Exception as e:
                 logging.error(f"Error removing ingredient via presenter: {e}")
 
-            if self.formulation_presenter.has_ingredients() and self._locked_count() == self.formulation_presenter.get_ingredient_count(
-                self.formulation_presenter.get_ui_items()
-            ):
-                # First ingredient unlocked via presenter
-
-                if self.formulation_presenter.get_ingredient_count() > 0:
-
-                    self.formulation_presenter.toggle_lock(0)  # Ensure first is unlocked
+            # If all remaining ingredients are locked, unlock the first one
+            if (self.formulation_presenter.has_ingredients() and
+                self.formulation_presenter.get_locked_count() == self.formulation_presenter.get_ingredient_count()):
+                self.formulation_presenter.toggle_lock(0)
             self._refresh_formulation_views()
             self.status_label.setText(
                 f"Eliminado {removed.get('fdc_id', '')} - {removed.get('description', '')}"
@@ -4636,26 +4608,12 @@ class MainWindow(QMainWindow):
         brand = details.get("brandOwner", "") or ""
         data_type = details.get("dataType", "") or ""
 
-        # Create UI item with the fetched nutrients
-        ui_item = {
-            "fdc_id": fdc_id,
-            "description": desc,
-            "brand": brand,
-            "brand_owner": brand,  # Keep both for compatibility
-            "data_type": data_type,
-            "amount_g": amount_g,
-            "nutrients": nutrients,
-            "locked": False,
-        }
-
-        # Also add to presenter's domain formulation for consistency
+        # Add ingredient directly to presenter using fetched data
+        # (avoiding duplicate API call since AddWorker already fetched details)
         try:
-            # Sync the presenter by manually creating the ingredient
-            # This ensures domain model stays in sync without refetching
             from domain.models import Food, Ingredient, Nutrient
             from decimal import Decimal
 
-            # Convert nutrients to domain format
             domain_nutrients = tuple(
                 Nutrient(
                     name=n["nutrient"]["name"],
@@ -4679,32 +4637,30 @@ class MainWindow(QMainWindow):
             self.formulation_presenter._formulation.add_ingredient(ingredient)
 
         except Exception as e:
-            logging.error(f"Error syncing ingredient to presenter: {e}")
+            logging.error(f"Error adding ingredient to presenter: {e}")
 
-        # Ingredient added to presenter (no dual state)
         self._update_reference_from_details(details)
 
         if mode == "percent":
             success = self._apply_percent_edit(self.formulation_presenter.get_ingredient_count() - 1, value)
             if not success:
-                # Last ingredient removed via presenter
-                # Also remove from presenter's formulation
+                # Percentage adjustment failed, remove last ingredient
                 self.formulation_presenter.remove_ingredient(
                     self.formulation_presenter.get_ingredient_count() - 1
                 )
                 self.add_button.setEnabled(True)
                 return
 
-        self._populate_details_table(ui_item.get("nutrients", []))
+        self._populate_details_table(nutrients)
         self._refresh_formulation_views()
         self._select_preview_row(self.formulation_presenter.get_ingredient_count() - 1)
         msg_value = (
-            self._format_amount_for_status(ui_item.get("amount_g", 0.0))
+            self._format_amount_for_status(amount_g)
             if mode == "g"
             else f"{value:.2f} %"
         )
         self.status_label.setText(
-            f"Agregado {fdc_id} - {ui_item.get('description', '')} ({msg_value})"
+            f"Agregado {fdc_id} - {desc} ({msg_value})"
         )
         self.add_button.setEnabled(True)
         self._upgrade_item_to_full(self.formulation_presenter.get_ingredient_count() - 1, int(fdc_id))
