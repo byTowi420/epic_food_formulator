@@ -2654,28 +2654,22 @@ class MainWindow(QMainWindow):
             path += ".json"
 
         self._save_last_path(path)
-        payload_items: list[Dict[str, Any]] = []
-        for item in self.formulation_items:
-            payload_items.append(
-                {
-                    "fdc_id": item.get("fdc_id"),
-                    "description": item.get("description", ""),
-                    "brand": item.get("brand", ""),
-                    "data_type": item.get("data_type", ""),
-                    "amount_g": float(item.get("amount_g", 0.0) or 0.0),
-                    "locked": bool(item.get("locked", False)),
-                }
-            )
 
-        payload = {
-            "quantity_mode": self.quantity_mode,
-            "items": payload_items,
-            "nutrient_export_flags": self.nutrient_export_flags,
-            "formula_name": self.formula_name_input.text(),
-            "version": 2,
-        }
+        # Use presenter to save formulation (Clean Architecture)
         try:
-            Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            # Sync presenter's formulation from UI state
+            formulation_name = self.formula_name_input.text() or "Current Formulation"
+            self.formulation_presenter.load_from_ui_items(self.formulation_items, formulation_name)
+
+            # Save using presenter (handles JSON format)
+            self.formulation_presenter.save_to_file(path)
+
+            # Add UI-specific metadata (not handled by presenter yet)
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+            data["quantity_mode"] = self.quantity_mode
+            data["nutrient_export_flags"] = self.nutrient_export_flags
+            Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(
                 self,
@@ -2719,8 +2713,65 @@ class MainWindow(QMainWindow):
         self._start_import_hydration(base_items, meta)
 
     def _load_state_from_json(self, path: str) -> tuple[list[Dict[str, Any]], Dict[str, Any]] | None:
+        # Use presenter to load formulation (Clean Architecture)
         try:
+            # Load using presenter
+            self.formulation_presenter.load_from_file(path)
+
+            # Read file again for UI metadata (quantity_mode, nutrient_export_flags)
             data = json.loads(Path(path).read_text(encoding="utf-8"))
+
+            # Extract base items for hydration
+            items = data.get("items") or []
+            if not isinstance(items, list) or not items:
+                QMessageBox.warning(
+                    self,
+                    "Formato inválido",
+                    "El archivo no contiene ingredientes válidos.",
+                )
+                return None
+
+            base_items: list[Dict[str, Any]] = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    fdc_int = int(item.get("fdc_id") or item.get("fdcId"))
+                except Exception:
+                    QMessageBox.warning(
+                        self,
+                        "FDC ID inválido",
+                        f"FDC ID no numérico: {item.get('fdc_id') or item.get('fdcId')}",
+                    )
+                    return None
+                base_items.append(
+                    {
+                        "fdc_id": fdc_int,
+                        "amount_g": float(item.get("amount_g", 0.0) or 0.0),
+                        "locked": bool(item.get("locked", False)),
+                        "description": item.get("description", ""),
+                        "brand": item.get("brand", ""),
+                        "data_type": item.get("data_type", ""),
+                    }
+                )
+
+            flags = data.get("nutrient_export_flags")
+            nutrient_flags = (
+                {k: bool(v) for k, v in flags.items()} if isinstance(flags, dict) else {}
+            )
+
+            mode = data.get("quantity_mode", "g")
+            quantity_mode = "g" if mode != "%" else "%"
+
+            meta = {
+                "nutrient_export_flags": nutrient_flags,
+                "quantity_mode": quantity_mode,
+                "formula_name": data.get("formula_name", ""),
+                "path": path,
+                "respect_existing_formula_name": False,
+            }
+            return base_items, meta
+
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(
                 self,
@@ -2728,64 +2779,6 @@ class MainWindow(QMainWindow):
                 f"No se pudo leer el archivo:\n{exc}",
             )
             return None
-
-        if not isinstance(data, dict):
-            QMessageBox.warning(
-                self,
-                "Formato inválido",
-                "El archivo no contiene una formulación válida.",
-            )
-            return None
-
-        items = data.get("items") or []
-        if not isinstance(items, list) or not items:
-            QMessageBox.warning(
-                self,
-                "Formato inválido",
-                "El archivo no contiene ingredientes válidos.",
-            )
-            return None
-
-        base_items: list[Dict[str, Any]] = []
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            try:
-                fdc_int = int(item.get("fdc_id") or item.get("fdcId"))
-            except Exception:
-                QMessageBox.warning(
-                    self,
-                    "FDC ID inválido",
-                    f"FDC ID no numérico: {item.get('fdc_id') or item.get('fdcId')}",
-                )
-                return None
-            base_items.append(
-                {
-                    "fdc_id": fdc_int,
-                    "amount_g": float(item.get("amount_g", 0.0) or 0.0),
-                    "locked": bool(item.get("locked", False)),
-                    "description": item.get("description", ""),
-                    "brand": item.get("brand", ""),
-                    "data_type": item.get("data_type", ""),
-                }
-            )
-
-        flags = data.get("nutrient_export_flags")
-        nutrient_flags = (
-            {k: bool(v) for k, v in flags.items()} if isinstance(flags, dict) else {}
-        )
-
-        mode = data.get("quantity_mode", "g")
-        quantity_mode = "g" if mode != "%" else "%"
-
-        meta = {
-            "nutrient_export_flags": nutrient_flags,
-            "quantity_mode": quantity_mode,
-            "formula_name": data.get("formula_name", ""),
-            "path": path,
-            "respect_existing_formula_name": False,
-        }
-        return base_items, meta
 
     def _load_state_from_excel(self, path: str) -> tuple[list[Dict[str, Any]], Dict[str, Any]] | None:
         def _read(sheet: str | int, header_row: int) -> pd.DataFrame:
@@ -3594,7 +3587,20 @@ class MainWindow(QMainWindow):
         self._show_nutrients_for_row(row)
 
     def _export_formulation_to_excel(self, filepath: str) -> None:
-        """Build Excel from scratch with nutrient categories as in USDA view."""
+        """Export formulation to Excel using Clean Architecture presenter."""
+        # Sync presenter's formulation from UI state
+        try:
+            formulation_name = self.formula_name_input.text() or "Current Formulation"
+            self.formulation_presenter.load_from_ui_items(self.formulation_items, formulation_name)
+
+            # Use presenter's export (Clean Architecture)
+            self.formulation_presenter.export_to_excel(filepath)
+            return
+
+        except Exception as e:
+            logging.error(f"Error exporting via presenter: {e}, falling back to old method")
+
+        # Fallback to old implementation
         self._ensure_normalized_items()
         wb = Workbook()
         ws = wb.active
