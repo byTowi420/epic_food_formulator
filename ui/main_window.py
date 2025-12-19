@@ -2570,7 +2570,18 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Debe quedar al menos un ingrediente sin fijar.")
             return
 
+        # Update in both UI state and presenter (Clean Architecture)
         self.formulation_items[row]["locked"] = desired_locked
+        try:
+            # Sync presenter and toggle lock
+            self.formulation_presenter.load_from_ui_items(
+                self.formulation_items,
+                self.formula_name_input.text() or "Current Formulation"
+            )
+            self.formulation_presenter.toggle_lock(row)
+        except Exception as e:
+            logging.error(f"Error toggling lock via presenter: {e}")
+
         self._refresh_formulation_views()
 
     def on_edit_quantity_clicked(self) -> None:
@@ -4520,6 +4531,13 @@ class MainWindow(QMainWindow):
         row = indexes[0].row()
         if 0 <= row < len(self.formulation_items):
             removed = self.formulation_items.pop(row)
+
+            # Also remove from presenter (Clean Architecture)
+            try:
+                self.formulation_presenter.remove_ingredient(row)
+            except Exception as e:
+                logging.error(f"Error removing ingredient via presenter: {e}")
+
             if self.formulation_items and self._locked_count() == len(
                 self.formulation_items
             ):
