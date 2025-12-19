@@ -4420,9 +4420,25 @@ class MainWindow(QMainWindow):
 
         if mode == "g":
             item["amount_g"] = value
+            # Sync with presenter (Clean Architecture)
+            try:
+                self.formulation_presenter.load_from_ui_items(
+                    self.formulation_items,
+                    self.formula_name_input.text() or "Current Formulation"
+                )
+            except Exception as e:
+                logging.error(f"Error syncing with presenter after quantity edit: {e}")
         else:
             if not self._apply_percent_edit(row, value):
                 return
+            # Sync with presenter after percent edit
+            try:
+                self.formulation_presenter.load_from_ui_items(
+                    self.formulation_items,
+                    self.formula_name_input.text() or "Current Formulation"
+                )
+            except Exception as e:
+                logging.error(f"Error syncing with presenter after percent edit: {e}")
 
         self._refresh_formulation_views()
         if mode == "g":
