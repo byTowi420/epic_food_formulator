@@ -4632,32 +4632,69 @@ class MainWindow(QMainWindow):
     def _on_add_details_loaded(self, details, mode: str, value: float) -> None:
         logging.debug(
             f"_on_add_details_loaded fdc_id={details.get('fdcId', '?')} "
-            f"mode={mode} value={value}"
+            f"mode={mode} value={value} "
+            f"nutrients_count={len(details.get('foodNutrients', []) or [])}"
         )
-        # Use presenter to add ingredient to domain formulation
-        # (AddWorker already fetched details, presenter will use cached data)
-        fdc_id = details.get("fdcId", "")
-        amount_g = value if mode == "g" else 100.0  # Use 100g as base for percent mode
 
+        # Use details that AddWorker already fetched (avoid double API call)
+        fdc_id = details.get("fdcId", "")
+        amount_g = value if mode == "g" else 100.0
+
+        # Normalize nutrients from the details we already have
+        nutrients = normalize_nutrients(
+            details.get("foodNutrients", []) or [],
+            details.get("dataType")
+        )
+        self._update_reference_from_details(details)
+
+        desc = details.get("description", "") or ""
+        brand = details.get("brandOwner", "") or ""
+        data_type = details.get("dataType", "") or ""
+
+        # Create UI item with the fetched nutrients
+        ui_item = {
+            "fdc_id": fdc_id,
+            "description": desc,
+            "brand": brand,
+            "brand_owner": brand,  # Keep both for compatibility
+            "data_type": data_type,
+            "amount_g": amount_g,
+            "nutrients": nutrients,
+            "locked": False,
+        }
+
+        # Also add to presenter's domain formulation for consistency
         try:
-            ui_item = self.formulation_presenter.add_ingredient(fdc_id, amount_g)
+            # Sync the presenter by manually creating the ingredient
+            # This ensures domain model stays in sync without refetching
+            from domain.models import Food, Ingredient, Nutrient
+            from decimal import Decimal
+
+            # Convert nutrients to domain format
+            domain_nutrients = tuple(
+                Nutrient(
+                    name=n["nutrient"]["name"],
+                    unit=n["nutrient"].get("unitName", ""),
+                    amount=Decimal(str(n["amount"])) if n.get("amount") is not None else Decimal("0"),
+                    nutrient_id=n["nutrient"].get("id"),
+                    nutrient_number=n["nutrient"].get("number"),
+                )
+                for n in nutrients
+            )
+
+            food = Food(
+                fdc_id=fdc_id,
+                description=desc,
+                data_type=data_type,
+                brand_owner=brand,
+                nutrients=domain_nutrients,
+            )
+
+            ingredient = Ingredient(food=food, amount_g=Decimal(str(amount_g)))
+            self.formulation_presenter._formulation.add_ingredient(ingredient)
+
         except Exception as e:
-            logging.error(f"Error adding ingredient via presenter: {e}")
-            # Fallback to old method
-            nutrients = normalize_nutrients(details.get("foodNutrients", []) or [], details.get("dataType"))
-            self._update_reference_from_details(details)
-            desc = details.get("description", "") or ""
-            brand = details.get("brandOwner", "") or ""
-            data_type = details.get("dataType", "") or ""
-            ui_item = {
-                "fdc_id": fdc_id,
-                "description": desc,
-                "brand": brand,
-                "data_type": data_type,
-                "amount_g": value if mode == "g" else 0.0,
-                "nutrients": nutrients,
-                "locked": False,
-            }
+            logging.error(f"Error syncing ingredient to presenter: {e}")
 
         # Keep UI state in sync during migration period
         self.formulation_items.append(ui_item)
