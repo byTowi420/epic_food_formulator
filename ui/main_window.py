@@ -1540,61 +1540,39 @@ class MainWindow(QMainWindow):
         return None
 
     def _compute_energy_label_values(self) -> Dict[str, float] | None:
-        if not self._last_totals:
-            self._last_totals = self._calculate_totals()
-        totals = self._last_totals or {}
-        factor = self._current_portion_factor()
-        if factor <= 0:
-            factor = 1.0
-
-        # Build a skip set for manual overrides (so we replace totals with manual)
-        manual_names = {
-            name for name in self.label_manual_overrides.keys() if name != "Energia"
+        """
+        Calculate energy from the effective values shown in the label.
+        Uses only the values displayed in the label (manual or from totals),
+        not the raw formulation values, as required by labeling regulations.
+        """
+        # Nutrients that contribute to energy and their factors (kcal/g)
+        energy_contributors = {
+            "Carbohidratos": 4.0,
+            "Proteinas": 4.0,
+            "Grasas totales": 9.0,
         }
 
-        kcal_portion = 0.0
-        seen_keys: set[str] = set()
+        kcal_per_100 = 0.0
 
-        # First pass: totals contributions (excluding manual overrides)
-        for entry in totals.values():
-            name = entry.get("name", "") or ""
-            if name in manual_names:
-                continue
-            key = f"{canonical_alias_name(name).lower()}|{canonical_unit(entry.get('unit', '')).lower()}"
-            if key in seen_keys:
-                continue
-            seen_keys.add(key)
-            factor_energy = self._factor_for_energy(name)
-            if factor_energy is None:
-                continue
-            unit = (entry.get("unit", "") or "").lower()
-            amount = float(entry.get("amount", 0.0) or 0.0)
-            amount_g = amount / 1000.0 if unit == "mg" else amount
-            # totals are per 100 g producto final; convert to porción
-            amount_portion = amount_g * self._current_portion_factor()
-            kcal_portion += amount_portion * factor_energy
-
-        # Second pass: manual overrides from la etiqueta base (por porción)
         for base in self.label_base_nutrients:
             name = base.get("name", "")
-            if name == "Energia":
+            if name not in energy_contributors:
                 continue
-            if name not in manual_names:
-                continue
-            manual_amount = float(self.label_manual_overrides.get(name, 0.0) or 0.0)
-            factor_energy = self._factor_for_energy(
-                self.label_nutrient_usda_map.get(name, name)
-            )
-            if factor_energy is None:
-                continue
-            unit = (base.get("unit", "") or "").lower()
-            amount_g = manual_amount / 1000.0 if unit == "mg" else manual_amount
-            kcal_portion += amount_g * factor_energy
 
-        if math.isclose(kcal_portion, 0.0, abs_tol=1e-6):
+            # Get the effective value (manual override or from totals)
+            effective = self._effective_label_nutrient(base)
+            amount = effective.get("amount", 0.0) or 0.0
+
+            # Convert mg to g if needed
+            unit = (base.get("unit", "") or "").lower()
+            amount_g = amount / 1000.0 if unit == "mg" else amount
+
+            # Add contribution to energy
+            kcal_per_100 += amount_g * energy_contributors[name]
+
+        if math.isclose(kcal_per_100, 0.0, abs_tol=1e-6):
             return None
 
-        kcal_per_100 = kcal_portion / factor
         return {"kcal": kcal_per_100, "kj": kcal_per_100 * 4.184}
 
     def _label_amount_from_totals(self, nutrient: Dict[str, Any]) -> Dict[str, float] | None:
