@@ -70,151 +70,16 @@ from services.nutrient_normalizer import (
 from ui.workers import ApiWorker, ImportWorker, AddWorker
 from ui.presenters.formulation_presenter import FormulationPresenter
 from ui.presenters.search_presenter import SearchPresenter
+from ui.delegates.label_table_delegate import LabelTableDelegate
+from ui.tabs.search_tab import SearchTab
+from ui.tabs.formulation_tab import FormulationTab
+from ui.tabs.label_tab import LabelTab
 
 logging.basicConfig(
     filename="app_debug.log",
     level=logging.DEBUG,
     format="%(asctime)s [%(threadName)s] %(levelname)s %(message)s",
 )
-
-
-class LabelTableDelegate(QStyledItemDelegate):
-    """Custom grid painter to hide vertical separators for fat breakdown rows."""
-
-    def __init__(
-        self,
-        fat_row_role: int,
-        parent: QWidget | None = None,
-        manual_role: int | None = None,
-        manual_color: QColor | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self.fat_row_role = fat_row_role
-        self.header_span_role = None
-        self.manual_role = manual_role
-        self.manual_color = manual_color or QColor(204, 255, 204)
-        self.manual_overlay = QColor(0, 0, 0, 50)
-        self.selection_fill_active = QColor(0, 0, 0, 22)
-        self.selection_fill_inactive = QColor(0, 0, 0, 12)
-        # Color fijo para la barrita de selección personalizada
-        self.handle_color = QColor("#1f6fbd")
-        self.grid_color = QColor("#c0c0c0")
-
-    def paint(self, painter: QPainter, option, index) -> None:  # type: ignore[override]
-        is_fat_child = bool(index.data(self.fat_row_role))
-        is_header_span = bool(self.header_span_role and index.data(self.header_span_role))
-        is_manual = bool(self.manual_role and index.data(self.manual_role))
-        is_selected = bool(option.state & QStyle.State_Selected)
-        is_active = bool(option.state & QStyle.State_Active)
-
-        # Base fill for manual values (under the text/content).
-        if is_manual:
-            painter.save()
-            painter.fillRect(option.rect, self.manual_color)
-            if is_selected:
-                painter.fillRect(option.rect, self.manual_overlay)
-            painter.restore()
-        elif is_selected:
-            painter.save()
-            painter.fillRect(option.rect, self.selection_fill_active if is_active else self.selection_fill_inactive)
-            painter.restore()
-
-        # For fat-child name column, avoid elide and draw across the adjacent amount column.
-        if (is_fat_child and index.column() == 0) or (is_header_span and index.column() == 1):
-            opt = QStyleOptionViewItem(option)
-            self.initStyleOption(opt, index)
-            opt.state &= ~(QStyle.State_HasFocus | QStyle.State_Selected)
-            opt.palette.setBrush(QPalette.Base, Qt.transparent)
-            opt.palette.setBrush(QPalette.Window, Qt.transparent)
-            opt.palette.setBrush(QPalette.AlternateBase, Qt.transparent)
-            opt.palette.setBrush(QPalette.Highlight, Qt.transparent)
-            opt.palette.setBrush(QPalette.HighlightedText, opt.palette.brush(QPalette.Text))
-            opt.backgroundBrush = QBrush(Qt.transparent)
-            opt.text = ""
-            opt.icon = QIcon()
-            style = opt.widget.style() if opt.widget else QApplication.style()
-            style.drawControl(QStyle.CE_ItemViewItem, opt, painter, opt.widget)
-
-            painter.save()
-            text_rect = opt.rect
-            extra = 0
-            if is_fat_child:
-                try:
-                    extra = opt.widget.columnWidth(1) - 6  # leave small gap before amount text
-                except Exception:
-                    extra = 0
-                if extra > 0:
-                    text_rect.setWidth(text_rect.width() + extra)
-                text_rect.adjust(4, 0, -2, 0)  # small padding, avoid hitting amount text
-                align = Qt.AlignLeft | Qt.AlignVCenter
-            else:
-                # Header span: extend into VD column to avoid elide, keep centered on its own column.
-                try:
-                    extra = opt.widget.columnWidth(2) - 6
-                except Exception:
-                    extra = 0
-                if extra > 0:
-                    shift = extra // 2
-                    text_rect.adjust(-shift, 0, extra - shift, 0)
-                text_rect.adjust(0, 0, -2, 0)
-                align = Qt.AlignCenter
-            painter.setPen(opt.palette.color(QPalette.Text))
-            painter.setFont(opt.font)
-            painter.drawText(text_rect, align, str(index.data() or ""))
-            painter.restore()
-        else:
-            # Camino normal sin super().paint para evitar que Qt re-inserte State_Selected
-            base_opt = QStyleOptionViewItem(option)
-            self.initStyleOption(base_opt, index)
-            # Quitar selección/foco para que Qt no pinte su highlight nativo
-            base_opt.state &= ~(QStyle.State_HasFocus | QStyle.State_Selected)
-            base_opt.palette.setBrush(QPalette.Base, Qt.transparent)
-            base_opt.palette.setBrush(QPalette.Window, Qt.transparent)
-            base_opt.palette.setBrush(QPalette.AlternateBase, Qt.transparent)
-            base_opt.palette.setBrush(QPalette.Highlight, Qt.transparent)
-            base_opt.palette.setBrush(QPalette.HighlightedText, base_opt.palette.brush(QPalette.Text))
-            base_opt.backgroundBrush = QBrush(Qt.transparent)
-            # Dibujar manualmente el item (lo que hace QStyledItemDelegate por dentro)
-            style = base_opt.widget.style() if base_opt.widget else QApplication.style()
-            style.drawControl(QStyle.CE_ItemViewItem, base_opt, painter, base_opt.widget)
-
-        painter.save()
-        pen = QPen(self.grid_color)
-        painter.setPen(pen)
-        rect = option.rect
-        last_col = index.model().columnCount() - 1
-
-        # Horizontal lines
-        painter.drawLine(rect.bottomLeft(), rect.bottomRight())
-        if index.row() == 0:
-            painter.drawLine(rect.topLeft(), rect.topRight())
-
-        # Left border on first column
-        if index.column() == 0:
-            painter.drawLine(rect.topLeft(), rect.bottomLeft())
-
-        # Right border (skip inner separators for fat breakdown rows and header span left edge)
-        skip_right = False
-        if is_fat_child and index.column() < last_col:
-            skip_right = True
-        if is_header_span and index.column() in (0, 1):
-            skip_right = True
-        if not skip_right:
-            painter.drawLine(rect.topRight(), rect.bottomRight())
-
-        painter.restore()
-
-        # Draw selection bar on all selected cells (our custom handle)
-        if is_selected:
-            painter.save()
-            self._draw_selection_handles(painter, option.rect, option.palette, index)
-            painter.restore()
-
-    def _draw_selection_handles(self, painter: QPainter, rect, palette: QPalette, index) -> None:
-        """Draw thin selection marker on the left edge of the cell."""
-        color = self.handle_color
-        width = 2
-        painter.fillRect(rect.left(), rect.top(), width, rect.height(), color)
 
 
 class MainWindow(QMainWindow):
@@ -365,126 +230,85 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout(central)
 
         self.tabs = QTabWidget()
-        self.search_tab = QWidget()
-        self.formulation_tab = QWidget()
-        self.label_tab = QWidget()
+
+        # Create tabs using modular components
+        self.search_tab = SearchTab()
+        self.formulation_tab = FormulationTab()
+        self.label_tab = LabelTab(
+            household_measure_options=self.household_measure_options,
+            label_base_nutrients=self.label_base_nutrients,
+        )
+
         self.tabs.addTab(self.search_tab, "Búsqueda")
         self.tabs.addTab(self.formulation_tab, "Formulación")
         self.tabs.addTab(self.label_tab, "Etiqueta")
 
         main_layout.addWidget(self.tabs)
 
-        self._build_search_tab_ui()
-        self._build_formulation_tab_ui()
-        self._build_label_tab_ui()
+        # Create widget aliases for backward compatibility
+        self._create_widget_aliases()
 
-    def _build_search_tab_ui(self) -> None:
-        layout = QVBoxLayout(self.search_tab)
-        layout.setSpacing(6)
+        # Connect signals (previously in _build_*_tab_ui methods)
+        self._connect_search_tab_signals()
+        self._connect_formulation_tab_signals()
+        self._connect_label_tab_signals()
 
-        search_layout = QHBoxLayout()
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText(
-            "Buscar alimento (ej: apple, rice, cheese)..."
-        )
-        self.search_button = QPushButton("Buscar")
+    def _create_widget_aliases(self) -> None:
+        """Create aliases to tab widgets for backward compatibility."""
+        # Search tab widgets
+        self.search_input = self.search_tab.search_input
+        self.search_button = self.search_tab.search_button
+        self.include_brands_checkbox = self.search_tab.include_brands_checkbox
+        self.prev_page_button = self.search_tab.prev_page_button
+        self.next_page_button = self.search_tab.next_page_button
+        self.fdc_id_input = self.search_tab.fdc_id_input
+        self.fdc_id_button = self.search_tab.fdc_id_button
+        self.add_button = self.search_tab.add_button
+        self.status_label = self.search_tab.status_label
+        self.table = self.search_tab.table
+        self.details_table = self.search_tab.details_table
+        self.formulation_preview = self.search_tab.formulation_preview
+        self.remove_preview_button = self.search_tab.remove_preview_button
 
-        search_layout.addWidget(self.search_input)
-        search_layout.addWidget(self.search_button)
+        # Formulation tab widgets
+        self.export_state_button = self.formulation_tab.export_state_button
+        self.import_state_button = self.formulation_tab.import_state_button
+        self.formula_name_input = self.formulation_tab.formula_name_input
+        self.quantity_mode_selector = self.formulation_tab.quantity_mode_selector
+        self.formulation_table = self.formulation_tab.formulation_table
+        self.edit_quantity_button = self.formulation_tab.edit_quantity_button
+        self.remove_formulation_button = self.formulation_tab.remove_formulation_button
+        self.totals_table = self.formulation_tab.totals_table
+        self.toggle_export_button = self.formulation_tab.toggle_export_button
+        self.export_excel_button = self.formulation_tab.export_excel_button
 
-        self.include_brands_checkbox = QCheckBox("Incluir Marcas")
-        self.prev_page_button = QPushButton("<")
-        self.prev_page_button.setFixedWidth(32)
-        self.next_page_button = QPushButton(">")
-        self.next_page_button.setFixedWidth(32)
-        self.prev_page_button.setEnabled(False)
-        self.next_page_button.setEnabled(False)
+        # Label tab widgets
+        self.portion_size_input = self.label_tab.portion_size_input
+        self.portion_unit_combo = self.label_tab.portion_unit_combo
+        self.household_amount_input = self.label_tab.household_amount_input
+        self.household_unit_combo = self.label_tab.household_unit_combo
+        self.custom_household_unit_input = self.label_tab.custom_household_unit_input
+        self.household_capacity_label = self.label_tab.household_capacity_label
+        self.breakdown_carb_checkbox = self.label_tab.breakdown_carb_checkbox
+        self.breakdown_fat_checkbox = self.label_tab.breakdown_fat_checkbox
+        self.no_significant_display = self.label_tab.no_significant_display
+        self.additional_nutrients_display = self.label_tab.additional_nutrients_display
+        self.label_placeholder_note = self.label_tab.label_placeholder_note
+        self.manual_note_label = self.label_tab.manual_note_label
+        self.label_table_widget = self.label_tab.label_table_widget
+        self.export_label_no_bg_button = self.label_tab.export_label_no_bg_button
+        self.export_label_with_bg_button = self.label_tab.export_label_with_bg_button
+        self.linear_format_preview = self.label_tab.linear_format_preview
 
-        # Controles legacy ocultos (buscar por FDC y botón de agregar)
-        self.fdc_id_input = QLineEdit()
-        self.fdc_id_input.hide()
-        self.fdc_id_button = QPushButton("Cargar FDC ID")
-        self.fdc_id_button.hide()
-        self.add_button = QPushButton("Agregar seleccionado a formulación")
-        self.add_button.hide()
+        # Label table row indices
+        self.label_table_title_row = self.label_tab.label_table_title_row
+        self.label_table_portion_row = self.label_tab.label_table_portion_row
+        self.label_table_header_row = self.label_tab.label_table_header_row
+        self.label_table_nutrient_start_row = self.label_tab.label_table_nutrient_start_row
+        self.label_table_footer_row = self.label_tab.label_table_footer_row
 
-        self.status_label = QLabel("")
-        self.status_label.setAlignment(Qt.AlignLeft)
-        self.status_label.setStyleSheet("color: gray;")
-        self.status_label.setTextInteractionFlags(
-            Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
-        )
-        self.status_label.setWordWrap(True)
-        self.status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.status_label.setMaximumHeight(
-            int(self.status_label.fontMetrics().height() * 2.4)
-        )
-
-        layout.addLayout(search_layout)
-        status_controls_layout = QHBoxLayout()
-        status_controls_layout.setContentsMargins(0, 0, 0, 0)
-        status_controls_layout.addWidget(self.status_label, 1)
-        status_controls_layout.addStretch()
-        status_controls_layout.addWidget(self.include_brands_checkbox)
-        status_controls_layout.addWidget(self.prev_page_button)
-        status_controls_layout.addWidget(self.next_page_button)
-        layout.addLayout(status_controls_layout)
-
-        # Tabla de resultados (arriba)
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(
-            ["FDC ID", "Descripción", "Marca / Origen", "Tipo de dato"]
-        )
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.table.setSelectionMode(QTableWidget.ExtendedSelection)
-        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.table.horizontalHeader().setStretchLastSection(True)
-
-        self.details_table = QTableWidget(0, 3)
-        self.details_table.setHorizontalHeaderLabels(
-            ["Nutriente", "Cantidad", "Unidad"]
-        )
-        self.details_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.details_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.details_table.setSelectionMode(QTableWidget.ExtendedSelection)
-        self.details_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.details_table.horizontalHeader().setStretchLastSection(True)
-
-        bottom_layout = QHBoxLayout()
-
-        left_panel = QVBoxLayout()
-        left_panel.addWidget(QLabel("Ingredientes en formulación"))
-        self.formulation_preview = QTableWidget(0, 2)
-        self.formulation_preview.setHorizontalHeaderLabels(["FDC ID", "Ingrediente"])
-        self.formulation_preview.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.formulation_preview.setSelectionBehavior(QTableWidget.SelectRows)
-        self.formulation_preview.setSelectionMode(QTableWidget.ExtendedSelection)
-        self.formulation_preview.horizontalHeader().setStretchLastSection(True)
-        left_panel.addWidget(self.formulation_preview)
-
-        self.remove_preview_button = QPushButton("Eliminar ingrediente seleccionado")
-        left_panel.addWidget(self.remove_preview_button)
-
-        right_panel = QVBoxLayout()
-        right_panel.addWidget(QLabel("Nutrientes del ingrediente seleccionado"))
-        right_panel.addWidget(self.details_table)
-
-        bottom_layout.addLayout(left_panel, 1)
-        bottom_layout.addLayout(right_panel, 1)
-
-        bottom_widget = QWidget()
-        bottom_widget.setLayout(bottom_layout)
-
-        splitter = QSplitter(Qt.Vertical)
-        splitter.addWidget(self.table)
-        splitter.addWidget(bottom_widget)
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 2)
-        splitter.setSizes([400, 500])
-
-        layout.addWidget(splitter)
-
+    def _connect_search_tab_signals(self) -> None:
+        """Connect search tab signals to handlers."""
         self.search_button.clicked.connect(self.on_search_clicked)
         self.search_input.returnPressed.connect(self.on_search_clicked)
         self.table.cellDoubleClicked.connect(self.on_result_double_clicked)
@@ -503,87 +327,8 @@ class MainWindow(QMainWindow):
         )
         self._set_default_column_widths()
 
-    def _build_formulation_tab_ui(self) -> None:
-        layout = QVBoxLayout(self.formulation_tab)
-
-        header_layout = QHBoxLayout()
-        self.export_state_button = QPushButton("Exportar")
-        self.import_state_button = QPushButton("Importar")
-        header_layout.addWidget(self.export_state_button)
-        header_layout.addWidget(self.import_state_button)
-        header_layout.addStretch()
-        self.formula_name_input = QLineEdit()
-        self.formula_name_input.setPlaceholderText(
-            "Nombre Fórmula Ej.: Pan dulce con chocolate"
-        )
-        self.formula_name_input.setAlignment(Qt.AlignCenter)
-        header_layout.addWidget(self.formula_name_input, 1)
-        header_layout.addStretch()
-        header_layout.addWidget(QLabel("Unidad de formulación:"))
-        self.quantity_mode_selector = QComboBox()
-        self.quantity_mode_selector.addItems(["Gramos (g)", "Porcentaje (%)"])
-        header_layout.addWidget(self.quantity_mode_selector)
-        layout.addLayout(header_layout)
-
-        self.formulation_table = QTableWidget(0, 6)
-        self.formulation_table.setHorizontalHeaderLabels(
-            [
-                "FDC ID",
-                "Ingrediente",
-                "Cantidad (g)",
-                "Cantidad (%)",
-                "Fijar %",
-                "Marca / Origen",
-            ]
-        )
-        self.formulation_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.formulation_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.formulation_table.setSelectionMode(QTableWidget.ExtendedSelection)
-        self.formulation_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.formulation_table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.formulation_table)
-
-        buttons_layout = QHBoxLayout()
-        self.edit_quantity_button = QPushButton("Editar cantidad seleccionada")
-        self.remove_formulation_button = QPushButton(
-            "Eliminar ingrediente seleccionado"
-        )
-        buttons_layout.addWidget(self.edit_quantity_button)
-        buttons_layout.addWidget(self.remove_formulation_button)
-        buttons_layout.addStretch()
-        layout.addLayout(buttons_layout)
-
-        layout.addWidget(
-            QLabel(
-                "Totales nutricionales (asumiendo valores por 100 g del alimento origen)"
-            )
-        )
-        self.totals_table = QTableWidget(0, 4)
-        self.totals_table.setHorizontalHeaderLabels(
-            ["Nutriente", "Total", "Unidad", "Exportar"]
-        )
-        export_header = QTableWidgetItem("Exportar")
-        export_header.setIcon(self._create_question_icon())
-        export_header.setToolTip(
-            "Los nutrientes seleccionados seran exportados al excel"
-        )
-        self.totals_table.setHorizontalHeaderItem(3, export_header)
-        self.totals_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.totals_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.totals_table.setSelectionMode(QTableWidget.ExtendedSelection)
-        self.totals_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.totals_table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.totals_table)
-
-        export_buttons_layout = QHBoxLayout()
-        self.toggle_export_button = QPushButton("Deseleccionar todos")
-        self.export_excel_button = QPushButton("Exportar a Excel")
-        export_buttons_layout.addStretch()
-        export_buttons_layout.addWidget(self.toggle_export_button)
-        export_buttons_layout.addWidget(self.export_excel_button)
-        export_buttons_layout.addStretch()
-        layout.addLayout(export_buttons_layout)
-
+    def _connect_formulation_tab_signals(self) -> None:
+        """Connect formulation tab signals to handlers."""
         self.remove_formulation_button.clicked.connect(
             self.on_remove_formulation_clicked
         )
@@ -613,138 +358,14 @@ class MainWindow(QMainWindow):
 
         self._set_default_column_widths(formulation=True)
 
-    def _build_label_tab_ui(self) -> None:
-        layout = QVBoxLayout(self.label_tab)
-        layout.setSpacing(10)
-
-        top_layout = QHBoxLayout()
-        top_layout.setSpacing(12)
-
-        left_group = QGroupBox("Rotulado Nutricional")
-        left_form = QGridLayout()
-        left_form.setContentsMargins(10, 10, 10, 10)
-        left_form.setHorizontalSpacing(8)
-        left_form.setVerticalSpacing(6)
-        left_group.setLayout(left_form)
-
-        left_form.addWidget(QLabel("Tamaño Porción:"), 0, 0)
-        self.portion_size_input = QSpinBox()
-        self.portion_size_input.setRange(1, 100000)
-        self.portion_size_input.setValue(100)
-        self.portion_unit_combo = QComboBox()
-        self.portion_unit_combo.addItems(["g", "ml"])
-        portion_widget = QWidget()
-        portion_layout = QHBoxLayout(portion_widget)
-        portion_layout.setContentsMargins(0, 0, 0, 0)
-        portion_layout.setSpacing(6)
-        portion_layout.addWidget(self.portion_size_input)
-        portion_layout.addWidget(self.portion_unit_combo)
-        left_form.addWidget(portion_widget, 0, 1, 1, 2)
-
-        left_form.addWidget(QLabel("Medida Casera:"), 1, 0)
-        self.household_amount_input = QLineEdit()
-        self.household_amount_input.setPlaceholderText("1/2, 2/3, 1 1/2")
-        self.household_amount_input.setText("1/2")
-        self.household_unit_combo = QComboBox()
-        for name, _ in self.household_measure_options:
-            self.household_unit_combo.addItem(name)
-        unidad_index = self.household_unit_combo.findText("Unidad")
-        if unidad_index >= 0:
-            self.household_unit_combo.setCurrentIndex(unidad_index)
-        measure_widget = QWidget()
-        measure_layout = QHBoxLayout(measure_widget)
-        measure_layout.setContentsMargins(0, 0, 0, 0)
-        measure_layout.setSpacing(6)
-        measure_layout.addWidget(self.household_amount_input)
-        measure_layout.addWidget(self.household_unit_combo)
-        left_form.addWidget(measure_widget, 1, 1, 1, 2)
-
-        self.custom_household_unit_input = QLineEdit()
-        self.custom_household_unit_input.setPlaceholderText(
-            "Ej.: Envase, Barrita, Paquete"
-        )
-        self.custom_household_unit_input.setVisible(False)
-        left_form.addWidget(self.custom_household_unit_input, 2, 1, 1, 2)
-
-        left_form.addWidget(QLabel("Capacidad o dimensión:"), 3, 0)
-        self.household_capacity_label = QLabel("-")
-        self.household_capacity_label.setStyleSheet("color: gray;")
-        left_form.addWidget(self.household_capacity_label, 3, 1, 1, 2)
-
-        self.breakdown_carb_checkbox = QCheckBox("Desglose Carbohidratos")
-        self.breakdown_carb_checkbox.setEnabled(True)
-        self.breakdown_fat_checkbox = QCheckBox("Desglose Grasas")
-        self.breakdown_fat_checkbox.setEnabled(True)
-        left_form.addWidget(self.breakdown_carb_checkbox, 4, 0, 1, 2)
-        left_form.addWidget(self.breakdown_fat_checkbox, 4, 2)
-
-        left_form.addWidget(QLabel("Sin aportes significativos:"), 5, 0)
-        self.no_significant_display = QLineEdit()
-        self.no_significant_display.setReadOnly(True)
-        self.no_significant_display.setPlaceholderText("Seleccione nutrientes elegibles")
-        self.no_significant_display.setCursor(Qt.PointingHandCursor)
-        left_form.addWidget(self.no_significant_display, 5, 1, 1, 2)
-
-        left_form.addWidget(QLabel("Nutrientes Adicionales:"), 6, 0)
-        self.additional_nutrients_display = QLineEdit()
-        self.additional_nutrients_display.setReadOnly(True)
-        self.additional_nutrients_display.setPlaceholderText("Seleccione nutrientes adicionales")
-        self.additional_nutrients_display.setCursor(Qt.PointingHandCursor)
-        left_form.addWidget(self.additional_nutrients_display, 6, 1, 1, 2)
-
-        self.label_placeholder_note = QLabel(
-            "Espacio reservado para botones de desglose y futuras acciones."
-        )
-        self.label_placeholder_note.setStyleSheet("color: gray; font-style: italic;")
-        left_form.addWidget(self.label_placeholder_note, 7, 0, 1, 3)
-        left_form.setRowStretch(8, 1)
-
-        right_group = QGroupBox("Formato Vertical")
-        right_layout = QVBoxLayout()
-        right_group.setLayout(right_layout)
-
-        self.manual_note_label = QLabel("Verde: valor manual (Doble clic para editar)")
-        self.manual_note_label.setStyleSheet("color: #2e7d32; font-style: italic;")
-        note_row = QHBoxLayout()
-        note_row.addStretch()
-        note_row.addWidget(self.manual_note_label)
-        right_layout.addLayout(note_row)
-
-        self.label_table_widget = QTableWidget()
-        self._setup_label_table_widget()
-        # Link delegate with header span role
-        delegate = self.label_table_widget.itemDelegate()
-        if isinstance(delegate, LabelTableDelegate):
+    def _connect_label_tab_signals(self) -> None:
+        """Connect label tab signals to handlers."""
+        # Configure delegate
+        delegate = self.label_tab.get_delegate()
+        if delegate:
             delegate.header_span_role = self._header_span_role
             delegate.manual_role = self._manual_role
             delegate.manual_color = self.label_manual_hint_color
-        right_layout.addWidget(self.label_table_widget)
-
-        export_layout = QHBoxLayout()
-        export_layout.addStretch()
-        export_layout.addWidget(QLabel("Exportar tabla como png:"))
-        self.export_label_no_bg_button = QPushButton("Sin Fondo")
-        self.export_label_with_bg_button = QPushButton("Con Fondo")
-        export_layout.addWidget(self.export_label_no_bg_button)
-        export_layout.addWidget(self.export_label_with_bg_button)
-        export_layout.addStretch()
-        right_layout.addLayout(export_layout)
-
-        top_layout.addWidget(left_group, 1)
-        top_layout.addWidget(right_group, 1)
-        layout.addLayout(top_layout, 3)
-
-        linear_group = QGroupBox("Formato Lineal")
-        linear_layout = QVBoxLayout()
-        linear_group.setLayout(linear_layout)
-        self.linear_format_preview = QPlainTextEdit()
-        self.linear_format_preview.setReadOnly(True)
-        self.linear_format_preview.setStyleSheet(
-            "background-color: #f5f5f5; color: #333;"
-        )
-        self.linear_format_preview.setMinimumHeight(140)
-        linear_layout.addWidget(self.linear_format_preview)
-        layout.addWidget(linear_group, 1)
 
         self.portion_size_input.valueChanged.connect(self._on_portion_value_changed)
         self.portion_unit_combo.currentTextChanged.connect(
@@ -777,115 +398,6 @@ class MainWindow(QMainWindow):
         self._update_capacity_label()
         self._auto_fill_household_measure()
         self._update_label_preview(force_recalc_totals=True)
-
-    def _set_default_column_widths(self, formulation: bool = False) -> None:
-        """
-        Set sensible initial column widths while keeping them resizable.
-        """
-        if not formulation:
-            for table in (
-                self.table,
-                self.details_table,
-                self.formulation_preview,
-            ):
-                header = table.horizontalHeader()
-                header.setSectionResizeMode(QHeaderView.Interactive)
-
-            self.table.setColumnWidth(0, 75)   # FDC ID
-            self.table.setColumnWidth(1, 340)  # Descripcion
-            self.table.setColumnWidth(2, 200)  # Marca / Origen
-            self.table.setColumnWidth(3, 120)  # Tipo de dato
-
-            self.details_table.setColumnWidth(0, 200)  # Nutriente
-            self.details_table.setColumnWidth(1, 90)   # Cantidad
-            self.details_table.setColumnWidth(2, 70)   # Unidad
-
-            self.formulation_preview.setColumnWidth(0, 70)  # FDC ID
-            self.formulation_preview.setColumnWidth(1, 290)  # Ingrediente
-            return
-
-        for table in (self.formulation_table, self.totals_table):
-            header = table.horizontalHeader()
-            header.setSectionResizeMode(QHeaderView.Interactive)
-
-        self.formulation_table.setColumnWidth(0, 75)   # FDC ID
-        self.formulation_table.setColumnWidth(1, 330)  # Ingrediente
-        self.formulation_table.setColumnWidth(2, 95)   # Cantidad (g)
-        self.formulation_table.setColumnWidth(3, 85)   # Cantidad (%)
-        self.formulation_table.setColumnWidth(4, 65)   # Fijar %
-        self.formulation_table.setColumnWidth(5, 150)  # Marca / Origen
-
-        self.totals_table.setColumnWidth(0, 210)  # Nutriente
-        self.totals_table.setColumnWidth(1, 85)   # Total
-        self.totals_table.setColumnWidth(2, 60)   # Unidad
-        self.totals_table.setColumnWidth(3, 80)   # Exportar
-
-    def _setup_label_table_widget(self) -> None:
-        table = self.label_table_widget
-        self.label_table_title_row = 0
-        self.label_table_portion_row = 1
-        self.label_table_header_row = 2
-        self.label_table_nutrient_start_row = 3
-        self.label_table_footer_row = (
-            self.label_table_nutrient_start_row + len(self.label_base_nutrients)
-        )
-        table.setColumnCount(3)
-        table.setRowCount(self.label_table_footer_row + 2)
-        table.setEditTriggers(QTableWidget.NoEditTriggers)
-        table.setSelectionMode(QTableWidget.ExtendedSelection)
-        table.setSelectionBehavior(QTableWidget.SelectRows)
-        table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        table.horizontalHeader().setVisible(False)
-        table.verticalHeader().setVisible(False)
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        table.setMinimumHeight(360)
-        table.setAutoFillBackground(False)
-        table.viewport().setAutoFillBackground(False)
-        table.setAttribute(Qt.WA_TranslucentBackground, True)
-        table.viewport().setAttribute(Qt.WA_TranslucentBackground, True)
-
-        palette = table.palette()
-        palette.setColor(QPalette.Base, Qt.transparent)
-        palette.setColor(QPalette.Window, Qt.transparent)
-        palette.setColor(QPalette.AlternateBase, Qt.transparent)
-        # Highlight nativo -> transparente, mantiene color de texto
-        text_color = palette.color(QPalette.Text)
-        palette.setColor(QPalette.Highlight, Qt.transparent)
-        palette.setColor(QPalette.HighlightedText, text_color)
-        table.setPalette(palette)
-        table.viewport().setPalette(palette)
-        table.setStyleSheet(
-            """
-            QTableWidget {
-                gridline-color: #c0c0c0;
-                background-color: transparent;
-                alternate-background-color: transparent;
-            }
-            /* Desactiva el highlight nativo (fondo/borde) para que solo se use el delegado */
-            QTableWidget::item:selected,
-            QTableWidget::item:selected:!active {
-                selection-background-color: transparent;
-                selection-color: #000;
-                background-color: transparent;
-                color: #000;
-                border: none;
-                outline: none;
-            }
-            QTableWidget::item:focus {
-                border: none;
-                outline: none;
-            }
-            QHeaderView::section {
-                background-color: transparent;
-            }
-            QTableCornerButton::section {
-                background-color: transparent;
-            }
-            """
-        )
-        table.setShowGrid(False)
-        table.setWordWrap(True)
-        table.setItemDelegate(LabelTableDelegate(self._fat_row_role, table))
 
     def _build_base_label_nutrients(self) -> list[dict[str, Any]]:
         return [
