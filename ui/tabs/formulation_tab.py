@@ -5,6 +5,9 @@ from pathlib import Path
 from decimal import Decimal
 import json
 import logging
+import unicodedata
+
+import pandas as pd
 
 from PySide6.QtCore import Qt, Signal, QThread, QObject
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap, QKeySequence, QShortcut
@@ -490,16 +493,30 @@ class FormulationTab(QWidget):
             )
 
     def _on_import_state_clicked(self) -> None:
-        """Import formulation state from JSON."""
+        """Import formulation state from JSON or Excel."""
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Importar formulación",
             "",
-            "Archivos JSON (*.json)",
+            "Archivos JSON (*.json);;Archivos Excel (*.xlsx)",
         )
         if not path:
             return
 
+        ext = Path(path).suffix.lower()
+        if ext == ".json":
+            self._import_from_json(path)
+        elif ext in (".xlsx", ".xls"):
+            self._import_from_excel(path)
+        else:
+            QMessageBox.warning(
+                self,
+                "Formato no soportado",
+                "Selecciona un archivo .json o .xlsx",
+            )
+
+    def _import_from_json(self, path: str) -> None:
+        """Import formulation from JSON file."""
         try:
             self._presenter.load_from_file(path)
 
@@ -531,6 +548,93 @@ class FormulationTab(QWidget):
                 "Error al importar",
                 f"No se pudo importar la formulación:\n{exc}",
             )
+
+    def _import_from_excel(self, path: str) -> None:
+        """Import formulation from Excel file."""
+        def _read(sheet, header_row: int) -> pd.DataFrame:
+            return pd.read_excel(path, sheet_name=sheet, header=header_row)
+
+        df: pd.DataFrame | None = None
+        # Prefer sheet "Ingredientes" with headers on second row
+        for sheet in ("Ingredientes", 0):
+            for header_row in (1, 0):
+                try:
+                    tmp = _read(sheet, header_row)
+                    if not tmp.empty:
+                        df = tmp
+                        break
+                except Exception:
+                    continue
+            if df is not None:
+                break
+
+        if df is None or df.empty:
+            QMessageBox.warning(
+                self,
+                "Sin datos",
+                "El archivo no tiene filas para importar.",
+            )
+            return
+
+        # Normalize column names for matching
+        def normalize_label(s: str) -> str:
+            s = s.lower().strip()
+            s = unicodedata.normalize("NFD", s)
+            s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+            return s
+
+        cols_norm: Dict[str, str] = {normalize_label(c): c for c in df.columns}
+        fdc_candidates = ["fdc id", "fdc_id", "fdcid", "fdc"]
+        amount_candidates = [
+            "cantidad (g)", "cantidad g", "cantidad", "cantidad gramos",
+            "cantidad en gramos", "amount g", "amount_g", "g", "grams",
+        ]
+
+        fdc_col = next((cols_norm[c] for c in fdc_candidates if c in cols_norm), None)
+        amount_col = next((cols_norm[c] for c in amount_candidates if c in cols_norm), None)
+
+        if not fdc_col or not amount_col:
+            QMessageBox.warning(
+                self,
+                "Columnas faltantes",
+                "Se requieren columnas FDC ID y Cantidad (g).",
+            )
+            return
+
+        # Parse rows
+        items_to_add: List[tuple[int, float]] = []
+        for _, row in df.iterrows():
+            fdc_val = row.get(fdc_col)
+            amt_val = row.get(amount_col)
+            if pd.isna(fdc_val):
+                continue
+            try:
+                fdc_int = int(fdc_val)
+            except Exception:
+                continue
+            try:
+                amt = float(amt_val) if not pd.isna(amt_val) else 0.0
+            except Exception:
+                amt = 0.0
+            items_to_add.append((fdc_int, amt))
+
+        if not items_to_add:
+            QMessageBox.warning(
+                self,
+                "Sin ingredientes",
+                "No se encontraron filas válidas con FDC ID y Cantidad (g).",
+            )
+            return
+
+        # Clear existing formulation and add new items
+        self._presenter.clear()
+        self.formula_name_input.setText(Path(path).stem)
+
+        self._set_status(f"Importando {len(items_to_add)} ingredientes desde Excel...")
+
+        # Add items one by one (this will fetch from USDA API)
+        for fdc_id, amount in items_to_add:
+            self.add_ingredient(fdc_id, amount)
 
     # ==================== View Updates ====================
 
