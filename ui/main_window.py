@@ -399,6 +399,46 @@ class MainWindow(QMainWindow):
         self._auto_fill_household_measure()
         self._update_label_preview(force_recalc_totals=True)
 
+    def _set_default_column_widths(self, formulation: bool = False) -> None:
+        """Set sensible initial column widths while keeping them resizable."""
+        if not formulation:
+            for table in (
+                self.table,
+                self.details_table,
+                self.formulation_preview,
+            ):
+                header = table.horizontalHeader()
+                header.setSectionResizeMode(QHeaderView.Interactive)
+
+            self.table.setColumnWidth(0, 75)   # FDC ID
+            self.table.setColumnWidth(1, 340)  # Descripcion
+            self.table.setColumnWidth(2, 200)  # Marca / Origen
+            self.table.setColumnWidth(3, 120)  # Tipo de dato
+
+            self.details_table.setColumnWidth(0, 200)  # Nutriente
+            self.details_table.setColumnWidth(1, 90)   # Cantidad
+            self.details_table.setColumnWidth(2, 70)   # Unidad
+
+            self.formulation_preview.setColumnWidth(0, 70)  # FDC ID
+            self.formulation_preview.setColumnWidth(1, 290)  # Ingrediente
+            return
+
+        for table in (self.formulation_table, self.totals_table):
+            header = table.horizontalHeader()
+            header.setSectionResizeMode(QHeaderView.Interactive)
+
+        self.formulation_table.setColumnWidth(0, 75)   # FDC ID
+        self.formulation_table.setColumnWidth(1, 330)  # Ingrediente
+        self.formulation_table.setColumnWidth(2, 95)   # Cantidad (g)
+        self.formulation_table.setColumnWidth(3, 85)   # Cantidad (%)
+        self.formulation_table.setColumnWidth(4, 65)   # Fijar %
+        self.formulation_table.setColumnWidth(5, 150)  # Marca / Origen
+
+        self.totals_table.setColumnWidth(0, 210)  # Nutriente
+        self.totals_table.setColumnWidth(1, 85)   # Total
+        self.totals_table.setColumnWidth(2, 60)   # Unidad
+        self.totals_table.setColumnWidth(3, 80)   # Exportar
+
     def _build_base_label_nutrients(self) -> list[dict[str, Any]]:
         return [
             {
