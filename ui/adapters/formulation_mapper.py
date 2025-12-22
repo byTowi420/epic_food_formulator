@@ -9,6 +9,7 @@ from decimal import Decimal
 from typing import Any, Dict, List
 
 from domain.models import Food, Formulation, Ingredient, Nutrient
+from services.nutrient_normalizer import canonical_unit
 
 
 class FormulationMapper:
@@ -157,20 +158,56 @@ class NutrientDisplayMapper:
         Returns:
             Dict compatible with UI nutrient tables
         """
-        # Build map of nutrient name -> unit from formulation
+        # Build map of nutrient name -> unit from formulation.
         nutrient_units: Dict[str, str] = {}
+        energy_by_unit: Dict[str, Decimal] = {}
+        total_weight = None
+
         if formulation:
+            total_weight = formulation.total_weight
             for ingredient in formulation.ingredients:
                 for nutrient in ingredient.food.nutrients:
                     if nutrient.name not in nutrient_units:
                         nutrient_units[nutrient.name] = nutrient.unit
 
-        result = {}
+                    if nutrient.name.strip().lower() == "energy":
+                        unit = canonical_unit(nutrient.unit or "")
+                        if not unit:
+                            continue
+                        scaled_amount = nutrient.amount * (ingredient.amount_g / Decimal("100"))
+                        energy_by_unit[unit] = energy_by_unit.get(unit, Decimal("0")) + scaled_amount
+
+        if energy_by_unit and total_weight:
+            normalization_factor = Decimal("100") / total_weight
+            for unit in list(energy_by_unit.keys()):
+                energy_by_unit[unit] = energy_by_unit[unit] * normalization_factor
+        else:
+            energy_by_unit = {}
+
+        result: Dict[str, Dict[str, Any]] = {}
         for name, amount in totals.items():
+            if name.strip().lower() == "energy" and energy_by_unit:
+                continue
             result[name] = {
                 "name": name,
                 "amount": float(amount),
                 "unit": nutrient_units.get(name, ""),
             }
+
+        if energy_by_unit:
+            ordered_units: list[str] = []
+            for unit in ("kcal", "kJ"):
+                if unit in energy_by_unit:
+                    ordered_units.append(unit)
+            for unit in sorted(u for u in energy_by_unit if u not in ordered_units):
+                ordered_units.append(unit)
+
+            for unit in ordered_units:
+                key = f"Energy|{unit.lower()}"
+                result[key] = {
+                    "name": "Energy",
+                    "amount": float(energy_by_unit[unit]),
+                    "unit": unit,
+                }
 
         return result
