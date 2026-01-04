@@ -104,16 +104,30 @@ class FormulationService:
             Maintains relative proportions while setting total to 100g.
             All locks are ignored (this is a proportional scaling).
         """
-        current_weight = formulation.total_weight
+        self.scale_to_target_weight(formulation, Decimal("100"))
 
+    def scale_to_target_weight(
+        self,
+        formulation: Formulation,
+        target_weight_g: Decimal,
+    ) -> None:
+        """Scale all ingredients proportionally to reach the target weight.
+
+        Ignores locks and preserves relative proportions.
+        """
+        if target_weight_g <= 0:
+            raise InvalidFormulationError(
+                f"Target weight must be positive: {target_weight_g}"
+            )
+
+        current_weight = formulation.total_weight
         if current_weight == 0:
             return
 
-        if current_weight == Decimal("100"):
-            return  # Already normalized
+        if current_weight == target_weight_g:
+            return
 
-        scale_factor = Decimal("100") / current_weight
-
+        scale_factor = target_weight_g / current_weight
         for ingredient in formulation.ingredients:
             ingredient.amount_g *= scale_factor
 

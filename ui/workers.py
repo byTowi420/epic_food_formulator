@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from services.usda_api import get_food_details
+from infrastructure.api.usda_repository import FoodRepository
 
 
 class ApiWorker(QObject):
@@ -38,11 +38,13 @@ class ImportWorker(QObject):
 
     def __init__(
         self,
+        food_repository_provider: Callable[[], FoodRepository],
         items: list[Dict[str, Any]],
         max_attempts: int = 4,
         read_timeout: float = 8.0,
     ) -> None:
         super().__init__()
+        self._food_repository_provider = food_repository_provider
         self.items = items
         self.max_attempts = max_attempts
         self.read_timeout = read_timeout
@@ -50,6 +52,11 @@ class ImportWorker(QObject):
     @Slot()
     def run(self) -> None:
         hydrated_payload: list[Dict[str, Any]] = []
+        try:
+            repository = self._food_repository_provider()
+        except Exception as exc:  # noqa: BLE001 - surface setup errors
+            self.error.emit(str(exc))
+            return
         total = len(self.items)
         for idx, item in enumerate(self.items, start=1):
             try:
@@ -67,7 +74,7 @@ class ImportWorker(QObject):
                 attempts += 1
                 self.progress.emit(f"{idx}/{total} ID #{fdc_id_int}")
                 try:
-                    details = get_food_details(
+                    details = repository.get_by_id(
                         fdc_id_int,
                         timeout=(3.05, self.read_timeout),
                         detail_format="abridged",
@@ -99,6 +106,7 @@ class AddWorker(QObject):
 
     def __init__(
         self,
+        food_repository_provider: Callable[[], FoodRepository],
         fdc_id: int,
         max_attempts: int,
         read_timeout: float,
@@ -106,6 +114,7 @@ class AddWorker(QObject):
         value: float,
     ) -> None:
         super().__init__()
+        self._food_repository_provider = food_repository_provider
         self.fdc_id = fdc_id
         self.max_attempts = max_attempts
         self.read_timeout = read_timeout
@@ -115,6 +124,11 @@ class AddWorker(QObject):
     @Slot()
     def run(self) -> None:
         logging.debug(f"AddWorker start fdc_id={self.fdc_id} attempts={self.max_attempts}")
+        try:
+            repository = self._food_repository_provider()
+        except Exception as exc:  # noqa: BLE001 - surface setup errors
+            self.error.emit(str(exc))
+            return
         attempts = 0
         while attempts < self.max_attempts:
             attempts += 1
@@ -123,7 +137,7 @@ class AddWorker(QObject):
                 logging.debug(
                     f"AddWorker attempt {attempts} fetching fdc_id={self.fdc_id} timeout={self.read_timeout}"
                 )
-                details = get_food_details(
+                details = repository.get_by_id(
                     self.fdc_id,
                     timeout=(3.05, max(self.read_timeout, 8.0)),
                     detail_format="abridged",

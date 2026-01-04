@@ -4,6 +4,8 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget
 
+from config.container import Container
+from infrastructure.api.usda_repository import FoodRepository
 from ui.presenters.formulation_presenter import FormulationPresenter
 from ui.presenters.search_presenter import SearchPresenter
 from ui.tabs.formulation_tab import FormulationTabMixin
@@ -24,8 +26,9 @@ class MainWindow(SearchTabMixin, FormulationTabMixin, LabelTabMixin, QMainWindow
         super().__init__()
 
         # Presenters.
-        self.formulation_presenter = FormulationPresenter()
-        self.search_presenter = SearchPresenter()
+        self.container = Container()
+        self.formulation_presenter = FormulationPresenter(container=self.container)
+        self.search_presenter = SearchPresenter(container=self.container)
 
         # Window setup.
         self.base_window_title = "Food Formulator - Proto"
@@ -69,6 +72,11 @@ class MainWindow(SearchTabMixin, FormulationTabMixin, LabelTabMixin, QMainWindow
         self._build_search_tab_ui()
         self._build_formulation_tab_ui()
         self._build_label_tab_ui()
+
+    @property
+    def food_repository(self) -> FoodRepository:
+        """Lazily resolve the shared USDA repository."""
+        return self.container.food_repository
 
     def _load_last_path(self) -> str:
         """Load last used path from local cache file."""

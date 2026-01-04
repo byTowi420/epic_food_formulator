@@ -33,7 +33,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
-from services.nutrient_normalizer import canonical_alias_name, canonical_unit
+from domain.services.unit_normalizer import canonical_unit, convert_amount
+from services.nutrient_normalizer import canonical_alias_name
 from ui.delegates.label_table_delegate import LabelTableDelegate
 
 
@@ -876,7 +877,8 @@ class LabelTabMixin:
     def _format_manual_amount(self, nutrient: Dict[str, Any], manual_amount: float) -> str:
         if nutrient.get("type") == "energy":
             kcal_val = manual_amount
-            kj_val = manual_amount * 4.184
+            kj_conv = convert_amount(manual_amount, "kcal", "kJ")
+            kj_val = float(kj_conv) if kj_conv is not None else manual_amount * 4.184
             kcal_text = f"{kcal_val:.0f}"
             kj_text = f"{kj_val:.0f}"
             return f"{kcal_text} kcal = {kj_text} kJ"
@@ -1316,18 +1318,8 @@ class LabelTabMixin:
     def _convert_label_amount_unit(
         self, amount: float, from_unit: str, to_unit: str
     ) -> float | None:
-        source = canonical_unit(from_unit).lower()
-        target = canonical_unit(to_unit).lower()
-        if not source or not target:
-            return None
-        if source == target:
-            return amount
-        if source == "µg" and target == "mg":
-            return amount / 1000.0
-        if source == "mg" and target == "µg":
-            return amount * 1000.0
-        return None
-
+        converted = convert_amount(amount, from_unit, to_unit)
+        return float(converted) if converted is not None else None
 
     def _factor_for_energy(self, name: str) -> float | None:
         factor_map: list[tuple[str, float]] = [
@@ -1391,7 +1383,9 @@ class LabelTabMixin:
             return None
 
         kcal_per_100 = kcal_portion / factor
-        return {"kcal": kcal_per_100, "kj": kcal_per_100 * 4.184}
+        kj_conv = convert_amount(kcal_per_100, "kcal", "kJ")
+        kj_val = float(kj_conv) if kj_conv is not None else kcal_per_100 * 4.184
+        return {"kcal": kcal_per_100, "kj": kj_val}
 
 
     def _label_amount_from_totals(self, nutrient: Dict[str, Any]) -> Dict[str, float] | None:
@@ -1444,7 +1438,8 @@ class LabelTabMixin:
         if manual_amount is not None:
             if nutrient.get("type") == "energy":
                 effective["kcal"] = manual_amount
-                effective["kj"] = manual_amount * 4.184
+                kj_conv = convert_amount(manual_amount, "kcal", "kJ")
+                effective["kj"] = float(kj_conv) if kj_conv is not None else manual_amount * 4.184
                 effective["amount"] = manual_amount
             else:
                 effective["amount"] = manual_amount

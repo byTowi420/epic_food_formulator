@@ -167,6 +167,13 @@ class FormulationPresenter:
         """Normalize formulation to 100g total."""
         self._container.formulation_service.normalize_to_100g(self._formulation)
 
+    def normalize_to_target_weight(self, target_g: float) -> None:
+        """Normalize formulation to a target total weight in grams."""
+        self._container.formulation_service.scale_to_target_weight(
+            self._formulation,
+            Decimal(str(target_g)),
+        )
+
     def clear(self) -> None:
         """Clear all ingredients."""
         self._formulation.clear()
@@ -196,6 +203,7 @@ class FormulationPresenter:
         self,
         output_path: str,
         export_flags: Dict[str, bool] | None = None,
+        mass_unit: str | None = None,
     ) -> None:
         """Export formulation to Excel.
 
@@ -206,6 +214,7 @@ class FormulationPresenter:
             self._formulation,
             output_path,
             export_flags=export_flags,
+            mass_unit=mass_unit,
         )
 
     def get_total_weight(self) -> float:

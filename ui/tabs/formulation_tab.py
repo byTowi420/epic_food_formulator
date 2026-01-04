@@ -33,13 +33,12 @@ from PySide6.QtWidgets import (
 
 from ui.delegates.selection_bar_delegate import SelectionBarDelegate
 
+from domain.services.unit_normalizer import canonical_unit, convert_mass, normalize_mass_unit
 from services.nutrient_normalizer import (
     augment_fat_nutrients,
     canonical_alias_name,
-    canonical_unit,
     normalize_nutrients,
 )
-from services.usda_api import get_food_details
 from ui.workers import AddWorker, ApiWorker, ImportWorker
 
 
@@ -61,6 +60,14 @@ class FormulationTabMixin:
 
         # Formulation UI state.
         self.quantity_mode = "g"
+        self.quantity_mode_options = [
+            ("g", "Gramos (g)"),
+            ("%", "Porcentaje (%)"),
+            ("kg", "Kilogramos (kg)"),
+            ("ton", "Toneladas (ton)"),
+            ("lb", "Libras (lb)"),
+            ("oz", "Onzas (oz)"),
+        ]
         self.amount_g_column_index = 2
         self.percent_column_index = 3
         self.lock_column_index = 4
@@ -111,8 +118,12 @@ class FormulationTabMixin:
         header_layout.addStretch()
         header_layout.addWidget(QLabel("Unidad de formulación:"))
         self.quantity_mode_selector = QComboBox()
-        self.quantity_mode_selector.addItems(["Gramos (g)", "Porcentaje (%)"])
+        self.quantity_mode_selector.addItems(
+            [label for _, label in self.quantity_mode_options]
+        )
         header_layout.addWidget(self.quantity_mode_selector)
+        self.normalize_total_button = QPushButton("Normalizar masa")
+        header_layout.addWidget(self.normalize_total_button)
         layout.addLayout(header_layout)
     
         # Tabla principal de ingredientes.
@@ -187,6 +198,9 @@ class FormulationTabMixin:
         self.export_excel_button.clicked.connect(self.on_export_to_excel_clicked)
         self.quantity_mode_selector.currentIndexChanged.connect(
             self.on_quantity_mode_changed
+        )
+        self.normalize_total_button.clicked.connect(
+            self.on_normalize_total_clicked
         )
         self.formulation_table.cellDoubleClicked.connect(
             self.on_formulation_cell_double_clicked
@@ -322,7 +336,7 @@ class FormulationTabMixin:
             return
         if item.column() != self.lock_column_index:
             return
-        if self.quantity_mode == "g":
+        if not self._is_percent_mode():
             return
         table = item.tableWidget()
         if table not in (self.formulation_table, self.formulation_preview):
@@ -363,11 +377,67 @@ class FormulationTabMixin:
 
 
     def on_quantity_mode_changed(self) -> None:
-        """Switch between grams and percent modes for quantities."""
-        self.quantity_mode = "g" if self.quantity_mode_selector.currentIndex() == 0 else "%"
+        """Switch between quantity modes for formulation."""
+        idx = self.quantity_mode_selector.currentIndex()
+        if 0 <= idx < len(self.quantity_mode_options):
+            self.quantity_mode = self.quantity_mode_options[idx][0]
+        else:
+            self.quantity_mode = "g"
         self._refresh_formulation_views()
-        mode_text = "gramos (g)" if self.quantity_mode == "g" else "porcentaje (%)"
+        mode_text = self._quantity_mode_label(self.quantity_mode)
         self.status_label.setText(f"Modo de cantidad cambiado a {mode_text}.")
+
+    def on_normalize_total_clicked(self) -> None:
+        """Scale formulation to a target total mass."""
+        if self._is_importing():
+            self.status_label.setText("Importacion en curso. Espera para editar.")
+            return
+        if not self.formulation_presenter.has_ingredients():
+            self.status_label.setText("No hay ingredientes para normalizar.")
+            return
+
+        unit = self._current_mass_unit()
+        total_g = self._total_weight()
+        start_value = convert_mass(total_g, "g", unit) or total_g
+        decimals = self._mass_decimals(unit)
+        min_value = convert_mass(0.1, "g", unit) or 0.1
+        max_value = convert_mass(1_000_000.0, "g", unit) or 1_000_000.0
+
+        target_value, ok = QInputDialog.getDouble(
+            self,
+            "Normalizar masa",
+            f"Masa total objetivo ({unit}):",
+            float(start_value),
+            float(min_value),
+            float(max_value),
+            decimals,
+        )
+        if not ok:
+            return
+
+        target_g = convert_mass(target_value, unit, "g")
+        if target_g is None or target_g <= 0:
+            QMessageBox.warning(
+                self,
+                "Valor invalido",
+                "Ingresa una masa total valida.",
+            )
+            return
+
+        try:
+            self.formulation_presenter.normalize_to_target_weight(float(target_g))
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(
+                self,
+                "Error al normalizar",
+                f"No se pudo normalizar la formulacion:\n{exc}",
+            )
+            return
+
+        self._refresh_formulation_views()
+        self.status_label.setText(
+            f"Formulacion normalizada a {target_value:.{decimals}f} {unit}."
+        )
 
 
     def on_export_to_excel_clicked(self) -> None:
@@ -722,7 +792,10 @@ class FormulationTabMixin:
             nutrient_flags, legacy_flags = self._normalize_export_flags(raw_flags)
 
             mode_raw = str(data.get("quantity_mode", "g") or "g").strip().lower()
-            quantity_mode = "%" if mode_raw in ("%", "percent", "percentage") else "g"
+            if mode_raw in ("%", "percent", "percentage"):
+                quantity_mode = "%"
+            else:
+                quantity_mode = normalize_mass_unit(mode_raw) or "g"
 
             formula_name = data.get("formula_name") or data.get("name") or Path(path).stem
             label_settings = (
@@ -788,27 +861,90 @@ class FormulationTabMixin:
             "fdcid",
             "fdc",
         ]
-        amount_candidates = [
-            "cantidad (g)",
-            "cantidad g",
-            "cantidad",
-            "cantidad gramos",
-            "cantidad en gramos",
-            "amount g",
-            "amount_g",
-            "g",
-            "grams",
-        ]
+        amount_candidates_by_unit = {
+            "g": [
+                "cantidad (g)",
+                "cantidad g",
+                "cantidad",
+                "cantidad gramos",
+                "cantidad en gramos",
+                "amount g",
+                "amount_g",
+                "g",
+                "grams",
+            ],
+            "kg": [
+                "cantidad (kg)",
+                "cantidad kg",
+                "cantidad kilogramos",
+                "cantidad en kilogramos",
+                "amount kg",
+                "amount_kg",
+                "kg",
+                "kilograms",
+            ],
+            "ton": [
+                "cantidad (ton)",
+                "cantidad ton",
+                "cantidad toneladas",
+                "cantidad en toneladas",
+                "amount ton",
+                "amount_ton",
+                "ton",
+                "toneladas",
+            ],
+            "lb": [
+                "cantidad (lb)",
+                "cantidad lb",
+                "cantidad libras",
+                "cantidad en libras",
+                "amount lb",
+                "amount_lb",
+                "lb",
+                "lbs",
+                "pounds",
+            ],
+            "oz": [
+                "cantidad (oz)",
+                "cantidad oz",
+                "cantidad onzas",
+                "cantidad en onzas",
+                "amount oz",
+                "amount_oz",
+                "oz",
+                "ounces",
+            ],
+        }
 
         fdc_col = next((cols_norm[c] for c in fdc_candidates if c in cols_norm), None)
-        amount_col = next(
-            (cols_norm[c] for c in amount_candidates if c in cols_norm), None
-        )
+        amount_col = None
+        amount_unit = "g"
+        for unit, candidates in amount_candidates_by_unit.items():
+            for candidate in candidates:
+                if candidate in cols_norm:
+                    amount_col = cols_norm[candidate]
+                    amount_unit = unit
+                    break
+            if amount_col:
+                break
+        if not amount_col:
+            for norm_label, original in cols_norm.items():
+                if not (norm_label.startswith("cantidad") or norm_label.startswith("amount")):
+                    continue
+                match = re.search(r"\(([^)]+)\)", norm_label)
+                if not match:
+                    continue
+                parsed_unit = normalize_mass_unit(match.group(1))
+                if parsed_unit:
+                    amount_col = original
+                    amount_unit = parsed_unit
+                    break
+
         if not fdc_col or not amount_col:
             QMessageBox.warning(
                 self,
                 "Columnas faltantes",
-                "Se requieren columnas FDC ID y Cantidad (g).",
+                "Se requieren columnas FDC ID y Cantidad (g/kg/ton/lb/oz).",
             )
             return None
 
@@ -826,10 +962,14 @@ class FormulationTabMixin:
                 amt = float(amt_val) if not pd.isna(amt_val) else 0.0
             except Exception:
                 amt = 0.0
+            amt_g = convert_mass(amt, amount_unit, "g")
+            if amt_g is None:
+                amt_g = amt
+
             base_items.append(
                 {
                     "fdc_id": fdc_int,
-                    "amount_g": amt,
+                    "amount_g": float(amt_g),
                     "locked": False,
                 }
             )
@@ -838,13 +978,13 @@ class FormulationTabMixin:
             QMessageBox.warning(
                 self,
                 "Sin ingredientes",
-                "No se encontraron filas válidas con FDC ID y Cantidad (g).",
+                "No se encontraron filas válidas con FDC ID y Cantidad.",
             )
             return None
 
         meta = {
             "nutrient_export_flags": {},
-            "quantity_mode": "g",
+            "quantity_mode": amount_unit,
             "formula_name": self.formula_name_input.text() or Path(path).stem,
             "path": path,
             "respect_existing_formula_name": True,
@@ -859,6 +999,7 @@ class FormulationTabMixin:
             self.remove_formulation_button,
             self.export_excel_button,
             self.toggle_export_button,
+            self.normalize_total_button,
             self.quantity_mode_selector,
         ):
             if widget is not None:
@@ -870,11 +1011,8 @@ class FormulationTabMixin:
     ) -> None:
         """Populate UI with base items before USDA hydration."""
         mode = meta.get("quantity_mode", "g")
-        self.quantity_mode = "g" if mode != "%" else "%"
         self.quantity_mode_selector.blockSignals(True)
-        self.quantity_mode_selector.setCurrentIndex(
-            0 if self.quantity_mode == "g" else 1
-        )
+        self._set_quantity_mode(mode)
         self.quantity_mode_selector.blockSignals(False)
 
         formula_name = meta.get("formula_name", "")
@@ -940,6 +1078,7 @@ class FormulationTabMixin:
 
         thread = QThread(self)
         worker = ImportWorker(
+            lambda: self.container.food_repository,
             base_items,
             max_attempts=self.import_max_attempts,
             read_timeout=self.import_read_timeout,
@@ -1022,11 +1161,8 @@ class FormulationTabMixin:
         resolved_flags.update(meta.get("nutrient_export_flags", {}))
         self.nutrient_export_flags = resolved_flags
         mode = meta.get("quantity_mode", "g")
-        self.quantity_mode = "g" if mode != "%" else "%"
         self.quantity_mode_selector.blockSignals(True)
-        self.quantity_mode_selector.setCurrentIndex(
-            0 if self.quantity_mode == "g" else 1
-        )
+        self._set_quantity_mode(mode)
         self.quantity_mode_selector.blockSignals(False)
 
         formula_name = meta.get("formula_name", "")
@@ -1058,6 +1194,62 @@ class FormulationTabMixin:
         """Total weight of current formulation in grams."""
         return self.formulation_presenter.get_total_weight()
 
+    def _is_percent_mode(self) -> bool:
+        return self.quantity_mode == "%"
+
+    def _current_mass_unit(self) -> str:
+        if self._is_percent_mode():
+            return "g"
+        return normalize_mass_unit(self.quantity_mode) or "g"
+
+    def _quantity_mode_label(self, mode: str) -> str:
+        labels = {
+            "g": "gramos (g)",
+            "kg": "kilogramos (kg)",
+            "ton": "toneladas (ton)",
+            "lb": "libras (lb)",
+            "oz": "onzas (oz)",
+            "%": "porcentaje (%)",
+        }
+        return labels.get(mode, mode)
+
+    def _set_quantity_mode(self, mode_raw: str) -> None:
+        mode_lower = str(mode_raw or "g").strip().lower()
+        if mode_lower in ("%", "percent", "percentage"):
+            mode = "%"
+        else:
+            mode = normalize_mass_unit(mode_lower) or "g"
+        self.quantity_mode = mode
+        idx = next(
+            (
+                i
+                for i, (value, _) in enumerate(self.quantity_mode_options)
+                if value == mode
+            ),
+            0,
+        )
+        self.quantity_mode_selector.setCurrentIndex(idx)
+
+    def _mass_decimals(self, unit: str) -> int:
+        return {
+            "g": 1,
+            "kg": 3,
+            "ton": 6,
+            "lb": 3,
+            "oz": 3,
+        }.get(unit, 2)
+
+    def _display_amount_for_unit(self, amount_g: float) -> float:
+        unit = self._current_mass_unit()
+        converted = convert_mass(amount_g, "g", unit)
+        return float(converted) if converted is not None else amount_g
+
+    def _format_mass_amount(self, amount_g: float) -> str:
+        unit = self._current_mass_unit()
+        converted = self._display_amount_for_unit(amount_g)
+        decimals = self._mass_decimals(unit)
+        return f"{converted:.{decimals}f} {unit}"
+
 
     def _amount_to_percent(self, amount_g: float, total: float | None = None) -> float:
         total_weight = self._total_weight() if total is None else total
@@ -1067,6 +1259,7 @@ class FormulationTabMixin:
 
 
     def _update_quantity_headers(self) -> None:
+        mass_unit = self._current_mass_unit()
         self.formulation_preview.setHorizontalHeaderLabels(
             ["FDC ID", "Ingrediente"]
         )
@@ -1074,7 +1267,7 @@ class FormulationTabMixin:
             [
                 "FDC ID",
                 "Ingrediente",
-                "Cantidad (g)",
+                f"Cantidad ({mass_unit})",
                 "Cantidad (%)",
                 "Fijar %",
                 "Marca / Origen",
@@ -1095,8 +1288,8 @@ class FormulationTabMixin:
 
 
     def _apply_column_state(self, table: QTableWidget, row: int) -> None:
-        grams_enabled = self.quantity_mode == "g"
-        percent_enabled = self.quantity_mode == "%"
+        grams_enabled = not self._is_percent_mode()
+        percent_enabled = self._is_percent_mode()
 
         self._set_item_enabled(
             table.item(row, self.amount_g_column_index), grams_enabled
@@ -1112,7 +1305,7 @@ class FormulationTabMixin:
     def _can_edit_column(self, column: int | None) -> bool:
         if column is None:
             return True
-        if self.quantity_mode == "g":
+        if not self._is_percent_mode():
             return column == self.amount_g_column_index
         return column == self.percent_column_index
 
@@ -1370,7 +1563,10 @@ class FormulationTabMixin:
             )
             QCoreApplication.processEvents()
             try:
-                details = get_food_details(fdc_id_int)
+                details = self.food_repository.get_by_id(
+                    fdc_id_int,
+                    detail_format="abridged",
+                )
             except Exception as exc:  # noqa: BLE001 - surface to user
                 QMessageBox.critical(
                     self,
@@ -1435,11 +1631,13 @@ class FormulationTabMixin:
         for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
             amount_g = float(item.get("amount_g", 0.0) or 0.0)
             percent = self._amount_to_percent(amount_g, total_weight)
+            amount_display = self._display_amount_for_unit(amount_g)
+            amount_decimals = self._mass_decimals(self._current_mass_unit())
 
             cells: list[QTableWidgetItem] = [
                 QTableWidgetItem(str(item.get("fdc_id", ""))),
                 QTableWidgetItem(item.get("description", "")),
-                QTableWidgetItem(f"{amount_g:.1f}"),
+                QTableWidgetItem(f"{amount_display:.{amount_decimals}f}"),
                 QTableWidgetItem(f"{percent:.2f}"),
             ]
 
@@ -1611,6 +1809,7 @@ class FormulationTabMixin:
             self.formulation_presenter.export_to_excel(
                 filepath,
                 export_flags=self.nutrient_export_flags,
+                mass_unit=self._current_mass_unit(),
             )
             return
         except Exception as e:
@@ -1625,12 +1824,16 @@ class FormulationTabMixin:
         ws.title = "Ingredientes"
         totals_sheet = wb.create_sheet("Totales")
 
+        mass_unit = self._current_mass_unit()
+        unit_decimals = self._mass_decimals(mass_unit)
+        unit_format = "0" if unit_decimals <= 0 else f"0.{'0' * unit_decimals}"
+
         base_headers = [
             "FDC ID",
             "Ingrediente",
             "Marca / Origen",
             "Tipo de dato",
-            "Cantidad (g)",
+            f"Cantidad ({mass_unit})",
             "Cantidad (%)",
         ]
 
@@ -1682,7 +1885,7 @@ class FormulationTabMixin:
             cell.alignment = center
 
         start_row = 3
-        grams_col = base_headers.index("Cantidad (g)") + 1
+        grams_col = base_headers.index(f"Cantidad ({mass_unit})") + 1
         percent_col = base_headers.index("Cantidad (%)") + 1
         data_rows = self.formulation_presenter.get_ingredient_count()
         end_row = start_row + data_rows - 1
@@ -1690,12 +1893,15 @@ class FormulationTabMixin:
         # Write ingredient rows
         for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
             row = start_row + idx
+            amount_g = float(item.get("amount_g", 0.0) or 0.0)
+            amount_val = convert_mass(amount_g, "g", mass_unit)
+            amount_display = float(amount_val) if amount_val is not None else amount_g
             values = [
                 item.get("fdc_id", ""),
                 item.get("description", ""),
                 item.get("brand", ""),
                 item.get("data_type", ""),
-                float(item.get("amount_g", 0.0) or 0.0),
+                amount_display,
                 None,  # placeholder for percent formula
             ]
             for col_idx, val in enumerate(values, start=1):
@@ -1741,7 +1947,7 @@ class FormulationTabMixin:
 
         # Styles for data rows
         for row in range(start_row, total_row + 1):
-            ws.cell(row=row, column=grams_col).number_format = "0.0"
+            ws.cell(row=row, column=grams_col).number_format = unit_format
 
         # Freeze panes to keep headers/base columns visible
         freeze_col = len(base_headers) + 1 if nutrient_headers else 1
@@ -2352,6 +2558,7 @@ class FormulationTabMixin:
         self._set_window_progress(f"1/1 ID #{fdc_id}")
         thread = QThread(self)
         worker = AddWorker(
+            lambda: self.container.food_repository,
             fdc_id,
             max_attempts=self.import_max_attempts,
             read_timeout=self.import_read_timeout,
@@ -2408,8 +2615,8 @@ class FormulationTabMixin:
 
     def _format_amount_for_status(self, amount_g: float, include_new: bool = False) -> str:
         """Return a user-facing label for a quantity using the active mode."""
-        if self.quantity_mode == "g":
-            return f"{amount_g:.1f} g"
+        if not self._is_percent_mode():
+            return self._format_mass_amount(amount_g)
 
         total = self._total_weight()
         if include_new:
@@ -2428,11 +2635,21 @@ class FormulationTabMixin:
     def _prompt_quantity(
         self, default_amount: float | None = None, editing_index: int | None = None
     ) -> tuple[str | None, float]:
-        if self.quantity_mode == "g":
-            start_value = default_amount if default_amount is not None else 100.0
+        if not self._is_percent_mode():
+            unit = self._current_mass_unit()
+            start_amount_g = default_amount if default_amount is not None else 100.0
+            start_value = convert_mass(start_amount_g, "g", unit)
+            if start_value is None:
+                start_value = start_amount_g
             title = "Cantidad"
-            label = "Cantidad del ingrediente (g):"
-            min_value, max_value, decimals = 0.1, 1_000_000.0, 1
+            label = f"Cantidad del ingrediente ({unit}):"
+            min_value = convert_mass(0.1, "g", unit)
+            if min_value is None:
+                min_value = 0.1
+            max_value = convert_mass(1_000_000.0, "g", unit)
+            if max_value is None:
+                max_value = 1_000_000.0
+            decimals = self._mass_decimals(unit)
         else:
             start_value = (
                 self._amount_to_percent(default_amount or 0.0)
@@ -2455,7 +2672,12 @@ class FormulationTabMixin:
         if not ok:
             return None, 0.0
 
-        return ("g", raw_value) if self.quantity_mode == "g" else ("percent", raw_value)
+        if self._is_percent_mode():
+            return "percent", raw_value
+
+        unit = self._current_mass_unit()
+        amount_g = convert_mass(raw_value, unit, "g")
+        return "g", float(amount_g) if amount_g is not None else raw_value
 
 
     def _edit_quantity_for_row(self, row: int) -> None:

@@ -14,7 +14,8 @@ from openpyxl.utils import get_column_letter
 
 from domain.exceptions import ExportError
 from domain.models import Formulation, Ingredient
-from services.nutrient_normalizer import canonical_alias_name, canonical_unit
+from domain.services.unit_normalizer import canonical_unit, convert_mass, normalize_mass_unit
+from services.nutrient_normalizer import canonical_alias_name
 
 
 class ExcelExporter:
@@ -39,6 +40,7 @@ class ExcelExporter:
         output_path: Path | str = "",
         *,
         export_flags: Dict[str, bool] | None = None,
+        mass_unit: str | None = None,
     ) -> None:
         """Export formulation with nutrient breakdown to Excel.
 
@@ -55,6 +57,16 @@ class ExcelExporter:
             output_path = nutrient_totals
             nutrient_totals = None
         try:
+            unit = normalize_mass_unit(mass_unit) or "g"
+            unit_decimals = {
+                "g": 1,
+                "kg": 3,
+                "ton": 6,
+                "lb": 3,
+                "oz": 3,
+            }.get(unit, 2)
+            unit_format = "0" if unit_decimals <= 0 else f"0.{'0' * unit_decimals}"
+
             wb = Workbook()
             ws = wb.active
             ws.title = "Ingredientes"
@@ -66,7 +78,7 @@ class ExcelExporter:
                 "Ingrediente",
                 "Marca / Origen",
                 "Tipo de dato",
-                "Cantidad (g)",
+                f"Cantidad ({unit})",
                 "Cantidad (%)",
             ]
 
@@ -126,7 +138,7 @@ class ExcelExporter:
                 cell.alignment = center
 
             start_row = 3
-            grams_col = base_headers.index("Cantidad (g)") + 1
+            grams_col = base_headers.index(f"Cantidad ({unit})") + 1
             percent_col = base_headers.index("Cantidad (%)") + 1
             data_rows = len(formulation.ingredients)
             end_row = start_row + data_rows - 1
@@ -134,12 +146,13 @@ class ExcelExporter:
             # Write ingredient rows
             for idx, ingredient in enumerate(formulation.ingredients):
                 row = start_row + idx
+                amount_val = convert_mass(ingredient.amount_g, "g", unit)
                 values = [
                     ingredient.food.fdc_id,
                     ingredient.food.description,
                     ingredient.food.brand_owner,
                     ingredient.food.data_type,
-                    float(ingredient.amount_g),
+                    float(amount_val) if amount_val is not None else float(ingredient.amount_g),
                     None,  # placeholder for percent formula
                 ]
                 for col_idx, val in enumerate(values, start=1):
@@ -192,7 +205,7 @@ class ExcelExporter:
 
             # Number formats for data rows
             for row in range(start_row, total_row + 1):
-                ws.cell(row=row, column=grams_col).number_format = "0.0"
+                ws.cell(row=row, column=grams_col).number_format = unit_format
 
             # Freeze panes to keep headers/base columns visible
             freeze_col = len(base_headers) + 1 if nutrient_headers else 1

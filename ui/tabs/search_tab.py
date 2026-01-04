@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
 )
 
 from services.nutrient_normalizer import augment_fat_nutrients, normalize_nutrients
-from services.usda_api import get_food_details
 
 
 class SearchTabMixin:
@@ -271,7 +270,10 @@ class SearchTabMixin:
         stripped = query.strip()
         if not all_results and stripped.isdigit():
             try:
-                details = get_food_details(int(stripped), detail_format="abridged")
+                details = self.food_repository.get_by_id(
+                    int(stripped),
+                    detail_format="abridged",
+                )
             except Exception:
                 return all_results
             all_results.append(
@@ -329,7 +331,7 @@ class SearchTabMixin:
             logging.debug(f"Prefetch done fdc_id={fdc_int}")
 
         self._run_in_thread(
-            fn=lambda fid=fdc_int: get_food_details(
+            fn=lambda fid=fdc_int: self.food_repository.get_by_id(
                 fid,
                 timeout=(3.05, 6.0),
                 detail_format="abridged",
@@ -382,8 +384,8 @@ class SearchTabMixin:
         self.status_label.setText(f"Cargando detalles de {fdc_id_text}...")
         self.fdc_id_button.setEnabled(False)
         self._run_in_thread(
-            fn=get_food_details,
-            args=(int(fdc_id_text),),
+            fn=lambda fid=int(fdc_id_text): self.food_repository.get_by_id(fid),
+            args=(),
             on_success=self._on_details_success,
             on_error=self._on_details_error,
         )

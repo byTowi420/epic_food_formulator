@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 import requests
+from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
@@ -23,6 +24,60 @@ from config.constants import (
 )
 from domain.exceptions import APIKeyMissingError, USDAHTTPError
 from infrastructure.api.cache import Cache, InMemoryCache
+
+load_dotenv()
+
+
+def _normalize_food_payload(food: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize USDA payload so foodNutrients entries always expose nutrient/amount keys.
+    This keeps the rest of the app agnostic to abridged/full response shapes.
+    """
+    nutrients = food.get("foodNutrients")
+    if not nutrients:
+        return food
+
+    normalized: List[Dict[str, Any]] = []
+    for entry in nutrients:
+        raw_entry = dict(entry)
+        amount = raw_entry.get("amount", raw_entry.get("value"))
+        try:
+            amount = float(amount) if amount is not None else None
+        except (TypeError, ValueError):
+            pass
+
+        nutrient = dict(raw_entry.get("nutrient") or {})
+        nutrient.setdefault("id", raw_entry.pop("nutrientId", None))
+        nutrient.setdefault(
+            "number",
+            raw_entry.pop("nutrientNumber", None)
+            or raw_entry.get("number"),
+        )
+        nutrient.setdefault(
+            "name",
+            raw_entry.pop("nutrientName", None)
+            or raw_entry.get("name"),
+        )
+        if "rank" not in nutrient and "rank" in raw_entry:
+            nutrient["rank"] = raw_entry.get("rank")
+        if "unitName" not in nutrient and "unitName" in raw_entry:
+            nutrient["unitName"] = raw_entry.get("unitName")
+        # Normalize unit casing to lower for consistency (e.g., MG -> mg).
+        if "unitName" in nutrient and isinstance(nutrient["unitName"], str):
+            nutrient["unitName"] = nutrient["unitName"].lower()
+
+        normalized_entry: Dict[str, Any] = {
+            "nutrient": {k: v for k, v in nutrient.items() if v is not None},
+            "amount": amount,
+            # Keep the type marker to detect category rows (Proximates, Minerals, etc.)
+            "type": raw_entry.get("type"),
+        }
+
+        normalized.append(normalized_entry)
+
+    normalized_food = dict(food)
+    normalized_food["foodNutrients"] = normalized
+    return normalized_food
 
 
 class FoodRepository(ABC):
@@ -54,6 +109,7 @@ class FoodRepository(ABC):
         fdc_id: int,
         detail_format: str = "abridged",
         nutrient_ids: Optional[List[int]] = None,
+        timeout: Optional[tuple[float, float]] = None,
     ) -> Dict[str, Any]:
         """Get food details by FDC ID.
 
@@ -61,6 +117,7 @@ class FoodRepository(ABC):
             fdc_id: FoodData Central ID
             detail_format: "abridged" or "full"
             nutrient_ids: Optional list of specific nutrient IDs to fetch
+            timeout: Optional (connect, read) timeout tuple
 
         Returns:
             Food details dictionary
@@ -208,45 +265,61 @@ class USDAFoodRepository(FoodRepository):
         fdc_id: int,
         detail_format: str = "abridged",
         nutrient_ids: Optional[List[int]] = None,
+        timeout: Optional[tuple[float, float]] = None,
     ) -> Dict[str, Any]:
         """Get food details by FDC ID."""
-        # Create cache key
-        nutrient_tuple = tuple(sorted(nutrient_ids)) if nutrient_ids else None
-        cache_key = f"food:{fdc_id}:{detail_format}:{nutrient_tuple}"
+        fmt = (detail_format or "abridged").lower()
+        if fmt not in {"abridged", "full"}:
+            raise ValueError("detail_format must be 'abridged' or 'full'")
+
+        nutrient_tuple = tuple(sorted(set(nutrient_ids))) if nutrient_ids else None
+        cache_key = f"food:{fdc_id}:{fmt}:{nutrient_tuple}"
 
         # Check cache
         cached = self._cache.get(cache_key)
         if cached is not None:
-            return cached
+            normalized = _normalize_food_payload(cached)
+            if normalized is not cached:
+                self._cache.set(cache_key, normalized)
+            return normalized
 
-        # Determine request method
-        if nutrient_ids:
-            # POST endpoint for specific nutrients
-            url = f"{USDA_API_BASE_URL}/foods"
-            payload = {
-                "fdcIds": [fdc_id],
-                "format": detail_format if detail_format == "abridged" else None,
-                "nutrients": nutrient_ids,
-            }
-            response = self._request(url, method="POST", json_body=payload)
+        attempt_fmt = fmt
+        tried_fallback = False
+        while True:
+            try:
+                if nutrient_tuple:
+                    url = f"{USDA_API_BASE_URL}/foods"
+                    payload: Dict[str, Any] = {
+                        "fdcIds": [fdc_id],
+                        "nutrients": list(nutrient_tuple),
+                    }
+                    if attempt_fmt == "abridged":
+                        payload["format"] = "abridged"
+                    response = self._request(
+                        url,
+                        method="POST",
+                        json_body=payload,
+                        timeout=timeout,
+                    )
 
-            if not isinstance(response, list) or not response:
-                raise USDAHTTPError(f"No data received for FDC ID {fdc_id}")
+                    if not isinstance(response, list) or not response:
+                        raise USDAHTTPError(f"No data received for FDC ID {fdc_id}")
 
-            data = response[0]
-        else:
-            # GET endpoint
-            url = f"{USDA_API_BASE_URL}/food/{fdc_id}"
-            params = {"api_key": self._api_key}
-            if detail_format == "abridged":
-                params["format"] = "abridged"
+                    data = response[0]
+                else:
+                    url = f"{USDA_API_BASE_URL}/food/{fdc_id}"
+                    params = {"format": "abridged"} if attempt_fmt == "abridged" else {}
+                    data = self._request(url, params=params, timeout=timeout)
 
-            data = self._request(url, params=params)
-
-        # Cache result
-        self._cache.set(cache_key, data)
-
-        return data
+                normalized = _normalize_food_payload(data)
+                self._cache.set(cache_key, normalized)
+                return normalized
+            except USDAHTTPError as exc:
+                if attempt_fmt == "abridged" and exc.status_code == 404 and not tried_fallback:
+                    attempt_fmt = "full"
+                    tried_fallback = True
+                    continue
+                raise
 
     def has_cached(
         self,
@@ -255,8 +328,9 @@ class USDAFoodRepository(FoodRepository):
         nutrient_ids: Optional[List[int]] = None,
     ) -> bool:
         """Check if food details are cached."""
-        nutrient_tuple = tuple(sorted(nutrient_ids)) if nutrient_ids else None
-        cache_key = f"food:{fdc_id}:{detail_format}:{nutrient_tuple}"
+        fmt = (detail_format or "abridged").lower()
+        nutrient_tuple = tuple(sorted(set(nutrient_ids))) if nutrient_ids else None
+        cache_key = f"food:{fdc_id}:{fmt}:{nutrient_tuple}"
         return self._cache.get(cache_key) is not None
 
     def _request(

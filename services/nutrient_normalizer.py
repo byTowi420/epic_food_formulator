@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
+from domain.services.unit_normalizer import canonical_unit
+
 
 def canonical_alias_name(name: str) -> str:
     """Return a display name for known aliases to keep one column in Excel."""
@@ -19,20 +21,6 @@ def canonical_alias_name(name: str) -> str:
     }
     return mapping.get(lower, name)
 
-
-def canonical_unit(unit: str | None) -> str:
-    """Normalize unit strings to avoid duplicate columns (ug vs µg, mcg)."""
-    if not unit:
-        return ""
-    u = unit.strip()
-    lower = u.lower()
-    if lower in {"ug", "µg", "mcg"}:
-        return "µg"
-    if lower == "iu":
-        return "iu"
-    if lower == "kj":
-        return "kJ"
-    return lower
 
 
 def augment_fat_nutrients(nutrients: list[Dict[str, Any]]) -> list[Dict[str, Any]]:

@@ -187,6 +187,7 @@ class ExportFormulationUseCase:
         formulation: Formulation,
         output_path: Path | str,
         export_flags: Dict[str, bool] | None = None,
+        mass_unit: str | None = None,
     ) -> None:
         """Export formulation to Excel.
 
@@ -200,6 +201,7 @@ class ExportFormulationUseCase:
             totals,
             output_path,
             export_flags=export_flags,
+            mass_unit=mass_unit,
         )
 
 

@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import Any, Dict, List
 
 from domain.models import Food, Formulation, Ingredient, Nutrient
-from services.nutrient_normalizer import canonical_unit
+from domain.services.unit_normalizer import canonical_unit
 
 
 class FormulationMapper:
