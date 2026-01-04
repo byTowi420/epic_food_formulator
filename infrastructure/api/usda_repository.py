@@ -160,12 +160,31 @@ class USDAFoodRepository(FoodRepository):
             "pageNumber": page_number,
         }
 
+        data_type_list = None
         if data_types is not None:
-            params["dataType"] = data_types
+            data_type_list = [dt for dt in data_types if str(dt).strip()]
+            if data_type_list:
+                params["dataType"] = data_type_list
 
         # Make request
         url = f"{USDA_API_BASE_URL}/foods/search"
-        response = self._request(url, params=params)
+        try:
+            response = self._request(url, params=params)
+        except USDAHTTPError as exc:
+            if exc.status_code != 400:
+                raise
+            payload: Dict[str, Any] = {
+                "query": query,
+                "pageSize": page_size,
+                "pageNumber": page_number,
+            }
+            if data_type_list:
+                payload["dataType"] = data_type_list
+            response = self._request(
+                url,
+                method="POST",
+                json_body=payload,
+            )
 
         # Extract results
         foods = response.get("foods", [])

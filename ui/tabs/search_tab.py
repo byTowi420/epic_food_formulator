@@ -107,6 +107,7 @@ class SearchTabMixin:
         self.table.setSelectionMode(QTableWidget.ExtendedSelection)
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.table.horizontalHeader().setStretchLastSection(True)
+        self._apply_table_selection_bar(self.table)
     
         self.details_table = QTableWidget(0, 3)
         self.details_table.setHorizontalHeaderLabels(
@@ -117,6 +118,7 @@ class SearchTabMixin:
         self.details_table.setSelectionMode(QTableWidget.ExtendedSelection)
         self.details_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.details_table.horizontalHeader().setStretchLastSection(True)
+        self._apply_table_selection_bar(self.details_table)
     
         # Panel inferior: preview de formulacion + nutrientes.
         bottom_layout = QHBoxLayout()
@@ -129,6 +131,7 @@ class SearchTabMixin:
         self.formulation_preview.setSelectionBehavior(QTableWidget.SelectRows)
         self.formulation_preview.setSelectionMode(QTableWidget.ExtendedSelection)
         self.formulation_preview.horizontalHeader().setStretchLastSection(True)
+        self._apply_table_selection_bar(self.formulation_preview)
         left_panel.addWidget(self.formulation_preview)
     
         self.remove_preview_button = QPushButton("Eliminar ingrediente seleccionado")

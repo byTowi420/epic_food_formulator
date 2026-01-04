@@ -31,6 +31,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ui.delegates.selection_bar_delegate import SelectionBarDelegate
+
 from services.nutrient_normalizer import (
     augment_fat_nutrients,
     canonical_alias_name,
@@ -130,6 +132,7 @@ class FormulationTabMixin:
         self.formulation_table.setSelectionMode(QTableWidget.ExtendedSelection)
         self.formulation_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.formulation_table.horizontalHeader().setStretchLastSection(True)
+        self._apply_table_selection_bar(self.formulation_table)
         layout.addWidget(self.formulation_table)
     
         # Acciones sobre ingredientes.
@@ -164,6 +167,7 @@ class FormulationTabMixin:
         self.totals_table.setSelectionMode(QTableWidget.ExtendedSelection)
         self.totals_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.totals_table.horizontalHeader().setStretchLastSection(True)
+        self._apply_table_selection_bar(self.totals_table)
         layout.addWidget(self.totals_table)
     
         # Acciones de exportacion.
@@ -256,6 +260,9 @@ class FormulationTabMixin:
         shortcut = QShortcut(QKeySequence.Copy, table)
         shortcut.setContext(Qt.WidgetWithChildrenShortcut)
         shortcut.activated.connect(lambda t=table: self._copy_table_selection(t))
+
+    def _apply_table_selection_bar(self, table: QTableWidget) -> None:
+        table.setItemDelegate(SelectionBarDelegate(parent=table))
 
 
     def _copy_table_selection(self, table: QTableWidget) -> None:

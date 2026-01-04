@@ -43,7 +43,8 @@ class LabelTableDelegate(QStyledItemDelegate):
             painter.restore()
         elif is_selected:
             painter.save()
-            painter.fillRect(option.rect, self.selection_fill_active if is_active else self.selection_fill_inactive)
+            base_color = self._resolve_background_color(option)
+            painter.fillRect(option.rect, base_color)
             painter.restore()
 
         # For fat-child name column, avoid elide and draw across the adjacent amount column.
@@ -136,6 +137,23 @@ class LabelTableDelegate(QStyledItemDelegate):
             painter.save()
             self._draw_selection_handles(painter, option.rect, option.palette, index)
             painter.restore()
+
+    def _resolve_background_color(self, option: QStyleOptionViewItem) -> QColor:
+        widget = option.widget
+        parent = widget.parentWidget() if widget else None
+        while parent is not None:
+            palette = parent.palette()
+            for role in (QPalette.Window, QPalette.Base, QPalette.AlternateBase):
+                color = palette.color(role)
+                if color.alpha() > 0 and color.value() > 0:
+                    return color
+            parent = parent.parentWidget()
+        app_palette = QApplication.palette()
+        for role in (QPalette.Window, QPalette.Base, QPalette.AlternateBase):
+            color = app_palette.color(role)
+            if color.alpha() > 0 and color.value() > 0:
+                return color
+        return QColor("#ffffff")
 
     def _draw_selection_handles(self, painter: QPainter, rect, palette: QPalette, index) -> None:
         """Draw thin selection marker on the left edge of the cell."""
