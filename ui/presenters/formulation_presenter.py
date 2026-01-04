@@ -192,13 +192,21 @@ class FormulationPresenter:
         path = self._container.save_formulation.execute(self._formulation, filename)
         return str(path)
 
-    def export_to_excel(self, output_path: str) -> None:
+    def export_to_excel(
+        self,
+        output_path: str,
+        export_flags: Dict[str, bool] | None = None,
+    ) -> None:
         """Export formulation to Excel.
 
         Args:
             output_path: Output file path
         """
-        self._container.export_formulation.execute(self._formulation, output_path)
+        self._container.export_formulation.execute(
+            self._formulation,
+            output_path,
+            export_flags=export_flags,
+        )
 
     def get_total_weight(self) -> float:
         """Get total weight of formulation.

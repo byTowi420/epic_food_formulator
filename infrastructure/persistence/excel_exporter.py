@@ -37,6 +37,8 @@ class ExcelExporter:
         formulation: Formulation,
         nutrient_totals: Dict[str, Decimal] | None = None,
         output_path: Path | str = "",
+        *,
+        export_flags: Dict[str, bool] | None = None,
     ) -> None:
         """Export formulation with nutrient breakdown to Excel.
 
@@ -70,7 +72,7 @@ class ExcelExporter:
 
             # Collect nutrient columns and categories
             nutrient_headers, header_categories, header_key_map = (
-                self._collect_nutrient_columns(formulation)
+                self._collect_nutrient_columns(formulation, export_flags=export_flags)
             )
             header_by_key = {v: k for k, v in header_key_map.items()}
 
@@ -233,7 +235,9 @@ class ExcelExporter:
             raise ExportError(f"Failed to export to Excel: {exc}") from exc
 
     def _collect_nutrient_columns(
-        self, formulation: Formulation
+        self,
+        formulation: Formulation,
+        export_flags: Dict[str, bool] | None = None,
     ) -> Tuple[List[str], Dict[str, str], Dict[str, str]]:
         """Collect ordered nutrient headers and their categories."""
         candidates: Dict[str, Dict[str, Any]] = {}
@@ -248,6 +252,9 @@ class ExcelExporter:
 
             for nutrient in sorted(ingredient.food.nutrients, key=lambda n: self._nutrient_order(n, 0)):
                 header_key, canonical_name, canonical_unit_str = self._header_key(nutrient)
+
+                if export_flags and not export_flags.get(header_key, True):
+                    continue
 
                 if not header_key or not canonical_name:
                     continue

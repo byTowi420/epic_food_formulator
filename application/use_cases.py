@@ -186,6 +186,7 @@ class ExportFormulationUseCase:
         self,
         formulation: Formulation,
         output_path: Path | str,
+        export_flags: Dict[str, bool] | None = None,
     ) -> None:
         """Export formulation to Excel.
 
@@ -194,7 +195,12 @@ class ExportFormulationUseCase:
             output_path: Output file path
         """
         totals = self._calculator.calculate_totals_per_100g(formulation)
-        self._exporter.export_formulation(formulation, totals, output_path)
+        self._exporter.export_formulation(
+            formulation,
+            totals,
+            output_path,
+            export_flags=export_flags,
+        )
 
 
 class AdjustFormulationUseCase:
