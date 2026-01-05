@@ -127,8 +127,8 @@ NUTRIENT_NAMES_TO_DROP = {
 # ============================================================================
 
 # Microgram variants
-MICROGRAM_VARIANTS = {"ug", "µg", "mcg"}
-MICROGRAM_CANONICAL = "µg"
+MICROGRAM_VARIANTS = {"ug", "µg", "μg", "mcg"}
+MICROGRAM_CANONICAL = "μg"
 
 # ============================================================================
 # Formulation Modes

@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget
 from config.container import Container
 from infrastructure.api.usda_repository import FoodRepository
 from ui.presenters.formulation_presenter import FormulationPresenter
+from ui.presenters.label_presenter import LabelPresenter
 from ui.presenters.search_presenter import SearchPresenter
 from ui.tabs.formulation_tab import FormulationTabMixin
 from ui.tabs.label_tab import LabelTabMixin
@@ -29,6 +30,7 @@ class MainWindow(SearchTabMixin, FormulationTabMixin, LabelTabMixin, QMainWindow
         self.container = Container()
         self.formulation_presenter = FormulationPresenter(container=self.container)
         self.search_presenter = SearchPresenter(container=self.container)
+        self.label_presenter = LabelPresenter()
 
         # Window setup.
         self.base_window_title = "Food Formulator - Proto"

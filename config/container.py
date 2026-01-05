@@ -22,6 +22,7 @@ from domain.services.nutrient_calculator import NutrientCalculator
 from infrastructure.api.cache import Cache, InMemoryCache
 from infrastructure.api.usda_repository import FoodRepository, USDAFoodRepository
 from infrastructure.persistence.excel_exporter import ExcelExporter
+from infrastructure.persistence.formulation_importer import FormulationImportService
 from infrastructure.persistence.json_repository import JSONFormulationRepository
 
 
@@ -49,6 +50,7 @@ class Container:
         self._food_repository: Optional[FoodRepository] = None
         self._json_repository: Optional[JSONFormulationRepository] = None
         self._excel_exporter: Optional[ExcelExporter] = None
+        self._formulation_importer: Optional[FormulationImportService] = None
 
         self._nutrient_calculator: Optional[NutrientCalculator] = None
         self._formulation_service: Optional[FormulationService] = None
@@ -88,6 +90,13 @@ class Container:
         if self._excel_exporter is None:
             self._excel_exporter = ExcelExporter()
         return self._excel_exporter
+
+    @property
+    def formulation_importer(self) -> FormulationImportService:
+        """Get formulation import service."""
+        if self._formulation_importer is None:
+            self._formulation_importer = FormulationImportService()
+        return self._formulation_importer
 
     # Domain Services
     @property

@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import math
-import re
-from fractions import Fraction
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -33,9 +30,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
-from domain.services.unit_normalizer import canonical_unit, convert_amount
-from services.nutrient_normalizer import canonical_alias_name
 from ui.delegates.label_table_delegate import LabelTableDelegate
+from ui.tabs.table_utils import attach_copy_shortcut
 
 
 class LabelTabMixin:
@@ -86,30 +82,30 @@ class LabelTabMixin:
             "Colesterol": "Cholesterol (mg)",
             "Fibra alimentaria": "Fiber, total dietary (g)",
             "Sodio": "Sodium, Na (mg)",
-            "Vitamina A": "Vitamin A, RAE (µg)",
-            "Vitamina D": "Vitamin D (D2 + D3) (µg)",
+            "Vitamina A": "Vitamin A, RAE (μg)",
+            "Vitamina D": "Vitamin D (D2 + D3) (μg)",
             "Vitamina C": "Vitamin C, total ascorbic acid (mg)",
             "Vitamina E": "Vitamin E (alpha-tocopherol) (mg)",
             "Tiamina": "Thiamin (mg)",
             "Riboflavina": "Riboflavin (mg)",
             "Niacina": "Niacin (mg)",
             "Vitamina B6": "Vitamin B-6 (mg)",
-            "Acido fólico": "Folate, DFE (µg)",
-            "Vitaminia B12": "Vitamin B-12 (µg)",
-            "Biotina": "Biotin (µg)",
+            "Acido fólico": "Folate, DFE (μg)",
+            "Vitaminia B12": "Vitamin B-12 (μg)",
+            "Biotina": "Biotin (μg)",
             "Acido pantoténico": "Pantothenic acid (mg)",
             "Calcio": "Calcium, Ca (mg)",
             "Hierro": "Iron, Fe (mg)",
             "Magnesio": "Magnesium, Mg (mg)",
             "Zinc": "Zinc, Zn (mg)",
-            "Yodo": "Iodine, I (µg)",
-            "Vitamina K": "Vitamin K (phylloquinone) (µg)",
+            "Yodo": "Iodine, I (μg)",
+            "Vitamina K": "Vitamin K (phylloquinone) (μg)",
             "Fósforo": "Phosphorus, P (mg)",
             "Flúor": "Fluoride, F (mg)",
             "Cobre": "Copper, Cu (mg)",
-            "Selenio": "Selenium, Se (µg)",
-            "Molibdeno": "Molybdenum, Mo (µg)",
-            "Cromo": "Chromium, Cr (µg)",
+            "Selenio": "Selenium, Se (μg)",
+            "Molibdeno": "Molybdenum, Mo (μg)",
+            "Cromo": "Chromium, Cr (μg)",
             "Manganeso": "Manganese, Mn (mg)",
             "Colina": "Choline, total (mg)",
         }
@@ -307,7 +303,7 @@ class LabelTabMixin:
         self.label_table_widget.cellDoubleClicked.connect(
             self._on_label_table_cell_double_clicked
         )
-        self._attach_copy_shortcut(self.label_table_widget)
+        attach_copy_shortcut(self.label_table_widget)
         self.no_significant_display.installEventFilter(self)
         self.additional_nutrients_display.installEventFilter(self)
     
@@ -386,178 +382,14 @@ class LabelTabMixin:
 
 
     def _build_base_label_nutrients(self) -> list[dict[str, Any]]:
-        return [
-            {
-                "name": "Energia",
-                "type": "energy",
-                "kcal": 0.0,
-                "kj": 0.0,
-                "vd": 13.0,
-                "vd_reference": 263.0,
-            },
-            {
-                "name": "Carbohidratos",
-                "unit": "g",
-                "amount": 0.0,
-                "vd": 7.0,
-                "vd_reference": 20.0,
-                "carb_parent": True,
-            },
-            {
-                "name": "Azúcares",
-                "unit": "g",
-                "amount": 0.0,
-                "vd": None,
-                "vd_reference": 0.0,
-                "carb_child": True,
-                "carb_breakdown_only": True,
-            },
-            {
-                "name": "Polialcoholes",
-                "unit": "g",
-                "amount": 0.0,
-                "vd": None,
-                "vd_reference": 0.0,
-                "carb_child": True,
-                "carb_breakdown_only": True,
-            },
-            {
-                "name": "Almidón",
-                "unit": "g",
-                "amount": 0.0,
-                "vd": None,
-                "vd_reference": 0.0,
-                "carb_child": True,
-                "carb_breakdown_only": True,
-            },
-            {
-                "name": "Polidextrosas",
-                "unit": "g",
-                "amount": 0.0,
-                "vd": None,
-                "vd_reference": 0.0,
-                "carb_child": True,
-                "carb_breakdown_only": True,
-            },
-            {
-                "name": "Proteinas",
-                "unit": "g",
-                "amount": 0.0,
-                "vd": 16.0,
-                "vd_reference": 12.0,
-            },
-            {
-                "name": "Grasas totales",
-                "unit": "g",
-                "amount": 0.0,
-                "vd": 27.0,
-                "vd_reference": 15.0,
-                "fat_parent": True,
-            },
-            {
-                "name": "Grasas saturadas",
-                "unit": "g",
-                "amount": 0.0,
-                "vd": 23.0,
-                "vd_reference": 5.0,
-                "fat_child": True,
-            },
-            {
-                "name": "Grasas monoinsaturadas",
-                "unit": "g",
-                "amount": 0.0,
-                "vd": None,
-                "vd_reference": 0.0,
-                "fat_child": True,
-                "fat_breakdown_only": True,
-            },
-            {
-                "name": "Grasas poliinsaturadas",
-                "unit": "g",
-                "amount": 0.0,
-                "vd": None,
-                "vd_reference": 0.0,
-                "fat_child": True,
-                "fat_breakdown_only": True,
-            },
-            {
-                "name": "Grasas trans",
-                "unit": "g",
-                "amount": 0.0,
-                "vd": None,
-                "vd_reference": 0.0,
-                "fat_child": True,
-            },
-            {
-                "name": "Colesterol",
-                "unit": "mg",
-                "amount": 0.0,
-                "vd": None,
-                "vd_reference": 0.0,
-                "fat_child": True,
-                "fat_breakdown_only": True,
-            },
-            {
-                "name": "Fibra alimentaria",
-                "unit": "g",
-                "amount": 0.0,
-                "vd": 12.0,
-                "vd_reference": 3.0,
-            },
-            {
-                "name": "Sodio",
-                "unit": "mg",
-                "amount": 0.0,
-                "vd": 5.0,
-                "vd_reference": 120.0,
-            },
-        ]
-
+        return self.label_presenter.build_base_label_nutrients()
 
     def _build_additional_nutrients(self) -> list[dict[str, Any]]:
-        return [
-            {"name": "Vitamina A", "unit": "µg", "vd_reference": 600.0, "ref": "(2)"},
-            {"name": "Vitamina D", "unit": "µg", "vd_reference": 5.0, "ref": "(2)"},
-            {"name": "Vitamina C", "unit": "mg", "vd_reference": 45.0, "ref": "(2)"},
-            {"name": "Vitamina E", "unit": "mg", "vd_reference": 10.0, "ref": "(2)"},
-            {"name": "Tiamina", "unit": "mg", "vd_reference": 1.2, "ref": "(2)"},
-            {"name": "Riboflavina", "unit": "mg", "vd_reference": 1.3, "ref": "(2)"},
-            {"name": "Niacina", "unit": "mg", "vd_reference": 16.0, "ref": "(2)"},
-            {"name": "Vitamina B6", "unit": "mg", "vd_reference": 1.3, "ref": "(2)"},
-            {"name": "Acido fólico", "unit": "µg", "vd_reference": 400.0, "ref": "(2)"},
-            {"name": "Vitaminia B12", "unit": "µg", "vd_reference": 2.4, "ref": "(2)"},
-            {"name": "Biotina", "unit": "µg", "vd_reference": 30.0, "ref": "(2)"},
-            {"name": "Acido pantoténico", "unit": "mg", "vd_reference": 5.0, "ref": "(2)"},
-            {"name": "Calcio", "unit": "mg", "vd_reference": 1000.0, "ref": "(2)"},
-            {"name": "Hierro", "unit": "mg", "vd_reference": 14.0, "ref": "(2) (*)"},
-            {"name": "Magnesio", "unit": "mg", "vd_reference": 260.0, "ref": "(2)"},
-            {"name": "Zinc", "unit": "mg", "vd_reference": 7.0, "ref": "(2) (**)"},
-            {"name": "Yodo", "unit": "µg", "vd_reference": 130.0, "ref": "(2)"},
-            {"name": "Vitamina K", "unit": "µg", "vd_reference": 65.0, "ref": "(2)"},
-            {"name": "Fósforo", "unit": "mg", "vd_reference": 700.0, "ref": "(3)"},
-            {"name": "Flúor", "unit": "mg", "vd_reference": 4.0, "ref": "(3)"},
-            {"name": "Cobre", "unit": "mg", "vd_reference": 0.9, "ref": "(3)"},
-            {"name": "Selenio", "unit": "µg", "vd_reference": 34.0, "ref": "(2)"},
-            {"name": "Molibdeno", "unit": "µg", "vd_reference": 45.0, "ref": "(3)"},
-            {"name": "Cromo", "unit": "µg", "vd_reference": 35.0, "ref": "(3)"},
-            {"name": "Manganeso", "unit": "mg", "vd_reference": 2.3, "ref": "(3)"},
-            {"name": "Colina", "unit": "mg", "vd_reference": 550.0, "ref": "(3)"},
-        ]
-
+        return self.label_presenter.build_additional_nutrients()
 
     def _build_household_measure_options(self) -> list[tuple[str, int | None]]:
-        return [
-            ("Taza de té", 200),
-            ("Vaso", 200),
-            ("Cuchara de sopa", 10),
-            ("Cuchara de té", 5),
-            ("Plato hondo", 250),
-            ("Unidad", None),
-            ("Otro", None),
-        ]
+        return self.label_presenter.build_household_measure_options()
 
-
-    # ---- Label settings persistence ----
     def _snapshot_label_settings(self) -> Dict[str, Any]:
         """Capture label tab state for JSON export."""
         manual: Dict[str, float] = {}
@@ -683,31 +515,10 @@ class LabelTabMixin:
 
 
     def _format_fraction_amount(self, value: float) -> str:
-        if value <= 0:
-            return ""
-        frac = Fraction(value).limit_denominator(12)
-        whole, remainder = divmod(frac.numerator, frac.denominator)
-        if remainder == 0:
-            return str(whole)
-        if whole == 0:
-            return f"{remainder}/{frac.denominator}"
-        return f"{whole} {remainder}/{frac.denominator}"
-
+        return self.label_presenter.format_fraction_amount(value)
 
     def _fraction_from_ratio(self, ratio: float) -> str:
-        percent = ratio * 100.0
-        if percent <= 30:
-            return "1/4"
-        if percent <= 70:
-            return "1/2"
-        if percent <= 130:
-            return "1"
-        if percent <= 170:
-            return "1 1/2"
-        if percent <= 230:
-            return "2"
-        return self._format_fraction_amount(ratio)
-
+        return self.label_presenter.fraction_from_ratio(ratio)
 
     def _update_capacity_label(self) -> None:
         unit_name = self.household_unit_combo.currentText()
@@ -810,128 +621,33 @@ class LabelTabMixin:
 
 
     def _format_number_for_unit(self, value: float, unit: str) -> str:
-        if math.isclose(value, 0.0, abs_tol=1e-9):
-            return f"0 {unit}".strip()
-        if unit == "mg":
-            return f"{value:.0f} mg"
-        if unit == "g":
-            if abs(value) < 10:
-                return f"{value:.1f} g"
-            return f"{value:.0f} g"
-        if value >= 10:
-            return f"{value:.0f} {unit}"
-        if value >= 1:
-            return f"{value:.1f} {unit}"
-        return f"{value:.2f} {unit}"
-
+        return self.label_presenter.format_number_for_unit(value, unit)
 
     def _format_additional_amount(self, value: float, unit: str) -> str:
-        unit = unit.lower()
-        if unit == "mg":
-            if math.isclose(value, 0.0, abs_tol=1e-9):
-                return "0 mg"
-            if value < 10:
-                return f"{value:.1f} mg"
-            return f"{value:.0f} mg"
-        if unit in ("µg", "ug"):
-            if math.isclose(value, 0.0, abs_tol=1e-9):
-                return "0 µg"
-            if value < 10:
-                return f"{value:.1f} µg"
-            return f"{value:.0f} µg"
-        return self._format_number_for_unit(value, unit)
-
+        return self.label_presenter.format_additional_amount(value, unit)
 
     def _format_nutrient_amount(self, nutrient: Dict[str, Any], factor: float) -> str:
-        if nutrient.get("type") == "energy":
-            kcal_val = nutrient.get("kcal", 0.0) * factor
-            kj_val = nutrient.get("kj", 0.0) * factor
-            kcal_text = f"{kcal_val:.0f}"
-            kj_text = f"{kj_val:.0f}"
-            return f"{kcal_text} kcal = {kj_text} kJ"
-        amount = nutrient.get("amount", 0.0) * factor
-        unit = nutrient.get("unit", "")
-        return self._format_number_for_unit(amount, unit)
-
+        return self.label_presenter.format_nutrient_amount(nutrient, factor)
 
     def _format_vd_value(self, nutrient: Dict[str, Any], factor: float, effective_amount: float | None = None) -> str:  # type: ignore[override]
-        vd_percent = nutrient.get("vd")
-        base_amount = nutrient.get("vd_reference", nutrient.get("amount", 0.0))
-        eff_amount = (
-            effective_amount if effective_amount is not None else nutrient.get("amount", 0.0)
-        )
-        if nutrient.get("type") == "energy":
-            base_amount = nutrient.get("vd_reference", nutrient.get("kcal", 0.0))
-            eff_amount = effective_amount if effective_amount is not None else nutrient.get("kcal", 0.0)
-
-        portion_amount = eff_amount * factor
-        if vd_percent is None and base_amount and base_amount > 0:
-            vd_val = portion_amount * 100.0 / base_amount
-        elif vd_percent is not None and base_amount and base_amount > 0:
-            vd_val = vd_percent * (portion_amount / base_amount)
-        else:
-            return "-"
-        return f"{vd_val:.0f}%"
-
+        return self.label_presenter.format_vd_value(nutrient, factor, effective_amount)
 
     def _format_manual_amount(self, nutrient: Dict[str, Any], manual_amount: float) -> str:
-        if nutrient.get("type") == "energy":
-            kcal_val = manual_amount
-            kj_conv = convert_amount(manual_amount, "kcal", "kJ")
-            kj_val = float(kj_conv) if kj_conv is not None else manual_amount * 4.184
-            kcal_text = f"{kcal_val:.0f}"
-            kj_text = f"{kj_val:.0f}"
-            return f"{kcal_text} kcal = {kj_text} kJ"
-        unit = nutrient.get("unit", "")
-        return self._format_number_for_unit(manual_amount, unit)
-
+        return self.label_presenter.format_manual_amount(nutrient, manual_amount)
 
     def _format_manual_vd(self, nutrient: Dict[str, Any], manual_amount: float) -> str:
-        vd_ref = nutrient.get("vd")
-        if vd_ref is None:
-            return "-"
-        base_amount = nutrient.get("kcal") if nutrient.get("type") == "energy" else nutrient.get("amount")
-        if not base_amount:
-            return "-"
-        vd_val = vd_ref * (manual_amount / base_amount)
-        if vd_val >= 10:
-            return f"{vd_val:.0f}%"
-        return f"{vd_val:.1f}%"
-
+        return self.label_presenter.format_manual_vd(nutrient, manual_amount)
 
     def _parse_user_float(self, text: str) -> float | None:
-        clean = text.strip().replace(",", ".")
-        if not clean:
-            return None
-        try:
-            return float(clean)
-        except ValueError:
-            return None
-
+        return self.label_presenter.parse_user_float(text)
 
     def _active_label_nutrients(self) -> list[Dict[str, Any]]:
-        breakdown_fat = self.breakdown_fat_checkbox.isChecked()
-        breakdown_carb = self.breakdown_carb_checkbox.isChecked()
-        display: list[Dict[str, Any]] = []
-        for nutrient in self.label_base_nutrients:
-            name = nutrient.get("name", "")
-            if name in self.label_no_significant:
-                continue
-            if nutrient.get("fat_breakdown_only") and not breakdown_fat:
-                continue
-            if nutrient.get("carb_breakdown_only") and not breakdown_carb:
-                continue
-            entry = dict(nutrient)
-            indent = 0
-            if (
-                (breakdown_fat and entry.get("fat_child") and not entry.get("fat_parent"))
-                or (breakdown_carb and entry.get("carb_child") and not entry.get("carb_parent"))
-            ):
-                indent = 1
-            entry["indent_level"] = indent
-            display.append(entry)
-        return display
-
+        return self.label_presenter.active_label_nutrients(
+            base_nutrients=self.label_base_nutrients,
+            no_significant=self.label_no_significant,
+            breakdown_fat=self.breakdown_fat_checkbox.isChecked(),
+            breakdown_carb=self.breakdown_carb_checkbox.isChecked(),
+        )
 
     def _on_label_table_cell_double_clicked(self, row: int, _: int) -> None:
         if (
@@ -971,64 +687,19 @@ class LabelTabMixin:
 
 
     def _eligible_no_significant(self) -> list[str]:
-        eligible: list[str] = []
-        factor = self._current_portion_factor()
-        fat_locked = self.breakdown_fat_checkbox.isChecked()
-        fat_names = {
-            "Grasas totales",
-            "Grasas saturadas",
-            "Grasas trans",
-            "Grasas monoinsaturadas",
-            "Grasas poliinsaturadas",
-            "Colesterol",
-        }
-        def portion_amount(name: str) -> float:
-            for nutrient in self.label_base_nutrients:
-                if nutrient.get("name") != name:
-                    continue
-                eff = self._effective_label_nutrient(nutrient)
-                if eff.get("type") == "energy":
-                    return (eff.get("kcal") or 0.0) * factor
-                return (eff.get("amount") or 0.0) * factor
-            return 0.0
-        for nutrient in self.label_base_nutrients:
-            eff = self._effective_label_nutrient(nutrient)
-            name = eff.get("name", nutrient.get("name", ""))
-            if fat_locked and name in fat_names:
-                continue
-            if self.breakdown_carb_checkbox.isChecked() and name in {
-                "Carbohidratos",
-                "Azúcares",
-                "Polialcoholes",
-                "Almidón",
-                "Polidextrosas",
-            }:
-                continue
-            thresh = self.label_no_significant_thresholds.get(name)
-            if not thresh:
-                continue
-            if eff.get("type") == "energy":
-                kcal_portion = (eff.get("kcal") or 0.0) * factor
-                kj_portion = (eff.get("kj") or 0.0) * factor
-                if kcal_portion <= thresh.get("max", 0) or kj_portion < thresh.get("kj_max", 0):
-                    eligible.append(name)
-                continue
-            amount_portion = (eff.get("amount") or 0.0) * factor
-            unit = eff.get("unit", nutrient.get("unit", "")).lower()
-            max_allowed = thresh.get("max", 0.0)
-            if name == "Grasas totales":
-                sat = portion_amount("Grasas saturadas")
-                trans = portion_amount("Grasas trans")
-                if (
-                    amount_portion <= max_allowed + 1e-9
-                    and sat <= self.label_no_significant_thresholds["Grasas saturadas"]["max"] + 1e-9
-                    and trans <= self.label_no_significant_thresholds["Grasas trans"]["max"] + 1e-9
-                ):
-                    eligible.append(name)
-            elif amount_portion <= max_allowed + 1e-9:
-                eligible.append(name)
-        return eligible
-
+        if not self._last_totals:
+            self._last_totals = self._calculate_totals()
+        return self.label_presenter.eligible_no_significant(
+            base_nutrients=self.label_base_nutrients,
+            thresholds=self.label_no_significant_thresholds,
+            breakdown_fat=self.breakdown_fat_checkbox.isChecked(),
+            breakdown_carb=self.breakdown_carb_checkbox.isChecked(),
+            totals=self._last_totals,
+            nutrient_map=self.label_nutrient_usda_map,
+            manual_overrides=self.label_manual_overrides,
+            display_nutrients=self._active_label_nutrients(),
+            portion_factor=self._current_portion_factor(),
+        )
 
     def _update_no_significant_controls(self) -> None:
         eligible = self._eligible_no_significant()
@@ -1245,221 +916,74 @@ class LabelTabMixin:
 
 
     def _human_join(self, items: list[str]) -> str:
-        if not items:
-            return ""
-        if len(items) == 1:
-            return items[0]
-        return ", ".join(items[:-1]) + " y " + items[-1]
-
+        return self.label_presenter.human_join(items)
 
     def _sort_no_significant_list(self, names: list[str]) -> list[str]:
-        order_index = {name: idx for idx, name in enumerate(self.label_no_sig_order)}
-        return sorted(
+        return self.label_presenter.sort_no_significant_list(
             names,
-            key=lambda n: (
-                order_index.get(n, len(order_index)),
-                n.lower(),
-            ),
+            self.label_no_sig_order,
         )
 
-
     def _parse_label_mapping(self, label_name: str) -> tuple[str, str]:
-        mapped = self.label_nutrient_usda_map.get(label_name, "")
-        mapped_clean = mapped.strip()
-        if not mapped_clean:
-            return "", ""
-        # Si el paréntesis final es una unidad, úsalo; de lo contrario, ignora paréntesis de aclaración.
-        m = re.search(r"\(([^()]*)\)\s*$", mapped_clean)
-        if m:
-            unit_candidate = m.group(1).strip()
-            if re.fullmatch(r"(?i)(mg|g|µg|ug|kcal|kj)", unit_candidate):
-                base = mapped_clean[: m.start()].strip()
-                return canonical_alias_name(base), canonical_unit(unit_candidate)
-        return canonical_alias_name(mapped_clean), ""
-
+        return self.label_presenter.parse_label_mapping(
+            self.label_nutrient_usda_map,
+            label_name,
+        )
 
     def _find_total_entry(self, canonical_name: str, unit: str) -> Dict[str, Any] | None:
         if not self._last_totals:
             self._last_totals = self._calculate_totals()
-        target = canonical_alias_name(canonical_name).lower()
-        target_unit = canonical_unit(unit).lower()
-        target_key = re.sub(r"[^a-z0-9]", "", target)
-        entries = list(self._last_totals.values())
-
-        def _match_entry(entry: Dict[str, Any]) -> bool:
-            entry_name = canonical_alias_name(entry.get("name", "")).lower()
-            entry_unit = canonical_unit(entry.get("unit", "")).lower()
-            entry_key = re.sub(r"[^a-z0-9]", "", entry_name)
-            name_match = (
-                entry_name == target
-                or entry_name.startswith(target)
-                or target in entry_name
-                or entry_key == target_key
-                or entry_key.startswith(target_key)
-                or target_key in entry_key
-            )
-            unit_match = (not target_unit) or entry_unit == target_unit
-            return name_match and unit_match
-
-        for entry in entries:
-            if _match_entry(entry):
-                return entry
-
-        # Fallback: raw substring match (e.g., "total lipid (fat)")
-        raw_target = canonical_name.lower()
-        for entry in entries:
-            raw_name = (entry.get("name") or "").lower()
-            if raw_target in raw_name:
-                if not target_unit or canonical_unit(entry.get("unit", "")).lower() == target_unit:
-                    return entry
-        return None
-
+        return self.label_presenter.find_total_entry(
+            self._last_totals,
+            canonical_name,
+            unit,
+        )
 
     def _convert_label_amount_unit(
         self, amount: float, from_unit: str, to_unit: str
     ) -> float | None:
-        converted = convert_amount(amount, from_unit, to_unit)
-        return float(converted) if converted is not None else None
+        return self.label_presenter.convert_label_amount_unit(amount, from_unit, to_unit)
 
     def _factor_for_energy(self, name: str) -> float | None:
-        factor_map: list[tuple[str, float]] = [
-            ("alcohol", 7.0),
-            ("ethanol", 7.0),
-            ("protein", 4.0),
-            ("carbohydrate", 4.0),
-            ("carbohydrate, by difference", 4.0),
-            ("polydextrose", 1.0),
-            ("polyol", 2.4),
-            ("sugar alcohol", 2.4),
-            ("organic acid", 3.0),
-            ("total lipid", 9.0),  # Solo lipidos totales, no Fat (NLEA)
-        ]
-        lower = name.lower()
-        for key, factor in factor_map:
-            if key in lower:
-                return factor
-        return None
+        return self.label_presenter.factor_for_energy(name)
 
 
     def _compute_energy_label_values(self) -> Dict[str, float] | None:
-        factor = self._current_portion_factor()
-        if factor <= 0:
-            factor = 1.0
-
-        display_nutrients = self._active_label_nutrients()
-        carb_parent_present = any(n.get("carb_parent") for n in display_nutrients)
-        fat_parent_present = any(n.get("fat_parent") for n in display_nutrients)
-
-        kcal_portion = 0.0
-
-        for nutrient in display_nutrients:
-            name = nutrient.get("name", "")
-            if nutrient.get("type") == "energy":
-                continue
-            if carb_parent_present and nutrient.get("carb_child") and not nutrient.get("carb_parent"):
-                continue
-            if fat_parent_present and nutrient.get("fat_child") and not nutrient.get("fat_parent"):
-                continue
-
-            mapped_name, _ = self._parse_label_mapping(name)
-            factor_energy = self._factor_for_energy(mapped_name or name)
-            if factor_energy is None:
-                continue
-
-            manual_amount = self.label_manual_overrides.get(name)
-            if manual_amount is not None:
-                amount_portion = float(manual_amount)
-            else:
-                totals_amount = self._label_amount_from_totals(nutrient)
-                if not totals_amount:
-                    continue
-                amount_portion = float(totals_amount.get("amount", 0.0)) * factor
-
-            unit = (nutrient.get("unit", "") or "").lower()
-            amount_g = amount_portion / 1000.0 if unit == "mg" else amount_portion
-            kcal_portion += amount_g * factor_energy
-
-        if math.isclose(kcal_portion, 0.0, abs_tol=1e-6):
-            return None
-
-        kcal_per_100 = kcal_portion / factor
-        kj_conv = convert_amount(kcal_per_100, "kcal", "kJ")
-        kj_val = float(kj_conv) if kj_conv is not None else kcal_per_100 * 4.184
-        return {"kcal": kcal_per_100, "kj": kj_val}
+        if not self._last_totals:
+            self._last_totals = self._calculate_totals()
+        return self.label_presenter.compute_energy_label_values(
+            display_nutrients=self._active_label_nutrients(),
+            nutrient_map=self.label_nutrient_usda_map,
+            manual_overrides=self.label_manual_overrides,
+            totals=self._last_totals,
+            portion_factor=self._current_portion_factor(),
+        )
 
 
     def _label_amount_from_totals(self, nutrient: Dict[str, Any]) -> Dict[str, float] | None:
-        name = nutrient.get("name", "")
-        mapped_name, mapped_unit = self._parse_label_mapping(name)
-        if not mapped_name:
-            return None
-        if nutrient.get("type") == "energy":
-            computed = self._compute_energy_label_values()
-            if computed:
-                return computed
-            return None
-        entry = self._find_total_entry(mapped_name, mapped_unit)
-        if not entry and mapped_unit:
-            entry_any = self._find_total_entry(mapped_name, "")
-            if entry_any:
-                converted = self._convert_label_amount_unit(
-                    float(entry_any.get("amount", 0.0) or 0.0),
-                    entry_any.get("unit", ""),
-                    mapped_unit,
-                )
-                if converted is not None:
-                    return {"amount": converted}
-        if not entry and name == "Grasas totales":
-            # Fallback: cualquier nutriente que contenga "total fat" o "total lipid"
-            for e in (self._last_totals or {}).values():
-                raw_name = (e.get("name") or "").lower()
-                if "total lipid" in raw_name:
-                    entry = e
-                    break
-        if not entry:
-            return None
-        return {"amount": float(entry.get("amount", 0.0))}
+        if not self._last_totals:
+            self._last_totals = self._calculate_totals()
+        return self.label_presenter.label_amount_from_totals(
+            nutrient,
+            totals=self._last_totals,
+            nutrient_map=self.label_nutrient_usda_map,
+            manual_overrides=self.label_manual_overrides,
+            display_nutrients=self._active_label_nutrients(),
+            portion_factor=self._current_portion_factor(),
+        )
 
 
     def _effective_label_nutrient(self, nutrient: Dict[str, Any]) -> Dict[str, Any]:
-        name = nutrient.get("name", "")
-        manual_amount = self.label_manual_overrides.get(name)
-        if nutrient.get("type") == "energy":
-            manual_amount = None
-        totals_amount = self._label_amount_from_totals(nutrient)
-
-        effective = dict(nutrient)
-        effective["vd_reference"] = nutrient.get("vd_reference") or (
-            nutrient.get("kcal", nutrient.get("amount", 0.0))
-            if nutrient.get("type") == "energy"
-            else nutrient.get("amount", 0.0)
+        if not self._last_totals:
+            self._last_totals = self._calculate_totals()
+        return self.label_presenter.effective_label_nutrient(
+            nutrient,
+            totals=self._last_totals,
+            nutrient_map=self.label_nutrient_usda_map,
+            manual_overrides=self.label_manual_overrides,
+            display_nutrients=self._active_label_nutrients(),
+            portion_factor=self._current_portion_factor(),
         )
-
-        if manual_amount is not None:
-            if nutrient.get("type") == "energy":
-                effective["kcal"] = manual_amount
-                kj_conv = convert_amount(manual_amount, "kcal", "kJ")
-                effective["kj"] = float(kj_conv) if kj_conv is not None else manual_amount * 4.184
-                effective["amount"] = manual_amount
-            else:
-                effective["amount"] = manual_amount
-            effective["manual"] = True
-            return effective
-
-        if totals_amount:
-            if nutrient.get("type") == "energy":
-                effective["kcal"] = totals_amount.get("kcal", nutrient.get("kcal", 0.0))
-                effective["kj"] = totals_amount.get("kj", nutrient.get("kj", 0.0))
-                effective["amount"] = effective["kcal"]
-            else:
-                effective["amount"] = totals_amount.get("amount", nutrient.get("amount", 0.0))
-            effective["manual"] = False
-            effective["from_totals"] = True
-            return effective
-
-        effective["manual"] = False
-        effective["from_totals"] = False
-        return effective
 
 
     def _update_label_table_preview(self) -> None:
@@ -1467,31 +991,30 @@ class LabelTabMixin:
         factor = self._current_portion_factor()
         table.clearSpans()
 
-        display_nutrients = self._active_label_nutrients()
-        filtered_nutrients: list[tuple[Dict[str, Any], Dict[str, Any]]] = []
-        carb_children_present = False
-        hide_zero_carb = {"Polialcoholes", "Polidextrosas"}
-        for nutrient in display_nutrients:
-            effective = self._effective_label_nutrient(nutrient)
-            name = effective.get("name", nutrient.get("name", ""))
-            if (
-                nutrient.get("carb_child")
-                and name in hide_zero_carb
-                and math.isclose(effective.get("amount", 0.0) or 0.0, 0.0, abs_tol=1e-9)
-            ):
-                continue
-            if nutrient.get("carb_child") and not nutrient.get("carb_parent"):
-                carb_children_present = True
-            filtered_nutrients.append((nutrient, effective))
-        self._label_display_nutrients = [n for n, _ in filtered_nutrients]
+        if not self._last_totals:
+            self._last_totals = self._calculate_totals()
 
-        total_rows = (
-            3
-            + len(filtered_nutrients)
-            + len(self.label_additional_selected)
-            + (1 if self.label_no_significant else 0)
-            + 1
+        display_nutrients = self._active_label_nutrients()
+        view = self.label_presenter.build_label_table_rows(
+            display_nutrients=display_nutrients,
+            additional_selected=self.label_additional_selected,
+            additional_catalog=self.label_additional_catalog,
+            no_significant=self.label_no_significant,
+            no_significant_display_map=self.label_no_significant_display_map,
+            no_sig_order=self.label_no_sig_order,
+            breakdown_fat=self.breakdown_fat_checkbox.isChecked(),
+            breakdown_carb=self.breakdown_carb_checkbox.isChecked(),
+            manual_overrides=self.label_manual_overrides,
+            totals=self._last_totals,
+            nutrient_map=self.label_nutrient_usda_map,
+            portion_factor=factor,
         )
+        nutrient_rows = view["nutrient_rows"]
+        additional_rows = view["additional_rows"]
+        note_text = view["note_text"]
+        self._label_display_nutrients = view["filtered_nutrients"]
+
+        total_rows = 3 + len(nutrient_rows) + len(additional_rows) + 1 + (1 if note_text else 0)
         table.setRowCount(total_rows)
 
         title_item = QTableWidgetItem("INFORMACIÓN NUTRICIONAL")
@@ -1523,48 +1046,20 @@ class LabelTabMixin:
         table.setItem(2, 2, header_item_vd)
         table.setItem(2, 0, header_placeholder)
 
-        for idx, (nutrient, effective) in enumerate(filtered_nutrients):
+        for idx, row_data in enumerate(nutrient_rows):
             row = 3 + idx
-            name = effective.get("name", nutrient.get("name", ""))
-            indent_level = nutrient.get("indent_level", 0)
-            display_name = ("    " * indent_level) + name
-            name_item = QTableWidgetItem(display_name)
-
-            if effective.get("manual"):
-                manual_amount = self.label_manual_overrides.get(name, 0.0)
-                amount_text = self._format_manual_amount(effective, manual_amount)
-                vd_text = self._format_manual_vd(effective, manual_amount)
-            else:
-                amount_text = self._format_nutrient_amount(effective, factor)
-                eff_amount = (
-                    effective.get("kcal", 0.0)
-                    if effective.get("type") == "energy"
-                    else effective.get("amount", 0.0)
-                )
-                vd_text = self._format_vd_value(effective, factor, eff_amount)
-            if self.breakdown_fat_checkbox.isChecked() and nutrient.get("fat_parent"):
-                amount_text = f"{amount_text}, de las cuales"
-            if (
-                self.breakdown_carb_checkbox.isChecked()
-                and nutrient.get("carb_parent")
-                and carb_children_present
-            ):
-                amount_text = f"{amount_text}, de los cuales"
-
-            amount_item = QTableWidgetItem(amount_text)
-            vd_item = QTableWidgetItem(vd_text)
+            name_item = QTableWidgetItem(row_data["display_name"])
+            amount_item = QTableWidgetItem(row_data["amount_text"])
+            vd_item = QTableWidgetItem(row_data["vd_text"])
             name_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             amount_item.setTextAlignment(Qt.AlignCenter)
             vd_item.setTextAlignment(Qt.AlignCenter)
-            if effective.get("manual"):
+            if row_data["manual"]:
                 brush = QBrush(self.label_manual_hint_color)
                 for itm in (name_item, amount_item, vd_item):
                     itm.setBackground(brush)
                     itm.setData(self._manual_role, True)
-            is_breakdown_child_row = bool(
-                (self.breakdown_fat_checkbox.isChecked() and nutrient.get("fat_child") and not nutrient.get("fat_parent"))
-                or (self.breakdown_carb_checkbox.isChecked() and nutrient.get("carb_child") and not nutrient.get("carb_parent"))
-            )
+            is_breakdown_child_row = row_data["is_breakdown_child"]
             for itm in (name_item, amount_item, vd_item):
                 itm.setData(self._fat_row_role, is_breakdown_child_row)
                 if not itm.data(self._manual_role):
@@ -1573,38 +1068,25 @@ class LabelTabMixin:
             table.setItem(row, 1, amount_item)
             table.setItem(row, 2, vd_item)
 
-        additional_rows_start = 3 + len(display_nutrients)
-        for add_idx, add_name in enumerate(self.label_additional_selected):
-            nutrient = next((n for n in self.label_additional_catalog if n["name"] == add_name), None)
-            if not nutrient:
-                continue
-            effective = self._effective_label_nutrient(nutrient)
+        additional_rows_start = 3 + len(nutrient_rows)
+        for add_idx, row_data in enumerate(additional_rows):
             row = additional_rows_start + add_idx
-            name_item = QTableWidgetItem(add_name)
-            amount_portion = (effective.get("amount", 0.0) or 0.0) * factor
-            amount_item = QTableWidgetItem(self._format_additional_amount(amount_portion, nutrient.get("unit", "")))
-            eff_amount = effective.get("amount", 0.0) or 0.0
-            vd_item = QTableWidgetItem(self._format_vd_value(effective, factor, eff_amount))
+            name_item = QTableWidgetItem(row_data["name"])
+            amount_item = QTableWidgetItem(row_data["amount_text"])
+            vd_item = QTableWidgetItem(row_data["vd_text"])
             name_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             amount_item.setTextAlignment(Qt.AlignCenter)
             vd_item.setTextAlignment(Qt.AlignCenter)
             for itm in (name_item, amount_item, vd_item):
-                itm.setData(self._manual_role, bool(effective.get("manual")))
-                if effective.get("manual"):
+                itm.setData(self._manual_role, bool(row_data["manual"]))
+                if row_data["manual"]:
                     itm.setBackground(QBrush(self.label_manual_hint_color))
             table.setItem(row, 0, name_item)
             table.setItem(row, 1, amount_item)
             table.setItem(row, 2, vd_item)
 
-        note_row = 3 + len(filtered_nutrients) + len(self.label_additional_selected)
-        if self.label_no_significant:
-            names = [
-                self.label_no_significant_display_map.get(name, name)
-                for name in self._sort_no_significant_list(self.label_no_significant)
-            ]
-            note_text = (
-                f"No aporta cantidades significativas de {self._human_join(names)}."
-            )
+        note_row = 3 + len(nutrient_rows) + len(additional_rows)
+        if note_text:
             note_item = QTableWidgetItem(note_text)
             note_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             table.setItem(note_row, 0, note_item)
@@ -1627,7 +1109,7 @@ class LabelTabMixin:
         # Fix height for single-line rows (all menos notas/final), allow wrapping only on notes/footer.
         base_height = table.fontMetrics().height() + 6
         wrap_rows = {footer_row}
-        if self.label_no_significant:
+        if note_text:
             wrap_rows.add(note_row)
         for r in range(table.rowCount()):
             if r in wrap_rows:
@@ -1637,116 +1119,28 @@ class LabelTabMixin:
 
 
     def _update_linear_preview(self) -> None:
+        if not self._last_totals:
+            self._last_totals = self._calculate_totals()
         factor = self._current_portion_factor()
         portion_desc = self._portion_description_for_table()
         display_nutrients = self._active_label_nutrients()
-        parts: list[str] = []
-        fat_children: list[str] = []
-        fat_parent_text = None
-        fat_parent_index = None
-        carb_children: list[str] = []
-        carb_parent_text = None
-        carb_parent_index = None
-        hide_zero_carb = {"Polialcoholes", "Polidextrosas"}
-
-        for nutrient in display_nutrients:
-            effective = self._effective_label_nutrient(nutrient)
-            if effective.get("manual"):
-                manual_amount = self.label_manual_overrides.get(
-                    effective.get("name", ""), 0.0
-                )
-                amount = self._format_manual_amount(effective, manual_amount)
-                vd = self._format_manual_vd(effective, manual_amount)
-            else:
-                amount = self._format_nutrient_amount(effective, factor)
-                eff_amount = (
-                    effective.get("kcal", 0.0)
-                    if effective.get("type") == "energy"
-                    else effective.get("amount", 0.0)
-                )
-                vd = self._format_vd_value(effective, factor, eff_amount)
-            vd_suffix = "" if vd in ("", "-") else f" ({vd} VD*)"
-            line_text = f"{nutrient.get('name', '')} {amount}{vd_suffix}"
-
-            if (
-                self.breakdown_fat_checkbox.isChecked()
-                and nutrient.get("fat_child")
-                and not nutrient.get("fat_parent")
-            ):
-                fat_children.append(line_text)
-                continue
-
-            if self.breakdown_fat_checkbox.isChecked() and nutrient.get("fat_parent"):
-                fat_parent_text = line_text
-                fat_parent_index = len(parts)
-                continue
-
-            if (
-                self.breakdown_carb_checkbox.isChecked()
-                and nutrient.get("carb_child")
-                and not nutrient.get("carb_parent")
-            ):
-                if nutrient.get("name", "") in hide_zero_carb and math.isclose(
-                    effective.get("amount", 0.0) or 0.0, 0.0, abs_tol=1e-9
-                ):
-                    continue
-                carb_children.append(line_text)
-                continue
-
-            if self.breakdown_carb_checkbox.isChecked() and nutrient.get("carb_parent"):
-                carb_parent_text = line_text
-                carb_parent_index = len(parts)
-                continue
-
-            parts.append(line_text)
-
-        if self.breakdown_fat_checkbox.isChecked() and fat_parent_text:
-            fat_block = fat_parent_text
-            if fat_children:
-                fat_block = f"{fat_block}, de los cuales: " + ", ".join(fat_children)
-            insert_idx = fat_parent_index if fat_parent_index is not None else len(parts)
-            parts.insert(insert_idx, fat_block)
-
-        if self.breakdown_carb_checkbox.isChecked() and carb_parent_text:
-            carb_block = carb_parent_text
-            if carb_children:
-                carb_block = f"{carb_block}, de los cuales: " + ", ".join(carb_children)
-            insert_idx = carb_parent_index if carb_parent_index is not None else len(parts)
-            parts.insert(insert_idx, carb_block)
-
-        for add_name in self.label_additional_selected:
-            nutrient = next((n for n in self.label_additional_catalog if n["name"] == add_name), None)
-            if not nutrient:
-                continue
-            effective = self._effective_label_nutrient(nutrient)
-            amount_portion = (effective.get("amount", 0.0) or 0.0) * factor
-            amount = self._format_additional_amount(amount_portion, nutrient.get("unit", ""))
-            eff_amount = effective.get("amount", 0.0) or 0.0
-            vd = self._format_vd_value(effective, factor, eff_amount)
-            vd_suffix = "" if vd in ("", "-") else f" ({vd} VD*)"
-            parts.append(f"{add_name} {amount}{vd_suffix}")
-
-        note_text = ""
-        if self.label_no_significant:
-            names = [
-                self.label_no_significant_display_map.get(name, name)
-                for name in self._sort_no_significant_list(self.label_no_significant)
-            ]
-            note_text = f" No aporta cantidades significativas de {self._human_join(names)}."
-
-        base_text = (
-            "Información Nutricional: "
-            f"{portion_desc}. "
-            + "; ".join(parts)
-            + ";"
-            + note_text
-            + " (*) % Valores Diarios con base a una dieta de 2.000 kcal u 8.400 kJ. "
-            "Sus valores diarios pueden ser mayores o menores dependiendo de sus necesidades energéticas."
+        base_text = self.label_presenter.build_linear_preview_text(
+            portion_desc=portion_desc,
+            display_nutrients=display_nutrients,
+            additional_selected=self.label_additional_selected,
+            additional_catalog=self.label_additional_catalog,
+            no_significant=self.label_no_significant,
+            no_significant_display_map=self.label_no_significant_display_map,
+            no_sig_order=self.label_no_sig_order,
+            breakdown_fat=self.breakdown_fat_checkbox.isChecked(),
+            breakdown_carb=self.breakdown_carb_checkbox.isChecked(),
+            manual_overrides=self.label_manual_overrides,
+            totals=self._last_totals,
+            nutrient_map=self.label_nutrient_usda_map,
+            portion_factor=factor,
         )
         self.linear_format_preview.setPlainText(base_text)
 
-
-    # ---- Rendering/export ----
     def _render_label_pixmap(self, with_background: bool) -> QPixmap | None:
         table = self.label_table_widget
 
@@ -1782,6 +1176,12 @@ class LabelTabMixin:
         sel_model = table.selectionModel()
         selected_indexes = list(sel_model.selectedIndexes()) if sel_model else []
         table.clearSelection()
+
+        delegate = table.itemDelegate()
+        previous_hover = None
+        if isinstance(delegate, LabelTableDelegate):
+            previous_hover = delegate.suppress_hover
+            delegate.suppress_hover = True
 
         cleared_backgrounds: list[tuple[int, int, QBrush]] = []
         for r in range(table.rowCount()):
@@ -1868,6 +1268,8 @@ class LabelTabMixin:
             table.setVerticalScrollBarPolicy(original_v_policy)
             table.setAttribute(Qt.WA_TranslucentBackground, original_table_attr)
             table.viewport().setAttribute(Qt.WA_TranslucentBackground, original_viewport_attr)
+            if previous_hover is not None and isinstance(delegate, LabelTableDelegate):
+                delegate.suppress_hover = previous_hover
             for r, c, bg in cleared_backgrounds:
                 item = table.item(r, c)
                 if item:

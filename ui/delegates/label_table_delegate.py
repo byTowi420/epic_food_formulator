@@ -26,13 +26,17 @@ class LabelTableDelegate(QStyledItemDelegate):
         # Color fijo para la barrita de selección personalizada
         self.handle_color = QColor("#1f6fbd")
         self.grid_color = QColor("#c0c0c0")
+        self.suppress_hover = False
 
     def paint(self, painter: QPainter, option, index) -> None:  # type: ignore[override]
+        state = option.state
+        if self.suppress_hover:
+            state &= ~QStyle.State_MouseOver
         is_fat_child = bool(index.data(self.fat_row_role))
         is_header_span = bool(self.header_span_role and index.data(self.header_span_role))
         is_manual = bool(self.manual_role and index.data(self.manual_role))
-        is_selected = bool(option.state & QStyle.State_Selected)
-        is_active = bool(option.state & QStyle.State_Active)
+        is_selected = bool(state & QStyle.State_Selected)
+        is_active = bool(state & QStyle.State_Active)
 
         # Base fill for manual values (under the text/content).
         if is_manual:
@@ -51,6 +55,7 @@ class LabelTableDelegate(QStyledItemDelegate):
         if (is_fat_child and index.column() == 0) or (is_header_span and index.column() == 1):
             opt = QStyleOptionViewItem(option)
             self.initStyleOption(opt, index)
+            opt.state = state
             opt.state &= ~(QStyle.State_HasFocus | QStyle.State_Selected)
             opt.palette.setBrush(QPalette.Base, Qt.transparent)
             opt.palette.setBrush(QPalette.Window, Qt.transparent)
@@ -65,6 +70,7 @@ class LabelTableDelegate(QStyledItemDelegate):
 
             painter.save()
             text_rect = opt.rect
+            clip_rect = opt.rect
             extra = 0
             if is_fat_child:
                 try:
@@ -73,6 +79,7 @@ class LabelTableDelegate(QStyledItemDelegate):
                     extra = 0
                 if extra > 0:
                     text_rect.setWidth(text_rect.width() + extra)
+                    clip_rect.setWidth(clip_rect.width() + extra)
                 text_rect.adjust(4, 0, -2, 0)  # small padding, avoid hitting amount text
                 align = Qt.AlignLeft | Qt.AlignVCenter
             else:
@@ -84,8 +91,10 @@ class LabelTableDelegate(QStyledItemDelegate):
                 if extra > 0:
                     shift = extra // 2
                     text_rect.adjust(-shift, 0, extra - shift, 0)
+                    clip_rect.adjust(-shift, 0, extra - shift, 0)
                 text_rect.adjust(0, 0, -2, 0)
                 align = Qt.AlignCenter
+            painter.setClipRect(clip_rect)
             painter.setPen(opt.palette.color(QPalette.Text))
             painter.setFont(opt.font)
             painter.drawText(text_rect, align, str(index.data() or ""))
@@ -94,6 +103,7 @@ class LabelTableDelegate(QStyledItemDelegate):
             # Camino normal sin super().paint para evitar que Qt re-inserte State_Selected
             base_opt = QStyleOptionViewItem(option)
             self.initStyleOption(base_opt, index)
+            base_opt.state = state
             # Quitar selección/foco para que Qt no pinte su highlight nativo
             base_opt.state &= ~(QStyle.State_HasFocus | QStyle.State_Selected)
             base_opt.palette.setBrush(QPalette.Base, Qt.transparent)

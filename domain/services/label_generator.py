@@ -38,7 +38,7 @@ class LabelGenerator:
         "Total Carbohydrate": Decimal("275"),  # g
         "Dietary Fiber": Decimal("28"),  # g
         "Protein": Decimal("50"),  # g (not typically shown as %DV)
-        "Vitamin D": Decimal("20"),  # µg
+        "Vitamin D": Decimal("20"),  # μg
         "Calcium": Decimal("1300"),  # mg
         "Iron": Decimal("18"),  # mg
         "Potassium": Decimal("4700"),  # mg
@@ -210,7 +210,7 @@ class LabelGenerator:
             rows.append(
                 LabelRow(
                     nutrient_name="Vitamin D",
-                    amount=self._format_amount(vitamin_d, "µg"),
+                    amount=self._format_amount(vitamin_d, "μg"),
                     daily_value=self._calc_dv_percent(vitamin_d, "Vitamin D"),
                     indent_level=0,
                 )

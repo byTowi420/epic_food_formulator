@@ -84,5 +84,14 @@ class InvalidFormulationFileError(PersistenceError):
     """Raised when formulation file is malformed."""
 
 
+class FormulationImportError(InvalidFormulationFileError):
+    """Raised when formulation import parsing fails."""
+
+    def __init__(self, title: str, message: str, *, severity: str = "warning") -> None:
+        super().__init__(message)
+        self.title = title
+        self.severity = severity
+
+
 class ExportError(PersistenceError):
     """Raised when export operation fails."""

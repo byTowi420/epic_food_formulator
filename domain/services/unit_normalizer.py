@@ -40,6 +40,7 @@ _MASS_UNIT_ALIASES = {
 }
 
 _MASS_UNIT_TO_G = {
+    "μg": Decimal("0.000001"),
     "µg": Decimal("0.000001"),
     "mg": Decimal("0.001"),
     "g": Decimal("1"),
@@ -64,7 +65,7 @@ def canonical_unit(unit: Optional[str]) -> str:
 
     lower = cleaned.lower()
     if lower in _MICRO_ALIASES:
-        return "µg"
+        return "μg"
     if lower in {"kj", "kilojoule", "kilojoules"}:
         return "kJ"
     if lower in {"kcal", "kilocalorie", "kilocalories"}:

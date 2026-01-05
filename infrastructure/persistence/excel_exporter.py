@@ -12,6 +12,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, PatternFill
 from openpyxl.utils import get_column_letter
 
+from config.constants import DATA_TYPE_PRIORITY
 from domain.exceptions import ExportError
 from domain.models import Formulation, Ingredient
 from domain.services.unit_normalizer import canonical_unit, convert_mass, normalize_mass_unit
@@ -26,12 +27,7 @@ class ExcelExporter:
         self._nutrient_catalog = self._build_nutrient_catalog()
         self._nutrient_category_map = self._build_category_map()
         self._nutrient_order_map = self._build_order_map()
-        self.data_type_priority = {
-            "Foundation": 0,
-            "SR Legacy": 1,
-            "Survey (FNDDS)": 2,
-            "Branded": 3,
-        }
+        self.data_type_priority = DATA_TYPE_PRIORITY
 
     def export_formulation(
         self,

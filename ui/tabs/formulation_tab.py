@@ -3,24 +3,21 @@ from __future__ import annotations
 import json
 import logging
 import re
-import unicodedata
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, PatternFill
 from openpyxl.utils import get_column_letter
 
+from config.constants import DATA_TYPE_PRIORITY
 from PySide6.QtCore import QCoreApplication, QItemSelectionModel, QThread, Qt, QTimer
-from PySide6.QtGui import QColor, QFont, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QApplication,
     QComboBox,
     QFileDialog,
     QHBoxLayout,
-    QHeaderView,
     QInputDialog,
     QLabel,
     QLineEdit,
@@ -30,13 +27,17 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
 )
+from ui.tabs.table_utils import (
+    apply_selection_bar,
+    attach_copy_shortcut,
+    set_formulation_column_widths,
+)
 
-from ui.delegates.selection_bar_delegate import SelectionBarDelegate
-
-from domain.services.unit_normalizer import canonical_unit, convert_mass, normalize_mass_unit
+from domain.exceptions import FormulationImportError
+from domain.services.nutrient_ordering import NutrientOrdering
+from domain.services.unit_normalizer import convert_mass, normalize_mass_unit
 from services.nutrient_normalizer import (
     augment_fat_nutrients,
-    canonical_alias_name,
     normalize_nutrients,
 )
 from ui.workers import AddWorker, ApiWorker, ImportWorker
@@ -74,27 +75,10 @@ class FormulationTabMixin:
         self.nutrient_export_flags: Dict[str, bool] = {}
 
         # Nutrient ordering helpers.
-        self._reference_order_map: Dict[str, Dict[str, Any]] = {}
-        self._nutrient_catalog: list[tuple[str, list[str]]] = self._build_nutrient_catalog()
-        self._nutrient_order_map: dict[str, int] = {}
-        self._nutrient_category_map: dict[str, str] = {}
-        for idx, (_, names) in enumerate(self._nutrient_catalog):
-            for offset, name in enumerate(names):
-                self._nutrient_order_map[name.strip().lower()] = idx * 1000 + offset
-                self._nutrient_category_map[name.strip().lower()] = self._nutrient_catalog[idx][0]
+        self.nutrient_ordering = NutrientOrdering()
 
         # Cache for totals used by label preview.
         self._last_totals: Dict[str, Dict[str, Any]] = {}
-
-        # Shared data type priority (search + formulation).
-        self.data_type_priority = {
-            "Foundation": 0,
-            "SR Legacy": 1,
-            "Survey": 2,
-            "Survey (FNDDS)": 2,
-            "Experimental": 3,
-            "Branded": 4,
-        }
 
     # ---- UI build ----
     def _build_formulation_tab_ui(self) -> None:
@@ -143,7 +127,7 @@ class FormulationTabMixin:
         self.formulation_table.setSelectionMode(QTableWidget.ExtendedSelection)
         self.formulation_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.formulation_table.horizontalHeader().setStretchLastSection(True)
-        self._apply_table_selection_bar(self.formulation_table)
+        apply_selection_bar(self.formulation_table)
         layout.addWidget(self.formulation_table)
     
         # Acciones sobre ingredientes.
@@ -178,7 +162,7 @@ class FormulationTabMixin:
         self.totals_table.setSelectionMode(QTableWidget.ExtendedSelection)
         self.totals_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.totals_table.horizontalHeader().setStretchLastSection(True)
-        self._apply_table_selection_bar(self.totals_table)
+        apply_selection_bar(self.totals_table)
         layout.addWidget(self.totals_table)
     
         # Acciones de exportacion.
@@ -221,90 +205,10 @@ class FormulationTabMixin:
             self.formulation_table,
             self.totals_table,
         ):
-            self._attach_copy_shortcut(table)
+            attach_copy_shortcut(table)
     
         # Ajuste inicial de columnas.
-        self._set_default_column_widths(formulation=True)
-
-    def _set_default_column_widths(self, formulation: bool = False) -> None:
-        """
-        Set sensible initial column widths while keeping them resizable.
-        """
-        if not formulation:
-            for table in (
-                self.table,
-                self.details_table,
-                self.formulation_preview,
-            ):
-                header = table.horizontalHeader()
-                header.setSectionResizeMode(QHeaderView.Interactive)
-
-            self.table.setColumnWidth(0, 75)   # FDC ID
-            self.table.setColumnWidth(1, 340)  # Descripcion
-            self.table.setColumnWidth(2, 200)  # Marca / Origen
-            self.table.setColumnWidth(3, 120)  # Tipo de dato
-
-            self.details_table.setColumnWidth(0, 200)  # Nutriente
-            self.details_table.setColumnWidth(1, 90)   # Cantidad
-            self.details_table.setColumnWidth(2, 70)   # Unidad
-
-            self.formulation_preview.setColumnWidth(0, 70)  # FDC ID
-            self.formulation_preview.setColumnWidth(1, 290)  # Ingrediente
-            return
-
-        for table in (self.formulation_table, self.totals_table):
-            header = table.horizontalHeader()
-            header.setSectionResizeMode(QHeaderView.Interactive)
-
-        self.formulation_table.setColumnWidth(0, 75)   # FDC ID
-        self.formulation_table.setColumnWidth(1, 330)  # Ingrediente
-        self.formulation_table.setColumnWidth(2, 95)   # Cantidad (g)
-        self.formulation_table.setColumnWidth(3, 85)   # Cantidad (%)
-        self.formulation_table.setColumnWidth(4, 65)   # Fijar %
-        self.formulation_table.setColumnWidth(5, 150)  # Marca / Origen
-
-        self.totals_table.setColumnWidth(0, 210)  # Nutriente
-        self.totals_table.setColumnWidth(1, 85)   # Total
-        self.totals_table.setColumnWidth(2, 60)   # Unidad
-        self.totals_table.setColumnWidth(3, 80)   # Exportar
-
-
-    def _attach_copy_shortcut(self, table: QTableWidget) -> None:
-        """Attach Ctrl+C to copy the current selection of a table as TSV to clipboard."""
-        shortcut = QShortcut(QKeySequence.Copy, table)
-        shortcut.setContext(Qt.WidgetWithChildrenShortcut)
-        shortcut.activated.connect(lambda t=table: self._copy_table_selection(t))
-
-    def _apply_table_selection_bar(self, table: QTableWidget) -> None:
-        table.setItemDelegate(SelectionBarDelegate(parent=table))
-
-
-    def _copy_table_selection(self, table: QTableWidget) -> None:
-        """Copy selected cells/rows to clipboard (TSV) with headers."""
-        sel_model = table.selectionModel()
-        if not sel_model or not sel_model.hasSelection():
-            return
-        ranges = table.selectedRanges()
-        if not ranges:
-            return
-        selected_range = ranges[0]
-        rows = range(selected_range.topRow(), selected_range.bottomRow() + 1)
-        cols = range(selected_range.leftColumn(), selected_range.rightColumn() + 1)
-
-        headers: list[str] = []
-        for col in cols:
-            header_item = table.horizontalHeaderItem(col)
-            headers.append(header_item.text() if header_item else "")
-        lines = ["\t".join(headers)]
-
-        for row in rows:
-            row_vals: list[str] = []
-            for col in cols:
-                item = table.item(row, col)
-                row_vals.append("" if item is None else item.text())
-            lines.append("\t".join(row_vals))
-
-        QApplication.clipboard().setText("\n".join(lines))
+        set_formulation_column_widths(self.formulation_table, self.totals_table)
 
 
     def _is_importing(self) -> bool:
@@ -543,23 +447,25 @@ class FormulationTabMixin:
             return
         self._save_last_path(path)
 
-        ext = Path(path).suffix.lower()
-        if ext == ".json":
-            parsed = self._load_state_from_json(path)
-        elif ext in (".xlsx", ".xls"):
-            parsed = self._load_state_from_excel(path)
-        else:
-            QMessageBox.warning(
+        try:
+            base_items, meta = self.formulation_presenter.parse_import_file(
+                path,
+                current_formula_name=self.formula_name_input.text(),
+            )
+        except FormulationImportError as exc:
+            if exc.severity == "critical":
+                QMessageBox.critical(self, exc.title, str(exc))
+            else:
+                QMessageBox.warning(self, exc.title, str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(
                 self,
-                "Formato no soportado",
-                "Selecciona un archivo .json o .xlsx",
+                "Error al importar",
+                f"No se pudo leer el archivo:\n{exc}",
             )
             return
 
-        if not parsed:
-            return
-
-        base_items, meta = parsed
         meta.setdefault("path", path)
         self._start_import_hydration(base_items, meta)
 
@@ -612,384 +518,6 @@ class FormulationTabMixin:
                 continue
             flags[key_text] = bool(value)
         return flags
-
-
-    def _normalize_export_flags(
-        self, raw_flags: Dict[str, Any] | None
-    ) -> tuple[Dict[str, bool], Dict[str, bool]]:
-        """Split export flags into header-key and legacy formats."""
-        normalized: Dict[str, bool] = {}
-        legacy: Dict[str, bool] = {}
-        if not isinstance(raw_flags, dict):
-            return normalized, legacy
-
-        for key, value in raw_flags.items():
-            if key is None:
-                continue
-            key_text = str(key).strip()
-            if not key_text:
-                continue
-            enabled = value
-            if isinstance(enabled, str):
-                lowered = enabled.strip().lower()
-                if lowered in {"true", "1", "yes", "si"}:
-                    enabled = True
-                elif lowered in {"false", "0", "no"}:
-                    enabled = False
-            enabled = bool(enabled)
-            lower = key_text.lower()
-
-            if "|" in lower:
-                name_part, unit_part = lower.split("|", 1)
-                if name_part:
-                    normalized[f"{name_part.strip()}|{unit_part.strip()}"] = enabled
-                continue
-
-            if lower.endswith(")") and " (" in lower:
-                name_part, unit_part = lower.rsplit(" (", 1)
-                unit_part = unit_part[:-1]
-                if name_part:
-                    normalized[f"{name_part.strip()}|{unit_part.strip()}"] = enabled
-                continue
-
-            if lower.startswith("energy:"):
-                unit_part = lower.split(":", 1)[1].strip()
-                if unit_part:
-                    normalized[f"energy|{unit_part}"] = enabled
-                continue
-
-            legacy[lower] = enabled
-
-        return normalized, legacy
-
-
-    def _resolve_legacy_export_flags(
-        self,
-        legacy_flags: Dict[str, bool],
-        hydrated_items: list[Dict[str, Any]],
-    ) -> Dict[str, bool]:
-        """Map old-style flag keys (id/num/name) to header keys."""
-        if not legacy_flags:
-            return {}
-
-        legacy_to_header: Dict[str, str] = {}
-        name_to_headers: Dict[str, set[str]] = {}
-
-        for item in hydrated_items:
-            for entry in item.get("nutrients", []) or []:
-                nut = entry.get("nutrient") or {}
-                header_key, _, _ = self._header_key(nut)
-                if not header_key:
-                    continue
-                legacy_key = self._nutrient_key(nut)
-                if legacy_key:
-                    legacy_to_header.setdefault(legacy_key.lower(), header_key)
-                name_part = header_key.split("|", 1)[0]
-                name_to_headers.setdefault(name_part, set()).add(header_key)
-
-        resolved: Dict[str, bool] = {}
-        for key, value in legacy_flags.items():
-            norm = str(key).strip().lower()
-            if not norm:
-                continue
-
-            if norm.startswith("energy:"):
-                unit = norm.split(":", 1)[1].strip()
-                if unit:
-                    resolved[f"energy|{unit}"] = bool(value)
-                continue
-
-            if norm.startswith("name:"):
-                name = norm.split(":", 1)[1].strip()
-                for header_key in name_to_headers.get(name, set()):
-                    resolved[header_key] = bool(value)
-                continue
-
-            header_key = legacy_to_header.get(norm)
-            if header_key:
-                resolved[header_key] = bool(value)
-                continue
-
-            for header_key in name_to_headers.get(norm, set()):
-                resolved[header_key] = bool(value)
-
-        return resolved
-
-
-    def _load_state_from_json(self, path: str) -> tuple[list[Dict[str, Any]], Dict[str, Any]] | None:
-        try:
-            data = json.loads(Path(path).read_text(encoding="utf-8"))
-
-            items = data.get("items")
-            if not items:
-                items = data.get("ingredients")
-
-            if not isinstance(items, list) or not items:
-                QMessageBox.warning(
-                    self,
-                    "Formato invalido",
-                    "El archivo no contiene ingredientes validos.",
-                )
-                return None
-
-            base_items: list[Dict[str, Any]] = []
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-
-                fdc_raw = item.get("fdc_id") or item.get("fdcId") or item.get("fdcID")
-                if fdc_raw is None:
-                    QMessageBox.warning(
-                        self,
-                        "FDC ID invalido",
-                        "Uno de los ingredientes no tiene FDC ID.",
-                    )
-                    return None
-
-                try:
-                    fdc_int = int(fdc_raw)
-                except Exception:
-                    QMessageBox.warning(
-                        self,
-                        "FDC ID invalido",
-                        f"FDC ID no numerico: {fdc_raw}",
-                    )
-                    return None
-
-                amount_raw = item.get("amount_g")
-                if amount_raw is None:
-                    amount_raw = item.get("amountG")
-                if amount_raw is None:
-                    amount_raw = item.get("amount")
-                try:
-                    amount_g = float(amount_raw) if amount_raw is not None else 0.0
-                except Exception:
-                    amount_g = 0.0
-
-                base_items.append(
-                    {
-                        "fdc_id": fdc_int,
-                        "amount_g": amount_g,
-                        "locked": bool(item.get("locked", False)),
-                        "description": item.get("description") or item.get("name") or "",
-                        "brand": item.get("brand")
-                        or item.get("brand_owner")
-                        or item.get("brandOwner")
-                        or "",
-                        "data_type": item.get("data_type") or item.get("dataType") or "",
-                    }
-                )
-
-            if not base_items:
-                QMessageBox.warning(
-                    self,
-                    "Formato invalido",
-                    "El archivo no contiene ingredientes validos.",
-                )
-                return None
-
-            raw_flags = data.get("nutrient_export_flags")
-            nutrient_flags, legacy_flags = self._normalize_export_flags(raw_flags)
-
-            mode_raw = str(data.get("quantity_mode", "g") or "g").strip().lower()
-            if mode_raw in ("%", "percent", "percentage"):
-                quantity_mode = "%"
-            else:
-                quantity_mode = normalize_mass_unit(mode_raw) or "g"
-
-            formula_name = data.get("formula_name") or data.get("name") or Path(path).stem
-            label_settings = (
-                data.get("label_settings")
-                or data.get("label")
-                or data.get("label_state")
-                or {}
-            )
-            if not isinstance(label_settings, dict):
-                label_settings = {}
-
-            meta = {
-                "nutrient_export_flags": nutrient_flags,
-                "legacy_nutrient_export_flags": legacy_flags,
-                "quantity_mode": quantity_mode,
-                "formula_name": formula_name,
-                "label_settings": label_settings,
-                "path": path,
-                "respect_existing_formula_name": False,
-            }
-            return base_items, meta
-
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(
-                self,
-                "Error al importar",
-                f"No se pudo leer el archivo:\n{exc}",
-            )
-            return None
-
-
-    def _load_state_from_excel(self, path: str) -> tuple[list[Dict[str, Any]], Dict[str, Any]] | None:
-        def _read(sheet: str | int, header_row: int) -> pd.DataFrame:
-            return pd.read_excel(path, sheet_name=sheet, header=header_row)
-
-        df: pd.DataFrame | None = None
-        # Prefer sheet "Ingredientes" with headers on second row (row index 1)
-        for sheet in ("Ingredientes", 0):
-            for header_row in (1, 0):
-                try:
-                    tmp = _read(sheet, header_row)
-                    if not tmp.empty:
-                        df = tmp
-                        break
-                except Exception:
-                    continue
-            if df is not None:
-                break
-
-        if df is None or df.empty:
-            QMessageBox.warning(
-                self,
-                "Sin datos",
-                "El archivo no tiene filas para importar.",
-            )
-            return None
-
-        # Normalize columns for matching
-        cols_norm: Dict[str, str] = {self._normalize_label(c): c for c in df.columns}
-        fdc_candidates = [
-            "fdc id",
-            "fdc_id",
-            "fdcid",
-            "fdc",
-        ]
-        amount_candidates_by_unit = {
-            "g": [
-                "cantidad (g)",
-                "cantidad g",
-                "cantidad",
-                "cantidad gramos",
-                "cantidad en gramos",
-                "amount g",
-                "amount_g",
-                "g",
-                "grams",
-            ],
-            "kg": [
-                "cantidad (kg)",
-                "cantidad kg",
-                "cantidad kilogramos",
-                "cantidad en kilogramos",
-                "amount kg",
-                "amount_kg",
-                "kg",
-                "kilograms",
-            ],
-            "ton": [
-                "cantidad (ton)",
-                "cantidad ton",
-                "cantidad toneladas",
-                "cantidad en toneladas",
-                "amount ton",
-                "amount_ton",
-                "ton",
-                "toneladas",
-            ],
-            "lb": [
-                "cantidad (lb)",
-                "cantidad lb",
-                "cantidad libras",
-                "cantidad en libras",
-                "amount lb",
-                "amount_lb",
-                "lb",
-                "lbs",
-                "pounds",
-            ],
-            "oz": [
-                "cantidad (oz)",
-                "cantidad oz",
-                "cantidad onzas",
-                "cantidad en onzas",
-                "amount oz",
-                "amount_oz",
-                "oz",
-                "ounces",
-            ],
-        }
-
-        fdc_col = next((cols_norm[c] for c in fdc_candidates if c in cols_norm), None)
-        amount_col = None
-        amount_unit = "g"
-        for unit, candidates in amount_candidates_by_unit.items():
-            for candidate in candidates:
-                if candidate in cols_norm:
-                    amount_col = cols_norm[candidate]
-                    amount_unit = unit
-                    break
-            if amount_col:
-                break
-        if not amount_col:
-            for norm_label, original in cols_norm.items():
-                if not (norm_label.startswith("cantidad") or norm_label.startswith("amount")):
-                    continue
-                match = re.search(r"\(([^)]+)\)", norm_label)
-                if not match:
-                    continue
-                parsed_unit = normalize_mass_unit(match.group(1))
-                if parsed_unit:
-                    amount_col = original
-                    amount_unit = parsed_unit
-                    break
-
-        if not fdc_col or not amount_col:
-            QMessageBox.warning(
-                self,
-                "Columnas faltantes",
-                "Se requieren columnas FDC ID y Cantidad (g/kg/ton/lb/oz).",
-            )
-            return None
-
-        base_items: list[Dict[str, Any]] = []
-        for _, row in df.iterrows():
-            fdc_val = row.get(fdc_col)
-            amt_val = row.get(amount_col)
-            if pd.isna(fdc_val):
-                continue
-            try:
-                fdc_int = int(fdc_val)
-            except Exception:
-                continue
-            try:
-                amt = float(amt_val) if not pd.isna(amt_val) else 0.0
-            except Exception:
-                amt = 0.0
-            amt_g = convert_mass(amt, amount_unit, "g")
-            if amt_g is None:
-                amt_g = amt
-
-            base_items.append(
-                {
-                    "fdc_id": fdc_int,
-                    "amount_g": float(amt_g),
-                    "locked": False,
-                }
-            )
-
-        if not base_items:
-            QMessageBox.warning(
-                self,
-                "Sin ingredientes",
-                "No se encontraron filas válidas con FDC ID y Cantidad.",
-            )
-            return None
-
-        meta = {
-            "nutrient_export_flags": {},
-            "quantity_mode": amount_unit,
-            "formula_name": self.formula_name_input.text() or Path(path).stem,
-            "path": path,
-            "respect_existing_formula_name": True,
-        }
-        return base_items, meta
 
 
     def _set_import_controls_enabled(self, enabled: bool) -> None:
@@ -1133,7 +661,7 @@ class FormulationTabMixin:
                 fdc_id_int = fdc_id
 
             nutrients = augment_fat_nutrients(details.get("foodNutrients", []) or [])
-            self._update_reference_from_details(details)
+            self.nutrient_ordering.update_reference_from_details(details)
             hydrated.append(
                 {
                     "fdc_id": fdc_id_int,
@@ -1153,7 +681,7 @@ class FormulationTabMixin:
         )
         resolved_flags: Dict[str, bool] = {}
         resolved_flags.update(
-            self._resolve_legacy_export_flags(
+            self.formulation_presenter.resolve_legacy_export_flags(
                 meta.get("legacy_nutrient_export_flags", {}),
                 hydrated,
             )
@@ -1333,7 +861,7 @@ class FormulationTabMixin:
             if amount is None:
                 continue
             nut = entry.get("nutrient") or {}
-            header_key, name, unit = self._header_key(nut)
+            header_key, name, unit = self.nutrient_ordering.header_key(nut)
             if not header_key or header_key not in allowed_keys:
                 continue
             header = header_by_key[header_key]
@@ -1348,86 +876,6 @@ class FormulationTabMixin:
         return out
 
 
-    def _category_for_nutrient(self, name: str, nutrient: Dict[str, Any] | None = None) -> str:
-        """Resolve a nutrient category using the static catalog then reference hints."""
-        lower = (name or "").strip().lower()
-        if lower in self._nutrient_category_map:
-            return self._nutrient_category_map[lower]
-
-        amino_acids = {
-            "tryptophan",
-            "threonine",
-            "isoleucine",
-            "leucine",
-            "lysine",
-            "methionine",
-            "phenylalanine",
-            "tyrosine",
-            "valine",
-            "arginine",
-            "histidine",
-            "alanine",
-            "aspartic acid",
-            "glutamic acid",
-            "glycine",
-            "proline",
-            "serine",
-            "hydroxyproline",
-            "cysteine",
-            "cystine",
-        }
-        organic_acids = {
-            "citric acid",
-            "malic acid",
-            "oxalic acid",
-            "quinic acid",
-        }
-        oligosaccharides = {"raffinose", "stachyose", "verbascose"}
-        isoflavones = {"daidzein", "genistein", "daidzin", "genistin", "glycitin"}
-
-        vitamin_like = (
-            lower.startswith("vitamin ")
-            or "tocopherol" in lower
-            or "tocotrienol" in lower
-            or "carotene" in lower
-            or "lycopene" in lower
-            or "lutein" in lower
-            or "zeaxanthin" in lower
-            or "retinol" in lower
-            or "folate" in lower
-            or "folic acid" in lower
-            or "betaine" in lower
-            or "choline" in lower
-            or "caffeine" in lower
-            or "theobromine" in lower
-        )
-        if vitamin_like:
-            return "Vitamins and Other Components"
-
-        if lower in amino_acids:
-            return "Amino acids"
-        if (
-            "fatty acids" in lower
-            or lower.startswith(("sfa ", "mufa ", "pufa "))
-            or lower in {"cholesterol", "total lipid (fat)", "total fat (nlea)"}
-        ):
-            return "Lipids"
-        if "sterol" in lower:
-            return "Phytosterols"
-        if lower in organic_acids or (lower.endswith("acid") and lower not in amino_acids):
-            return "Organic acids"
-        if lower in oligosaccharides:
-            return "Oligosaccharides"
-        if lower in isoflavones:
-            return "Isoflavones"
-
-        if nutrient:
-            ref = self._reference_info(nutrient)
-            if ref.get("category"):
-                return ref["category"]
-        return "Nutrientes"
-
-
     def _collect_nutrient_columns(self) -> tuple[list[str], Dict[str, str], Dict[str, str]]:
         """
         Collect ordered nutrient headers and their categories.
@@ -1436,32 +884,34 @@ class FormulationTabMixin:
         """
         candidates: Dict[str, Dict[str, Any]] = {}
         categories_seen_order: Dict[str, int] = {}
-        preferred_order = [cat for cat, _ in self._nutrient_catalog]
+        preferred_order = [cat for cat, _ in self.nutrient_ordering.catalog]
         preferred_count = len(preferred_order)
 
         for item in self.formulation_presenter.get_ui_items():
-            data_priority = self.data_type_priority.get(
-                (item.get("data_type") or "").strip(), len(self.data_type_priority)
+            data_priority = DATA_TYPE_PRIORITY.get(
+                (item.get("data_type") or "").strip(), len(DATA_TYPE_PRIORITY)
             )
-            for entry in self._sort_nutrients_for_display(item.get("nutrients", [])):
+            for entry in self.nutrient_ordering.sort_nutrients_for_display(
+                item.get("nutrients", [])
+            ):
                 nut = entry.get("nutrient") or {}
                 amount = entry.get("amount")
                 if amount is None:
                     continue
-                header_key, canonical_name, canonical_unit = self._header_key(nut)
+                header_key, canonical_name, canonical_unit = self.nutrient_ordering.header_key(nut)
                 if header_key and not self.nutrient_export_flags.get(header_key, True):
                     continue
 
                 if not header_key or not canonical_name:
                     continue
 
-                category = self._category_for_nutrient(canonical_name, nut)
+                category = self.nutrient_ordering.category_for_nutrient(canonical_name, nut)
                 if category not in categories_seen_order:
                     categories_seen_order[category] = len(categories_seen_order)
 
-                order = self._nutrient_order_map.get(canonical_name.strip().lower())
+                order = self.nutrient_ordering.order_for_name(canonical_name)
                 if order is None:
-                    order = self._nutrient_order(nut, len(candidates))
+                    order = self.nutrient_ordering.nutrient_order(nut, len(candidates))
                 # Keep kcal ahead of kJ when both present
                 unit_lower = (canonical_unit or "").strip().lower()
                 if canonical_name.strip().lower() == "energy":
@@ -1574,7 +1024,7 @@ class FormulationTabMixin:
                     f"No se pudo cargar el FDC {fdc_id_int}:\n{exc}",
                 )
                 return None
-            self._update_reference_from_details(details)
+            self.nutrient_ordering.update_reference_from_details(details)
 
             hydrated.append(
                 {
@@ -1594,18 +1044,6 @@ class FormulationTabMixin:
         return hydrated
 
 
-    def _normalize_label(self, label: str) -> str:
-        """Normalize column labels for loose matching (casefold + strip accents)."""
-        if label is None:
-            return ""
-        text = str(label)
-        text = unicodedata.normalize("NFKD", text)
-        text = "".join(ch for ch in text if not unicodedata.combining(ch))
-        text = text.replace("_", " ").replace("-", " ")
-        return re.sub(r"\s+", " ", text).strip().lower()
-
-
-    # ---- Table refresh ----
     def _populate_formulation_tables(self) -> None:
         """Refresh formulation tables with current items."""
         logging.debug(f"_populate_formulation_tables rows={self.formulation_presenter.get_ingredient_count()}")
@@ -1665,16 +1103,17 @@ class FormulationTabMixin:
         totals = self._calculate_totals()
         self._last_totals = totals
 
-        category_order = [cat for cat, _ in self._nutrient_catalog]
+        category_order = [cat for cat, _ in self.nutrient_ordering.catalog]
 
         def _cat_rank(name: str) -> int:
-            cat = self._category_for_nutrient(name)
+            cat = self.nutrient_ordering.category_for_nutrient(name)
             if cat in category_order:
                 return category_order.index(cat)
             return len(category_order) + 1
 
         def _order_val(name: str) -> float:
-            return float(self._nutrient_order_map.get(name.strip().lower(), float("inf")))
+            order = self.nutrient_ordering.order_for_name(name)
+            return float(order if order is not None else float("inf"))
 
         sorted_totals = sorted(
             totals.items(),
@@ -1982,41 +1421,6 @@ class FormulationTabMixin:
         wb.save(filepath)
 
 
-    def _normalize_totals_by_header_key(
-        self, totals: Dict[str, Dict[str, Any]]
-    ) -> Dict[str, Dict[str, Any]]:
-        """Re-key totals using header_key (name|unit) for export flags."""
-        normalized: Dict[str, Dict[str, Any]] = {}
-        best_priority: Dict[str, int] = {}
-        alias_priority = {
-            "carbohydrate, by difference": 2,
-            "carbohydrate, by summation": 1,
-            "carbohydrate by summation": 1,
-            "sugars, total": 2,
-            "total sugars": 1,
-        }
-
-        for entry in totals.values():
-            name = entry.get("name", "")
-            unit = entry.get("unit", "")
-            nut = {"name": name, "unitName": unit}
-            header_key, canonical_name, canonical_unit = self._header_key(nut)
-            if not header_key:
-                continue
-            priority = alias_priority.get(str(name).strip().lower(), 0)
-            current_best = best_priority.get(header_key, -1)
-            if priority < current_best:
-                continue
-            best_priority[header_key] = priority
-            normalized[header_key] = {
-                "name": canonical_name or name,
-                "unit": canonical_unit or unit,
-                "amount": float(entry.get("amount", 0.0) or 0.0),
-            }
-
-        return normalized
-
-
     def _calculate_totals(self) -> Dict[str, Dict[str, Any]]:
         """Calculate nutrient totals via presenter."""
         logging.debug(f"_calculate_totals start items={self.formulation_presenter.get_ingredient_count()}")
@@ -2024,7 +1428,7 @@ class FormulationTabMixin:
         try:
             # Calculate totals via presenter
             totals = self.formulation_presenter.calculate_totals()
-            totals = self._normalize_totals_by_header_key(totals)
+            totals = self.nutrient_ordering.normalize_totals_by_header_key(totals)
             logging.debug(f"_calculate_totals done (via presenter) nutrients={len(totals)}")
             return totals
 
@@ -2036,12 +1440,14 @@ class FormulationTabMixin:
             total_weight = self._total_weight()
             for item in self.formulation_presenter.get_ui_items():
                 qty = item.get("amount_g", 0) or 0
-                for nutrient in self._sort_nutrients_for_display(item.get("nutrients", [])):
+                for nutrient in self.nutrient_ordering.sort_nutrients_for_display(
+                    item.get("nutrients", [])
+                ):
                     amount = nutrient.get("amount")
                     if amount is None:
                         continue
                     nut = nutrient.get("nutrient") or {}
-                    header_key, canonical_name, canonical_unit = self._header_key(nut)
+                    header_key, canonical_name, canonical_unit = self.nutrient_ordering.header_key(nut)
                     if not header_key:
                         continue
                     entry = totals.setdefault(
@@ -2050,19 +1456,21 @@ class FormulationTabMixin:
                             "name": canonical_name or nut.get("name", ""),
                             "unit": canonical_unit or "",
                             "amount": 0.0,
-                            "order": self._nutrient_order(nut, len(totals)),
+                            "order": self.nutrient_ordering.nutrient_order(
+                                nut, len(totals)
+                            ),
                         },
                     )
                     if canonical_name and not entry["name"]:
                         entry["name"] = canonical_name
                     if canonical_unit and not entry["unit"]:
                         entry["unit"] = canonical_unit
-                    inferred_unit = self._infer_unit(nut)
+                    inferred_unit = self.nutrient_ordering.infer_unit(nut)
                     if inferred_unit and not entry["unit"]:
                         entry["unit"] = inferred_unit
                     entry["order"] = min(
                         entry.get("order", float("inf")),
-                        self._nutrient_order(nut, len(totals)),
+                        self.nutrient_ordering.nutrient_order(nut, len(totals)),
                     )
                     entry["amount"] += amount * qty / 100.0
 
@@ -2072,450 +1480,6 @@ class FormulationTabMixin:
                     entry["amount"] *= factor
             logging.debug(f"_calculate_totals done (fallback) nutrients={len(totals)} total_weight={total_weight}")
             return totals
-
-
-    # ---- Nutrient ordering ----
-    def _nutrient_key(self, nutrient: Dict[str, Any]) -> str:
-        """
-        Build a consistent key for nutrients, preferring id then number then name.
-        This avoids duplicates when some records lack unitName (Foundation vs SR).
-        """
-        name_lower = (nutrient.get("name") or "").strip().lower()
-        unit_lower = (nutrient.get("unitName") or "").strip().lower()
-        # Special-case Energy to keep kcal/kJ separated when ids/numbers are missing.
-        if name_lower == "energy" and unit_lower:
-            return f"energy:{unit_lower}"
-        # Special-case Water to merge branded-calculated (no id) with USDA water (id present).
-        if name_lower == "water":
-            return f"water|{unit_lower}"
-        if "id" in nutrient and nutrient["id"] is not None:
-            return f"id:{nutrient['id']}"
-        if nutrient.get("number"):
-            return f"num:{nutrient['number']}"
-        name = name_lower
-        return f"name:{name}" if name else ""
-
-
-    def _reference_info(self, nutrient: Dict[str, Any]) -> Dict[str, Any]:
-        """Return cached rank/category info for a nutrient key if available."""
-        key = self._nutrient_key(nutrient)
-        return self._reference_order_map.get(key, {})
-
-
-    def _build_nutrient_catalog(self) -> list[tuple[str, list[str]]]:
-        """Static catalog to enforce ordering/categories when using abridged."""
-        return [
-            (
-                "Proximates",
-                [
-                    "Water",
-                    "Energy",
-                    "Nitrogen",
-                    "Protein",
-                    "Total fat (NLEA)",
-                    "Total lipid (fat)",
-                    "Ash",
-                    "Carbohydrate, by difference",
-                ],
-            ),
-            (
-                "Carbohydrates",
-                [
-                    "Fiber, total dietary",
-                    "Fiber, soluble",
-                    "Fiber, insoluble",
-                    "Total dietary fiber (AOAC 2011.25)",
-                    "High Molecular Weight Dietary Fiber (HMWDF)",
-                    "Low Molecular Weight Dietary Fiber (LMWDF)",
-                    "Sugars, Total",
-                    "Sucrose",
-                    "Glucose",
-                    "Fructose",
-                    "Lactose",
-                    "Maltose",
-                    "Galactose",
-                    "Starch",
-                    "Resistant starch",
-                    "Sugars, added",
-                ],
-            ),
-            (
-                "Minerals",
-                [
-                    "Calcium, Ca",
-                    "Iron, Fe",
-                    "Magnesium, Mg",
-                    "Phosphorus, P",
-                    "Potassium, K",
-                    "Sodium, Na",
-                    "Zinc, Zn",
-                    "Copper, Cu",
-                    "Manganese, Mn",
-                    "Iodine, I",
-                    "Selenium, Se",
-                    "Molybdenum, Mo",
-                    "Fluoride, F",
-                ],
-            ),
-            (
-                "Vitamins and Other Components",
-                [
-                    "Thiamin",
-                    "Riboflavin",
-                    "Niacin",
-                    "Vitamin B-6",
-                    "Folate, total",
-                    "Folic acid",
-                    "Folate, DFE",
-                    "Choline, total",
-                    "Choline, free",
-                    "Choline, from phosphocholine",
-                    "Choline, from phosphatidyl choline",
-                    "Choline, from glycerophosphocholine",
-                    "Choline, from sphingomyelin",
-                    "Betaine",
-                    "Vitamin B-12",
-                    "Vitamin B-12, added",
-                    "Vitamin A, RAE",
-                    "Retinol",
-                    "Carotene, beta",
-                    "cis-beta-Carotene",
-                    "trans-beta-Carotene",
-                    "Carotene, alpha",
-                    "Carotene, gamma",
-                    "Cryptoxanthin, beta",
-                    "Cryptoxanthin, alpha",
-                    "Vitamin A, IU",
-                    "Lycopene",
-                    "cis-Lycopene",
-                    "trans-Lycopene",
-                    "Lutein + zeaxanthin",
-                    "cis-Lutein/Zeaxanthin",
-                    "Lutein",
-                    "Zeaxanthin",
-                    "Phytoene",
-                    "Phytofluene",
-                    "Vitamin D (D2 + D3), International Units",
-                    "Vitamin D (D2 + D3)",
-                    "Vitamin D2 (ergocalciferol)",
-                    "Vitamin D3 (cholecalciferol)",
-                    "25-hydroxycholecalciferol",
-                    "Vitamin K (phylloquinone)",
-                    "Vitamin K (Dihydrophylloquinone)",
-                    "Vitamin K (Menaquinone-4)",
-                    "Vitamin E (alpha-tocopherol)",
-                    "Vitamin E, added",
-                    "Tocopherol, beta",
-                    "Tocopherol, gamma",
-                    "Tocopherol, delta",
-                    "Tocotrienol, alpha",
-                    "Tocotrienol, beta",
-                    "Tocotrienol, gamma",
-                    "Tocotrienol, delta",
-                    "Vitamin C, total ascorbic acid",
-                    "Pantothenic acid",
-                    "Biotin",
-                    "Caffeine",
-                    "Theobromine",
-                ],
-            ),
-            (
-                "Lipids",
-                [
-                    "Fatty acids, total saturated",
-                    "SFA 4:0",
-                    "SFA 5:0",
-                    "SFA 6:0",
-                    "SFA 7:0",
-                    "SFA 8:0",
-                    "SFA 9:0",
-                    "SFA 10:0",
-                    "SFA 11:0",
-                    "SFA 12:0",
-                    "SFA 13:0",
-                    "SFA 14:0",
-                    "SFA 15:0",
-                    "SFA 16:0",
-                    "SFA 17:0",
-                    "SFA 18:0",
-                    "SFA 20:0",
-                    "SFA 21:0",
-                    "SFA 22:0",
-                    "SFA 23:0",
-                    "SFA 24:0",
-                    "Fatty acids, total monounsaturated",
-                    "MUFA 12:1",
-                    "MUFA 14:1",
-                    "MUFA 14:1 c",
-                    "MUFA 15:1",
-                    "MUFA 16:1",
-                    "MUFA 16:1 c",
-                    "MUFA 17:1",
-                    "MUFA 17:1 c",
-                    "MUFA 18:1",
-                    "MUFA 18:1 c",
-                    "MUFA 20:1",
-                    "MUFA 20:1 c",
-                    "MUFA 22:1",
-                    "MUFA 22:1 c",
-                    "MUFA 22:1 n-9",
-                    "MUFA 22:1 n-11",
-                    "MUFA 24:1 c",
-                    "Fatty acids, total polyunsaturated",
-                    "PUFA 18:2",
-                    "PUFA 18:2 c",
-                    "PUFA 18:2 n-6 c,c",
-                    "PUFA 18:2 CLAs",
-                    "PUFA 18:2 i",
-                    "PUFA 18:3",
-                    "PUFA 18:3 c",
-                    "PUFA 18:3 n-3 c,c,c (ALA)",
-                    "PUFA 18:3 n-6 c,c,c",
-                    "PUFA 18:4",
-                    "PUFA 20:2 c",
-                    "PUFA 20:2 n-6 c,c",
-                    "PUFA 20:3",
-                    "PUFA 20:3 c",
-                    "PUFA 20:3 n-3",
-                    "PUFA 20:3 n-6",
-                    "PUFA 20:3 n-9",
-                    "PUFA 20:4",
-                    "PUFA 20:4c",
-                    "PUFA 20:5c",
-                    "PUFA 20:5 n-3 (EPA)",
-                    "PUFA 22:2",
-                    "PUFA 22:3",
-                    "PUFA 22:4",
-                    "PUFA 22:5 c",
-                    "PUFA 22:5 n-3 (DPA)",
-                    "PUFA 22:6 c",
-                    "PUFA 22:6 n-3 (DHA)",
-                    "Fatty acids, total trans",
-                    "Fatty acids, total trans-monoenoic",
-                    "Fatty acids, total trans-dienoic",
-                    "Fatty acids, total trans-polyenoic",
-                    "TFA 14:1 t",
-                    "TFA 16:1 t",
-                    "TFA 18:1 t",
-                    "TFA 18:2 t",
-                    "TFA 18:2 t,t",
-                    "TFA 18:2 t not further defined",
-                    "TFA 18:3 t",
-                    "TFA 20:1 t",
-                    "TFA 22:1 t",
-                    "Cholesterol",
-                ],
-            ),
-            (
-                "Amino acids",
-                [
-                    "Tryptophan",
-                    "Threonine",
-                    "Isoleucine",
-                    "Leucine",
-                    "Lysine",
-                    "Methionine",
-                    "Phenylalanine",
-                    "Tyrosine",
-                    "Valine",
-                    "Arginine",
-                    "Histidine",
-                    "Alanine",
-                    "Aspartic acid",
-                    "Glutamic acid",
-                    "Glycine",
-                    "Proline",
-                    "Serine",
-                    "Hydroxyproline",
-                    "Cysteine",
-                ],
-            ),
-            (
-                "Phytosterols",
-                [
-                    "Phytosterols",
-                    "Beta-sitosterol",
-                    "Brassicasterol",
-                    "Campesterol",
-                    "Campestanol",
-                    "Delta-5-avenasterol",
-                    "Phytosterols, other",
-                    "Stigmasterol",
-                    "Beta-sitostanol",
-                ],
-            ),
-            ("Organic acids", ["Citric acid", "Malic acid", "Oxalic acid", "Quinic acid"]),
-            ("Oligosaccharides", ["Verbascose", "Raffinose", "Stachyose"]),
-            ("Isoflavones", ["Daidzin", "Genistin", "Glycitin", "Daidzein", "Genistein"]),
-        ]
-
-
-    def _update_reference_from_details(self, details: Dict[str, Any]) -> None:
-        """Update reference rank/category map from a full USDA response."""
-        nutrients = details.get("foodNutrients", []) or []
-        if not nutrients:
-            return
-        current_category: str | None = None
-        for entry in nutrients:
-            nut = entry.get("nutrient") or {}
-            key = self._nutrient_key(nut)
-            if not key:
-                continue
-            if entry.get("amount") is None:
-                # category row
-                current_category = (nut.get("name") or "").strip() or current_category
-                self._reference_order_map.setdefault(
-                    key,
-                    {
-                        "rank": nut.get("rank"),
-                        "category": current_category,
-                        "unit": nut.get("unitName"),
-                    },
-                )
-                continue
-            self._reference_order_map[key] = {
-                "rank": nut.get("rank"),
-                "category": current_category,
-                "unit": nut.get("unitName"),
-            }
-
-
-    def _sort_nutrients_for_display(self, nutrients: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
-        """Return nutrients ordered by USDA rank or reference map."""
-        if not nutrients:
-            return []
-        indexed = []
-        for idx, entry in enumerate(nutrients):
-            nut = entry.get("nutrient") or {}
-            order = self._nutrient_order(nut, idx + 10000)
-            indexed.append((order, idx, entry))
-        indexed.sort(key=lambda t: (t[0], t[1]))
-        return [item[2] for item in indexed]
-
-
-    def _header_key(self, nutrient: Dict[str, Any]) -> tuple[str, str, str]:
-        """Return a stable header key plus canonical name and unit for a nutrient."""
-        name = canonical_alias_name(nutrient.get("name", "") or "")
-        unit = canonical_unit(nutrient.get("unitName") or self._infer_unit(nutrient) or "")
-        unit_part = unit.strip().lower()
-        name_part = name.strip().lower()
-        if name_part:
-            header_key = f"{name_part}|{unit_part}"
-        else:
-            base_key = self._nutrient_key(nutrient)
-            if not base_key:
-                return "", name, unit
-            header_key = f"{base_key}|{unit_part}"
-        return header_key, name, unit
-
-
-    def _infer_unit(self, nutrient: Dict[str, Any]) -> str:
-        """Try to fill missing unit from nutrient metadata or heuristic defaults."""
-        unit = nutrient.get("unitName")
-        if unit:
-            return unit
-
-        number = str(nutrient.get("number") or "").strip()
-        name = (nutrient.get("name") or "").lower()
-
-        default_units_by_number = {
-            # Proximates / macros
-            "255": "g",  # Water
-            "203": "g",  # Protein
-            "204": "g",  # Total lipid (fat)
-            "298": "g",  # Total fat (NLEA)
-            "202": "g",  # Nitrogen
-            "207": "g",  # Ash
-            "205": "g",  # Carbohydrate, by difference
-            "291": "g",  # Fiber, total dietary
-            "269": "g",  # Sugars, total
-            "268": "kJ",  # Energy (kJ)
-            "208": "kcal",  # Energy (kcal)
-            "951": "g",  # Proximates
-            "956": "g",  # Carbohydrates
-        }
-        if number in default_units_by_number:
-            return default_units_by_number[number]
-
-        if "energy" in name and "kcal" in name:
-            return "kcal"
-        if "energy" in name and "kj" in name:
-            return "kJ"
-
-        macro_hints = [
-            "water",
-            "protein",
-            "lipid",
-            "fat",
-            "ash",
-            "carbohydrate",
-            "fiber",
-            "sugar",
-            "starch",
-            "nitrogen",
-            "fatty acids",
-            "sfa",
-            "mufa",
-            "pufa",
-        ]
-        if any(hint in name for hint in macro_hints) or ":" in name:
-            return "g"
-
-        amino_acids = [
-            "alanine",
-            "arginine",
-            "aspartic acid",
-            "cystine",
-            "cysteine",
-            "hydroxyproline",
-            "glutamic acid",
-            "glycine",
-            "histidine",
-            "isoleucine",
-            "leucine",
-            "lysine",
-            "methionine",
-            "phenylalanine",
-            "proline",
-            "serine",
-            "threonine",
-            "tryptophan",
-            "tyrosine",
-            "valine",
-        ]
-        if name in amino_acids:
-            return "g"
-
-        simple_sugars = [
-            "sucrose",
-            "glucose",
-            "fructose",
-            "lactose",
-            "maltose",
-            "galactose",
-        ]
-        if name in simple_sugars:
-            return "g"
-
-        if name == "alcohol, ethyl":
-            return "g"
-
-        return ""
-
-
-    def _nutrient_order(self, nutrient: Dict[str, Any], fallback: int) -> float:
-        """Return USDA rank if available; otherwise keep insertion order fallback."""
-        rank = nutrient.get("rank")
-        if rank is None:
-            ref = self._reference_info(nutrient)
-            rank = ref.get("rank")
-        if rank is None:
-            name_lower = (nutrient.get("name") or "").strip().lower()
-            rank = self._nutrient_order_map.get(name_lower)
-        try:
-            return float(rank)
-        except (TypeError, ValueError):
-            return float(fallback)
 
 
     # ---- Add/edit flows ----
@@ -2881,7 +1845,7 @@ class FormulationTabMixin:
             details.get("foodNutrients", []) or [],
             details.get("dataType")
         )
-        self._update_reference_from_details(details)
+        self.nutrient_ordering.update_reference_from_details(details)
 
         desc = details.get("description", "") or ""
         brand = details.get("brandOwner", "") or ""
@@ -2918,7 +1882,7 @@ class FormulationTabMixin:
         except Exception as e:
             logging.error(f"Error adding ingredient to presenter: {e}")
 
-        self._update_reference_from_details(details)
+        self.nutrient_ordering.update_reference_from_details(details)
 
         if mode == "percent":
             success = self._apply_percent_edit(self.formulation_presenter.get_ingredient_count() - 1, value)

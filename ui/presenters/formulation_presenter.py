@@ -8,11 +8,13 @@ Handles all formulation-related operations:
 """
 
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from config.container import Container
 from domain.models import Formulation
 from domain.services.label_generator import LabelRow
+from domain.exceptions import FormulationImportError
 from ui.adapters.formulation_mapper import FormulationMapper, NutrientDisplayMapper
 
 
@@ -215,6 +217,37 @@ class FormulationPresenter:
             output_path,
             export_flags=export_flags,
             mass_unit=mass_unit,
+        )
+
+    def parse_import_file(
+        self,
+        path: str,
+        *,
+        current_formula_name: str = "",
+    ) -> tuple[list[Dict[str, Any]], Dict[str, Any]]:
+        """Parse a formulation file into base items + metadata."""
+        ext = Path(path).suffix.lower()
+        importer = self._container.formulation_importer
+        if ext == ".json":
+            return importer.load_state_from_json(path)
+        if ext in (".xlsx", ".xls"):
+            return importer.load_state_from_excel(
+                path,
+                default_formula_name=current_formula_name,
+            )
+        raise FormulationImportError(
+            "Formato no soportado",
+            "Selecciona un archivo .json o .xlsx",
+        )
+
+    def resolve_legacy_export_flags(
+        self,
+        legacy_flags: Dict[str, bool],
+        hydrated_items: list[Dict[str, Any]],
+    ) -> Dict[str, bool]:
+        """Map legacy export flag keys to header-key flags."""
+        return self._container.formulation_importer.resolve_legacy_export_flags(
+            legacy_flags, hydrated_items
         )
 
     def get_total_weight(self) -> float:

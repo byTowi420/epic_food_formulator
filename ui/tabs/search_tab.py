@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from services.nutrient_normalizer import augment_fat_nutrients, normalize_nutrients
+from ui.tabs.table_utils import apply_selection_bar, set_search_column_widths
 
 
 class SearchTabMixin:
@@ -32,7 +32,6 @@ class SearchTabMixin:
         self.search_page_size = 25
         self.search_fetch_page_size = 200
         self.search_max_pages = 5
-        self.search_results: List[Dict[str, Any]] = []
         self.last_query = ""
         self.last_include_brands = False
         self._last_results_count = 0
@@ -106,7 +105,7 @@ class SearchTabMixin:
         self.table.setSelectionMode(QTableWidget.ExtendedSelection)
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.table.horizontalHeader().setStretchLastSection(True)
-        self._apply_table_selection_bar(self.table)
+        apply_selection_bar(self.table)
     
         self.details_table = QTableWidget(0, 3)
         self.details_table.setHorizontalHeaderLabels(
@@ -117,7 +116,7 @@ class SearchTabMixin:
         self.details_table.setSelectionMode(QTableWidget.ExtendedSelection)
         self.details_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.details_table.horizontalHeader().setStretchLastSection(True)
-        self._apply_table_selection_bar(self.details_table)
+        apply_selection_bar(self.details_table)
     
         # Panel inferior: preview de formulacion + nutrientes.
         bottom_layout = QHBoxLayout()
@@ -130,7 +129,7 @@ class SearchTabMixin:
         self.formulation_preview.setSelectionBehavior(QTableWidget.SelectRows)
         self.formulation_preview.setSelectionMode(QTableWidget.ExtendedSelection)
         self.formulation_preview.horizontalHeader().setStretchLastSection(True)
-        self._apply_table_selection_bar(self.formulation_preview)
+        apply_selection_bar(self.formulation_preview)
         left_panel.addWidget(self.formulation_preview)
     
         self.remove_preview_button = QPushButton("Eliminar ingrediente seleccionado")
@@ -173,7 +172,7 @@ class SearchTabMixin:
             self.on_include_brands_toggled
         )
         # Ajuste inicial de columnas.
-        self._set_default_column_widths()
+        set_search_column_widths(self.table, self.details_table, self.formulation_preview)
 
     # ---- Search actions ----
     def on_search_clicked(self) -> None:
@@ -193,11 +192,11 @@ class SearchTabMixin:
             return
         self.search_page -= 1
         self._show_current_search_page()
-        self._update_paging_buttons(len(self.search_results))
+        self._update_paging_buttons(self.search_presenter.get_result_count())
 
 
     def on_next_page_clicked(self) -> None:
-        total = len(self.search_results)
+        total = self.search_presenter.get_result_count()
         if self.search_page * self.search_page_size >= total:
             return
         self.search_page += 1
@@ -223,96 +222,27 @@ class SearchTabMixin:
         self.search_button.setEnabled(False)
         self.prev_page_button.setEnabled(False)
         self.next_page_button.setEnabled(False)
-        self.search_results = []
         self._last_results_count = 0
         self._populate_table([])  # clear while loading
-
-        data_types = self._data_types_for_search()
         self.status_label.setText(
             f"Buscando en FoodData Central... (pagina {self.search_page})"
         )
 
         self._run_in_thread(
             fn=self._fetch_all_pages,
-            args=(self.last_query, data_types),
+            args=(self.last_query, self.last_include_brands),
             on_success=self._on_search_success,
             on_error=self._on_search_error,
         )
 
 
-    def _data_types_for_search(self) -> List[str] | None:
-        if self.last_include_brands:
-            # None => sin filtro de tipos (trae todos)
-            return None
-        return ["Foundation", "SR Legacy"]
-
-
-    def _fetch_all_pages(self, query: str, data_types: List[str] | None) -> List[Dict[str, Any]]:
-        all_results: List[Dict[str, Any]] = []
-        page = 1
-        while page <= self.search_max_pages:
-            # Use presenter instead of direct API call
-            include_branded = data_types is None
-            batch = self.search_presenter.search(
-                query=query,
-                page_size=self.search_fetch_page_size,
-                include_branded=include_branded,
-                page_number=page,
-            )
-            if not batch:
-                break
-            all_results.extend(batch)
-            if len(batch) < self.search_fetch_page_size:
-                break
-            page += 1
-
-        # Fallback: if no search results and the query looks like an FDC ID, try direct lookup.
-        stripped = query.strip()
-        if not all_results and stripped.isdigit():
-            try:
-                details = self.food_repository.get_by_id(
-                    int(stripped),
-                    detail_format="abridged",
-                )
-            except Exception:
-                return all_results
-            all_results.append(
-                {
-                    "fdcId": details.get("fdcId"),
-                    "description": details.get("description", ""),
-                    "brandOwner": details.get("brandOwner", "") or "",
-                    "dataType": details.get("dataType", "") or "",
-                }
-            )
-        return all_results
-
-
-    def _sort_search_results(self, foods: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        def priority(data_type: str) -> int:
-            return self.data_type_priority.get(
-                data_type, self.data_type_priority.get(data_type.strip(), len(self.data_type_priority))
-            )
-
-        return sorted(
-            foods,
-            key=lambda f: (
-                priority(f.get("dataType", "") or ""),
-                (f.get("description", "") or "").lower(),
-            ),
+    def _fetch_all_pages(self, query: str, include_branded: bool) -> List[Dict[str, Any]]:
+        return self.search_presenter.search_all(
+            query=query,
+            include_branded=include_branded,
+            fetch_page_size=self.search_fetch_page_size,
+            max_pages=self.search_max_pages,
         )
-
-
-    def _filter_results_by_query(self, foods: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
-        tokens = [t for t in query.lower().split() if t]
-        if not tokens:
-            return foods
-
-        filtered: List[Dict[str, Any]] = []
-        for f in foods:
-            haystack = f"{f.get('description', '')} {f.get('brandOwner', '')} {f.get('fdcId', '')}".lower()
-            if all(tok in haystack for tok in tokens):
-                filtered.append(f)
-        return filtered
 
 
     def _prefetch_fdc_id(self, fdc_id: Any) -> None:
@@ -331,7 +261,7 @@ class SearchTabMixin:
             logging.debug(f"Prefetch done fdc_id={fdc_int}")
 
         self._run_in_thread(
-            fn=lambda fid=fdc_int: self.food_repository.get_by_id(
+            fn=lambda fid=fdc_int: self.search_presenter.prefetch_food_details(
                 fid,
                 timeout=(3.05, 6.0),
                 detail_format="abridged",
@@ -344,13 +274,15 @@ class SearchTabMixin:
 
     def _show_current_search_page(self) -> None:
         start = (self.search_page - 1) * self.search_page_size
-        end = start + self.search_page_size
-        slice_results = self.search_results[start:end]
+        slice_results = self.search_presenter.get_page(
+            self.search_page, self.search_page_size
+        )
         self._populate_table(slice_results, base_index=start)
         self._prefetch_visible_results(slice_results)
-        total_pages = max(1, (len(self.search_results) + self.search_page_size - 1) // self.search_page_size)
+        total_pages = self.search_presenter.get_total_pages(self.search_page_size)
+        total_count = self.search_presenter.get_result_count()
         self.status_label.setText(
-            f"Se encontraron {len(self.search_results)} resultados (pagina {self.search_page}/{total_pages})."
+            f"Se encontraron {total_count} resultados (pagina {self.search_page}/{total_pages})."
         )
 
 
@@ -384,7 +316,7 @@ class SearchTabMixin:
         self.status_label.setText(f"Cargando detalles de {fdc_id_text}...")
         self.fdc_id_button.setEnabled(False)
         self._run_in_thread(
-            fn=lambda fid=int(fdc_id_text): self.food_repository.get_by_id(fid),
+            fn=lambda fid=int(fdc_id_text): self.search_presenter.get_food_details(fid),
             args=(),
             on_success=self._on_details_success,
             on_error=self._on_details_error,
@@ -452,7 +384,10 @@ class SearchTabMixin:
 
 
     def _populate_details_table(self, nutrients) -> None:
-        nutrients = self._sort_nutrients_for_display(augment_fat_nutrients(nutrients or []))
+        nutrients = nutrients or []
+        ordering = getattr(self, "nutrient_ordering", None)
+        if ordering is not None:
+            nutrients = ordering.sort_nutrients_for_display(nutrients)
         self.details_table.setRowCount(0)
 
         row_idx = 0
@@ -473,18 +408,16 @@ class SearchTabMixin:
 
 
     def _on_search_success(self, foods) -> None:
-        foods_sorted = self._sort_search_results(foods)
-        filtered = self._filter_results_by_query(foods_sorted, self.last_query)
-        self.search_results = filtered
-        self._last_results_count = len(filtered)
+        self._last_results_count = len(foods)
         self.search_page = 1
         self._show_current_search_page()
-        total_pages = max(1, (len(filtered) + self.search_page_size - 1) // self.search_page_size)
+        total_pages = self.search_presenter.get_total_pages(self.search_page_size)
+        total_count = self.search_presenter.get_result_count()
         self.status_label.setText(
-            f"Se encontraron {len(filtered)} resultados (pagina {self.search_page}/{total_pages})."
+            f"Se encontraron {total_count} resultados (pagina {self.search_page}/{total_pages})."
         )
         self.search_button.setEnabled(True)
-        self._update_paging_buttons(len(filtered))
+        self._update_paging_buttons(self.search_presenter.get_result_count())
 
 
     def _on_search_error(self, message: str) -> None:
@@ -493,10 +426,9 @@ class SearchTabMixin:
         self._update_paging_buttons(self._last_results_count)
 
 
-    def _on_details_success(self, details) -> None:
-        nutrients = normalize_nutrients(
-            details.get("foodNutrients", []) or [], details.get("dataType")
-        )
+    def _on_details_success(self, payload) -> None:
+        details = payload.get("details", {}) if isinstance(payload, dict) else {}
+        nutrients = payload.get("nutrients", []) if isinstance(payload, dict) else []
         self._populate_details_table(nutrients)
 
         desc = details.get("description", "") or ""

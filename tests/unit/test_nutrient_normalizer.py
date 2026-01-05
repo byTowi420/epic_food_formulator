@@ -55,11 +55,11 @@ class TestCanonicalUnit:
     """Test canonical_unit function."""
 
     def test_normalizes_microgram_variants(self) -> None:
-        assert canonical_unit("ug") == "µg"
-        assert canonical_unit("µg") == "µg"
-        assert canonical_unit("mcg") == "µg"
-        assert canonical_unit("UG") == "µg"
-        assert canonical_unit("MCG") == "µg"
+        assert canonical_unit("ug") == "μg"
+        assert canonical_unit("µg") == "μg"
+        assert canonical_unit("mcg") == "μg"
+        assert canonical_unit("UG") == "μg"
+        assert canonical_unit("MCG") == "μg"
 
     def test_normalizes_iu(self) -> None:
         assert canonical_unit("iu") == "iu"
