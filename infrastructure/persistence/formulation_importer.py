@@ -140,24 +140,21 @@ class FormulationImportService:
             )
 
         base_items: list[Dict[str, Any]] = []
+        warnings: list[str] = []
         for item in items:
             if not isinstance(item, dict):
                 continue
 
             fdc_raw = item.get("fdc_id") or item.get("fdcId") or item.get("fdcID")
             if fdc_raw is None:
-                raise FormulationImportError(
-                    "FDC ID invalido",
-                    "Uno de los ingredientes no tiene FDC ID.",
-                )
+                warnings.append("Ingrediente omitido: no tiene FDC ID.")
+                continue
 
             try:
                 fdc_int = int(fdc_raw)
             except Exception as exc:  # noqa: BLE001
-                raise FormulationImportError(
-                    "FDC ID invalido",
-                    f"FDC ID no numerico: {fdc_raw}",
-                ) from exc
+                warnings.append(f"Ingrediente omitido: FDC ID no numerico ({fdc_raw}).")
+                continue
 
             amount_raw = item.get("amount_g")
             if amount_raw is None:
@@ -167,7 +164,13 @@ class FormulationImportService:
             try:
                 amount_g = float(amount_raw) if amount_raw is not None else 0.0
             except Exception:
+                warnings.append(f"Cantidad invalida para FDC {fdc_int}. Se usa 0.")
                 amount_g = 0.0
+            if amount_g < 0:
+                warnings.append(
+                    f"Ingrediente omitido: FDC {fdc_int} con cantidad negativa ({amount_g})."
+                )
+                continue
 
             base_items.append(
                 {
@@ -216,6 +219,7 @@ class FormulationImportService:
             "label_settings": label_settings,
             "path": path,
             "respect_existing_formula_name": False,
+            "warnings": warnings,
         }
         return base_items, meta
 
@@ -342,6 +346,7 @@ class FormulationImportService:
             )
 
         base_items: list[Dict[str, Any]] = []
+        warnings: list[str] = []
         for _, row in df.iterrows():
             fdc_val = row.get(fdc_col)
             amt_val = row.get(amount_col)
@@ -358,6 +363,11 @@ class FormulationImportService:
             amt_g = convert_mass(amt, amount_unit, "g")
             if amt_g is None:
                 amt_g = amt
+            if float(amt_g) < 0:
+                warnings.append(
+                    f"Ingrediente omitido: FDC {fdc_int} con cantidad negativa ({amt_g})."
+                )
+                continue
 
             base_items.append(
                 {
@@ -380,6 +390,7 @@ class FormulationImportService:
             "formula_name": formula_name,
             "path": path,
             "respect_existing_formula_name": True,
+            "warnings": warnings,
         }
         return base_items, meta
 

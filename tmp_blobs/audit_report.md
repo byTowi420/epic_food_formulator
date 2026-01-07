@@ -1,9 +1,9 @@
 # Runtime audit report
 
-Trace file: C:\Users\jtorres\OneDrive - Universidad Católica del Uruguay\VS CODE\Programacion II\food_formulator\tmp_blobs\runtime_trace.json
-Total defs: 423
-Executed defs: 285
-Not executed: 138
+Trace file: tmp_blobs\runtime_trace_merged.json
+Total defs: 384
+Executed defs: 250
+Not executed: 134
 
 Notes:
 - Results depend on which UI flows you exercised.
@@ -25,14 +25,13 @@ Notes:
 - L214: AdjustFormulationUseCase.execute
 
 ### config/container.py
-- L69: Container.food_repository
-- L79: Container.json_repository
-- L117: Container.label_generator
-- L125: Container.search_foods
-- L132: Container.add_ingredient
-- L149: Container.save_formulation
-- L156: Container.load_formulation
-- L173: Container.adjust_formulation
+- L67: Container.food_repository
+- L77: Container.json_repository
+- L116: Container.search_foods
+- L123: Container.add_ingredient
+- L140: Container.save_formulation
+- L147: Container.load_formulation
+- L164: Container.adjust_formulation
 
 ### domain/exceptions.py
 - L53: USDAHTTPError.__init__
@@ -58,18 +57,6 @@ Notes:
 - L134: FormulationService.lock_ingredient
 - L148: FormulationService.unlock_ingredient
 - L162: FormulationService.set_ingredient_amount
-
-### domain/services/label_generator.py
-- L15: LabelRow.__init__
-- L47: LabelGenerator.generate_label
-- L254: LabelGenerator._get_nutrient_flexible
-- L278: LabelGenerator._format_amount
-- L287: LabelGenerator._calc_dv_percent
-
-### domain/services/nutrient_calculator.py
-- L67: NutrientCalculator.calculate_per_ingredient
-- L95: NutrientCalculator.calculate_energy
-- L126: NutrientCalculator.get_nutrient_value
 
 ### domain/services/nutrient_ordering.py
 - L135: NutrientOrdering.infer_unit
@@ -114,20 +101,10 @@ Notes:
 - L79: MainWindow.food_repository
 
 ### ui/presenters/formulation_presenter.py
-- L66: FormulationPresenter.add_ingredient
-- L144: FormulationPresenter.remove_ingredient
-- L185: FormulationPresenter.toggle_lock
-- L219: FormulationPresenter.get_label_rows
-- L234: FormulationPresenter.adjust_to_target_weight
-- L245: FormulationPresenter.normalize_to_100g
-- L256: FormulationPresenter.clear
-- L260: FormulationPresenter.load_from_file
-- L269: FormulationPresenter.save_to_file
-- L329: FormulationPresenter._export_to_excel_legacy
-- L612: FormulationPresenter.hydrate_items
-- L763: FormulationPresenter.split_header_unit
-- L769: FormulationPresenter.nutrients_by_header
-- L806: FormulationPresenter.collect_nutrient_columns
+- L221: FormulationPresenter._export_to_excel_legacy
+- L604: FormulationPresenter.split_header_unit
+- L610: FormulationPresenter.nutrients_by_header
+- L647: FormulationPresenter.collect_nutrient_columns
 
 ### ui/presenters/label_presenter.py
 - L334: LabelPresenter.convert_label_amount_unit
@@ -146,32 +123,45 @@ Notes:
 - L271: SearchPresenter._filter_results_by_query
 
 ### ui/tabs/formulation_tab.py
-- L256: FormulationTabMixin.on_edit_quantity_clicked
-- L611: FormulationTabMixin._on_import_error
-- L660: FormulationTabMixin._format_mass_amount
-- L723: FormulationTabMixin._hydrate_items
-- L1288: FormulationTabMixin._on_add_error
-
-### ui/tabs/label_tab.py
-- L463: LabelTabMixin._format_fraction_amount
-- L466: LabelTabMixin._fraction_from_ratio
-- L556: LabelTabMixin._format_number_for_unit
-- L559: LabelTabMixin._format_additional_amount
-- L562: LabelTabMixin._format_nutrient_amount
-- L565: LabelTabMixin._format_vd_value
-- L568: LabelTabMixin._format_manual_amount
-- L571: LabelTabMixin._format_manual_vd
-- L864: LabelTabMixin._human_join
-- L873: LabelTabMixin._parse_label_mapping
-- L879: LabelTabMixin._find_total_entry
-- L888: LabelTabMixin._convert_label_amount_unit
-- L893: LabelTabMixin._factor_for_energy
-- L897: LabelTabMixin._compute_energy_label_values
-- L909: LabelTabMixin._label_amount_from_totals
-- L922: LabelTabMixin._effective_label_nutrient
-- L1232: LabelTabMixin._remove_image_background
-- L1255: LabelTabMixin._strip_to_strokes
-- L1293: LabelTabMixin._clear_white_background
+- L631: FormulationTabMixin._on_import_error
+- L637: FormulationTabMixin._reset_import_ui_state
+- L646: FormulationTabMixin._show_import_warnings
+- L667: FormulationTabMixin._total_weight
+- L671: FormulationTabMixin._is_percent_mode
+- L674: FormulationTabMixin._current_mass_unit
+- L677: FormulationTabMixin._quantity_mode_label
+- L680: FormulationTabMixin._set_quantity_mode
+- L693: FormulationTabMixin._mass_decimals
+- L696: FormulationTabMixin._display_amount_for_unit
+- L701: FormulationTabMixin._amount_to_percent
+- L706: FormulationTabMixin._update_quantity_headers
+- L723: FormulationTabMixin._set_item_enabled
+- L735: FormulationTabMixin._apply_column_state
+- L750: FormulationTabMixin._can_edit_column
+- L758: FormulationTabMixin._populate_formulation_tables
+- L812: FormulationTabMixin._populate_totals_table
+- L851: FormulationTabMixin._calculate_totals
+- L868: FormulationTabMixin._create_question_icon
+- L886: FormulationTabMixin._refresh_formulation_views
+- L899: FormulationTabMixin._select_preview_row
+- L925: FormulationTabMixin._show_nutrients_for_row
+- L933: FormulationTabMixin._show_nutrients_for_selected_preview
+- L942: FormulationTabMixin._export_formulation_to_excel
+- L954: FormulationTabMixin._add_row_to_formulation
+- L988: FormulationTabMixin._start_add_fetch
+- L1027: FormulationTabMixin._on_add_progress
+- L1032: FormulationTabMixin._on_add_finished
+- L1041: FormulationTabMixin._reset_add_ui_state
+- L1048: FormulationTabMixin._format_amount_for_status
+- L1058: FormulationTabMixin._prompt_quantity
+- L1102: FormulationTabMixin._edit_quantity_for_row
+- L1135: FormulationTabMixin._apply_percent_edit
+- L1209: FormulationTabMixin._run_in_thread
+- L1238: FormulationTabMixin._on_add_details_loaded
+- L1282: FormulationTabMixin._on_add_error
+- L1288: FormulationTabMixin._upgrade_item_to_full
+- L1292: FormulationTabMixin.on_totals_checkbox_changed
+- L1305: FormulationTabMixin.on_toggle_export_clicked
 
 ### ui/tabs/search_tab.py
 - L190: SearchTabMixin.on_prev_page_clicked
@@ -184,6 +174,6 @@ Notes:
 - L432: SearchTabMixin._on_details_error
 
 ### ui/workers.py
-- L23: ApiWorker.run
-- L53: ImportWorker.run
-- L125: AddWorker.run
+- L24: ApiWorker.run
+- L54: ImportWorker.run
+- L143: AddWorker.run

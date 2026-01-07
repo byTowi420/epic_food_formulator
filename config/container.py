@@ -17,7 +17,6 @@ from application.use_cases import (
 )
 from config.constants import SAVES_DIRECTORY
 from domain.services.formulation_service import FormulationService
-from domain.services.label_generator import LabelGenerator
 from domain.services.nutrient_calculator import NutrientCalculator
 from infrastructure.api.cache import Cache, InMemoryCache
 from infrastructure.api.usda_repository import FoodRepository, USDAFoodRepository
@@ -54,7 +53,6 @@ class Container:
 
         self._nutrient_calculator: Optional[NutrientCalculator] = None
         self._formulation_service: Optional[FormulationService] = None
-        self._label_generator: Optional[LabelGenerator] = None
 
         self._search_foods_use_case: Optional[SearchFoodsUseCase] = None
         self._add_ingredient_use_case: Optional[AddIngredientUseCase] = None
@@ -112,13 +110,6 @@ class Container:
         if self._formulation_service is None:
             self._formulation_service = FormulationService()
         return self._formulation_service
-
-    @property
-    def label_generator(self) -> LabelGenerator:
-        """Get label generator service."""
-        if self._label_generator is None:
-            self._label_generator = LabelGenerator()
-        return self._label_generator
 
     # Use Cases
     @property

@@ -3,55 +3,38 @@
 This document is the persistent reference for the refactor roadmap, structure,
 and the prompt template to keep future work consistent across machines/sessions.
 
+## Current Status
+
+- Phase 1 (API unification): **Completed** (USDA access goes through `infrastructure/api/usda_repository.py`).
+- Phase 2 (unit normalization): **Completed** (`domain/services/unit_normalizer.py` + `services/nutrient_normalizer.py`).
+- Phase 3 (UI logic extraction): **Completed** for Search/Formulation/Label via presenters.
+- Current focus: runtime audit + cleanup of unused code.
+
 ## Constraints (must keep)
+
 - No changes to UI aesthetics or user-facing behavior.
 - Keep each tab logic separate (Search, Formulation, Label).
-- Only share common logic through DTOs and use cases.
-- Prefer infrastructure/api/usda_repository.py as the single API entry point.
+- Only share common logic through DTOs/use cases/presenters.
+- Prefer `infrastructure/api/usda_repository.py` as the single USDA entry point.
 - Centralize unit normalization and conversions in one place.
 
-## Goals
+## Goals (now maintained)
+
 1) Unify API flow
-   - Use infrastructure/api/usda_repository.py as the only path to USDA.
-   - Remove or wrap services/usda_api.py (compat wrapper only if needed).
+   - Use `infrastructure/api/usda_repository.py` as the only path to USDA.
 2) Move UI logic to presenters/use cases
-   - UI should trigger actions and render DTOs only.
-   - No calculations or API logic inside tabs.
+   - UI triggers actions and renders DTOs only.
 3) Centralize normalization and unit conversions
-   - One module for unit normalization (mg, ug, kcal, kJ).
-   - No duplicate conversions in UI or infrastructure.
+   - One module for unit normalization (μg, mg, kcal, kJ, mass units).
 
-## Phases and Estimate
-- Phase 1: Unify API flow
-  - Estimate: 0.5 to 1.5 days
-  - Output: repository-based API only; optional wrapper for legacy calls.
-- Phase 2: Centralize normalization and units
-  - Estimate: 1 to 2 days
-  - Output: single normalizer + conversion helpers used everywhere.
-- Phase 3: Extract UI logic to presenters/use cases
-  - Estimate: 3 to 6 days
-  - Output: tabs only render DTOs and dispatch actions.
+## Current Structure (implemented)
 
-Total estimate: 5 to 10 business days with user review per phase.
-
-## Proposed Structure (target)
 application/
-  dto/
-    search_dto.py
-    formulation_dto.py
-    label_dto.py
-  ports/
-    food_repository.py
-  use_cases/
-    search_foods.py
-    get_food_details.py
-    add_ingredient.py
-    calculate_totals.py
-    export_formulation.py
-    save_formulation.py
-    load_formulation.py
-    adjust_formulation.py
-    generate_label.py
+  use_cases.py
+
+config/
+  constants.py
+  container.py
 
 domain/
   models.py
@@ -59,7 +42,6 @@ domain/
   services/
     nutrient_calculator.py
     formulation_service.py
-    label_generator.py
     unit_normalizer.py
 
 infrastructure/
@@ -69,6 +51,10 @@ infrastructure/
   persistence/
     json_repository.py
     excel_exporter.py
+    formulation_importer.py
+
+services/
+  nutrient_normalizer.py
 
 ui/
   presenters/
@@ -81,11 +67,12 @@ ui/
     label_tab.py
   adapters/
     formulation_mapper.py
-
-services/
-  usda_api.py  # optional temporary wrapper only; remove later
+  delegates/
+    label_table_delegate.py
+  workers.py
 
 ## Future Features (placeholders only)
+
 Costs (IMPORTANT: must be costs_tab.py AND sections inside Formulation tab)
 - ui/tabs/costs_tab.py
 - ui/tabs/formulation_tab.py (cost section)
@@ -102,10 +89,11 @@ Formulation comparison (nutrition + costs)
 - ui/tabs/comparison_tab.py
 
 ## Prompt Template (use after refactor)
+
 Title: Implement <feature> while respecting project structure
 
 Context:
-- Project uses Clean Architecture (domain/application/infrastructure/ui).
+- Project uses layered architecture (domain/application/infrastructure/ui).
 - UI tabs are separate; keep logic per tab.
 - No UI aesthetics or behavior changes unless explicitly requested.
 
@@ -114,9 +102,10 @@ Goals:
 2) <goal 2>
 
 Constraints:
-- Use infrastructure/api/usda_repository.py for USDA access.
-- Use domain/services/unit_normalizer.py for unit conversions.
-- Do not move logic into ui/tabs; use presenters + DTOs + use cases.
+- Use `infrastructure/api/usda_repository.py` for USDA access.
+- Use `domain/services/unit_normalizer.py` for conversions.
+- Use `services/nutrient_normalizer.py` for USDA nutrient normalization.
+- Do not move logic into `ui/tabs`; use presenters + use cases.
 - Keep Search, Formulation, Label logic in separate presenters/files.
 
 Files expected to change:

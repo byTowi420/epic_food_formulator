@@ -6,11 +6,11 @@
       "description": "Eggs, Grade A, Large, egg whole",
       "brand": "",
       "data_type": "Foundation",
-      "amount_g": 150.0,
+      "amount_g": -15.0,
       "locked": false
     },
     {
-      "fdc_id": 174158,
+      "fdc_id": 1741588687,
       "description": "Water, bottled, generic",
       "brand": "",
       "data_type": "SR Legacy",
@@ -18,7 +18,7 @@
       "locked": false
     },
     {
-      "fdc_id": 171320,
+      "fdc_id": 1A71x320,
       "description": "Spices, cinnamon, ground",
       "brand": "",
       "data_type": "SR Legacy",

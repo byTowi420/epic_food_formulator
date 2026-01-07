@@ -1,0 +1,2394 @@
+{
+  "root": "C:\\Users\\jtorres\\OneDrive - Universidad Cat\u00f3lica del Uruguay\\VS CODE\\Programacion II\\food_formulator",
+  "generated_at": "2026-01-07 11:28:58",
+  "records": [
+    {
+      "file": "application/__init__.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "application/use_cases.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "application/use_cases.py",
+      "line": 20,
+      "qualname": "SearchFoodsUseCase",
+      "count": 1
+    },
+    {
+      "file": "application/use_cases.py",
+      "line": 56,
+      "qualname": "AddIngredientUseCase",
+      "count": 1
+    },
+    {
+      "file": "application/use_cases.py",
+      "line": 119,
+      "qualname": "CalculateTotalsUseCase",
+      "count": 1
+    },
+    {
+      "file": "application/use_cases.py",
+      "line": 122,
+      "qualname": "CalculateTotalsUseCase.__init__",
+      "count": 1
+    },
+    {
+      "file": "application/use_cases.py",
+      "line": 125,
+      "qualname": "CalculateTotalsUseCase.execute",
+      "count": 87
+    },
+    {
+      "file": "application/use_cases.py",
+      "line": 137,
+      "qualname": "SaveFormulationUseCase",
+      "count": 1
+    },
+    {
+      "file": "application/use_cases.py",
+      "line": 156,
+      "qualname": "LoadFormulationUseCase",
+      "count": 1
+    },
+    {
+      "file": "application/use_cases.py",
+      "line": 174,
+      "qualname": "ExportFormulationUseCase",
+      "count": 1
+    },
+    {
+      "file": "application/use_cases.py",
+      "line": 208,
+      "qualname": "AdjustFormulationUseCase",
+      "count": 1
+    },
+    {
+      "file": "config/__init__.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "config/constants.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "config/container.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "config/container.py",
+      "line": 28,
+      "qualname": "Container",
+      "count": 1
+    },
+    {
+      "file": "config/container.py",
+      "line": 34,
+      "qualname": "Container.__init__",
+      "count": 1
+    },
+    {
+      "file": "config/container.py",
+      "line": 92,
+      "qualname": "Container.formulation_importer",
+      "count": 6
+    },
+    {
+      "file": "config/container.py",
+      "line": 100,
+      "qualname": "Container.nutrient_calculator",
+      "count": 1
+    },
+    {
+      "file": "config/container.py",
+      "line": 107,
+      "qualname": "Container.formulation_service",
+      "count": 4
+    },
+    {
+      "file": "config/container.py",
+      "line": 132,
+      "qualname": "Container.calculate_totals",
+      "count": 87
+    },
+    {
+      "file": "domain/__init__.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 8,
+      "qualname": "FoodFormulatorError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 17,
+      "qualname": "InvalidFormulationError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 21,
+      "qualname": "IngredientNotFoundError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 25,
+      "qualname": "InvalidIngredientError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 29,
+      "qualname": "InvalidNutrientDataError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 33,
+      "qualname": "CalculationError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 42,
+      "qualname": "APIError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 46,
+      "qualname": "USDAAPIError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 50,
+      "qualname": "USDAHTTPError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 58,
+      "qualname": "APIKeyMissingError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 62,
+      "qualname": "APITimeoutError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 66,
+      "qualname": "APIRateLimitError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 75,
+      "qualname": "PersistenceError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 79,
+      "qualname": "FormulationNotFoundError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 83,
+      "qualname": "InvalidFormulationFileError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 87,
+      "qualname": "FormulationImportError",
+      "count": 1
+    },
+    {
+      "file": "domain/exceptions.py",
+      "line": 96,
+      "qualname": "ExportError",
+      "count": 1
+    },
+    {
+      "file": "domain/models.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "domain/models.py",
+      "line": 12,
+      "qualname": "Nutrient",
+      "count": 1
+    },
+    {
+      "file": "domain/models.py",
+      "line": 25,
+      "qualname": "Nutrient.__post_init__",
+      "count": 2975
+    },
+    {
+      "file": "domain/models.py",
+      "line": 45,
+      "qualname": "Food",
+      "count": 1
+    },
+    {
+      "file": "domain/models.py",
+      "line": 58,
+      "qualname": "Food.__post_init__",
+      "count": 74
+    },
+    {
+      "file": "domain/models.py",
+      "line": 80,
+      "qualname": "Ingredient",
+      "count": 1
+    },
+    {
+      "file": "domain/models.py",
+      "line": 91,
+      "qualname": "Ingredient.__post_init__",
+      "count": 74
+    },
+    {
+      "file": "domain/models.py",
+      "line": 126,
+      "qualname": "Formulation",
+      "count": 1
+    },
+    {
+      "file": "domain/models.py",
+      "line": 137,
+      "qualname": "Formulation.__post_init__",
+      "count": 7
+    },
+    {
+      "file": "domain/models.py",
+      "line": 144,
+      "qualname": "Formulation.total_weight",
+      "count": 192
+    },
+    {
+      "file": "domain/models.py",
+      "line": 147,
+      "qualname": "<genexpr>",
+      "count": 1219
+    },
+    {
+      "file": "domain/models.py",
+      "line": 149,
+      "qualname": "Formulation.ingredient_count",
+      "count": 300
+    },
+    {
+      "file": "domain/models.py",
+      "line": 154,
+      "qualname": "Formulation.add_ingredient",
+      "count": 74
+    },
+    {
+      "file": "domain/models.py",
+      "line": 158,
+      "qualname": "Formulation.remove_ingredient",
+      "count": 4
+    },
+    {
+      "file": "domain/models.py",
+      "line": 165,
+      "qualname": "Formulation.get_ingredient",
+      "count": 53
+    },
+    {
+      "file": "domain/models.py",
+      "line": 190,
+      "qualname": "Formulation.is_empty",
+      "count": 87
+    },
+    {
+      "file": "domain/services/__init__.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "domain/services/formulation_service.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "domain/services/formulation_service.py",
+      "line": 13,
+      "qualname": "FormulationService",
+      "count": 1
+    },
+    {
+      "file": "domain/services/formulation_service.py",
+      "line": 109,
+      "qualname": "FormulationService.scale_to_target_weight",
+      "count": 4
+    },
+    {
+      "file": "domain/services/nutrient_calculator.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "domain/services/nutrient_calculator.py",
+      "line": 13,
+      "qualname": "NutrientCalculator",
+      "count": 1
+    },
+    {
+      "file": "domain/services/nutrient_calculator.py",
+      "line": 16,
+      "qualname": "NutrientCalculator.calculate_totals_per_100g",
+      "count": 87
+    },
+    {
+      "file": "domain/services/nutrient_ordering.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "domain/services/nutrient_ordering.py",
+      "line": 9,
+      "qualname": "NutrientOrdering",
+      "count": 1
+    },
+    {
+      "file": "domain/services/nutrient_ordering.py",
+      "line": 12,
+      "qualname": "NutrientOrdering.__init__",
+      "count": 3
+    },
+    {
+      "file": "domain/services/nutrient_ordering.py",
+      "line": 23,
+      "qualname": "NutrientOrdering.catalog",
+      "count": 26
+    },
+    {
+      "file": "domain/services/nutrient_ordering.py",
+      "line": 27,
+      "qualname": "NutrientOrdering.order_for_name",
+      "count": 3063
+    },
+    {
+      "file": "domain/services/nutrient_ordering.py",
+      "line": 30,
+      "qualname": "NutrientOrdering.nutrient_key",
+      "count": 6608
+    },
+    {
+      "file": "domain/services/nutrient_ordering.py",
+      "line": 44,
+      "qualname": "NutrientOrdering.reference_info",
+      "count": 1076
+    },
+    {
+      "file": "domain/services/nutrient_ordering.py",
+      "line": 48,
+      "qualname": "NutrientOrdering.update_reference_from_details",
+      "count": 38
+    },
+    {
+      "file": "domain/services/nutrient_ordering.py",
+      "line": 75,
+      "qualname": "NutrientOrdering.sort_nutrients_for_display",
+      "count": 35
+    },
+    {
+      "file": "domain/services/nutrient_ordering.py",
+      "line": 83,
+      "qualname": "<lambda>",
+      "count": 1076
+    },
+    {
+      "file": "domain/services/nutrient_ordering.py",
+      "line": 86,
+      "qualname": "NutrientOrdering.header_key",
+      "count": 8300
+    },
+    {
+      "file": "domain/services/nutrient_ordering.py",
+      "line": 100,
+      "qualname": "NutrientOrdering.normalize_totals_by_header_key",
+      "count": 87
+    },
+    {
+      "file": "domain/services/nutrient_ordering.py",
+      "line": 226,
+      "qualname": "NutrientOrdering.nutrient_order",
+      "count": 1076
+    },
+    {
+      "file": "domain/services/nutrient_ordering.py",
+      "line": 239,
+      "qualname": "NutrientOrdering.category_for_nutrient",
+      "count": 3063
+    },
+    {
+      "file": "domain/services/nutrient_ordering.py",
+      "line": 318,
+      "qualname": "build_nutrient_catalog",
+      "count": 3
+    },
+    {
+      "file": "domain/services/unit_normalizer.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "domain/services/unit_normalizer.py",
+      "line": 58,
+      "qualname": "canonical_unit",
+      "count": 123350
+    },
+    {
+      "file": "domain/services/unit_normalizer.py",
+      "line": 80,
+      "qualname": "normalize_mass_unit",
+      "count": 329
+    },
+    {
+      "file": "domain/services/unit_normalizer.py",
+      "line": 90,
+      "qualname": "convert_mass",
+      "count": 195
+    },
+    {
+      "file": "domain/services/unit_normalizer.py",
+      "line": 103,
+      "qualname": "convert_amount",
+      "count": 121
+    },
+    {
+      "file": "domain/services/unit_normalizer.py",
+      "line": 126,
+      "qualname": "_to_decimal",
+      "count": 316
+    },
+    {
+      "file": "infrastructure/__init__.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/api/__init__.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/api/cache.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/api/cache.py",
+      "line": 12,
+      "qualname": "Cache",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/api/cache.py",
+      "line": 49,
+      "qualname": "InMemoryCache",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/api/cache.py",
+      "line": 52,
+      "qualname": "InMemoryCache.__init__",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/api/cache.py",
+      "line": 104,
+      "qualname": "NullCache",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/api/usda_repository.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/api/usda_repository.py",
+      "line": 83,
+      "qualname": "FoodRepository",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/api/usda_repository.py",
+      "line": 145,
+      "qualname": "USDAFoodRepository",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/persistence/__init__.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/persistence/excel_exporter.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/persistence/excel_exporter.py",
+      "line": 22,
+      "qualname": "ExcelExporter",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/persistence/formulation_importer.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/persistence/formulation_importer.py",
+      "line": 16,
+      "qualname": "FormulationImportService",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/persistence/formulation_importer.py",
+      "line": 19,
+      "qualname": "FormulationImportService.__init__",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/persistence/formulation_importer.py",
+      "line": 22,
+      "qualname": "FormulationImportService.normalize_export_flags",
+      "count": 2
+    },
+    {
+      "file": "infrastructure/persistence/formulation_importer.py",
+      "line": 70,
+      "qualname": "FormulationImportService.resolve_legacy_export_flags",
+      "count": 3
+    },
+    {
+      "file": "infrastructure/persistence/formulation_importer.py",
+      "line": 122,
+      "qualname": "FormulationImportService.load_state_from_json",
+      "count": 2
+    },
+    {
+      "file": "infrastructure/persistence/formulation_importer.py",
+      "line": 222,
+      "qualname": "FormulationImportService.load_state_from_excel",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/persistence/formulation_importer.py",
+      "line": 228,
+      "qualname": "_read",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/persistence/formulation_importer.py",
+      "line": 314,
+      "qualname": "<genexpr>",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/persistence/formulation_importer.py",
+      "line": 386,
+      "qualname": "FormulationImportService.normalize_label",
+      "count": 130
+    },
+    {
+      "file": "infrastructure/persistence/formulation_importer.py",
+      "line": 392,
+      "qualname": "<genexpr>",
+      "count": 2424
+    },
+    {
+      "file": "infrastructure/persistence/json_repository.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "infrastructure/persistence/json_repository.py",
+      "line": 15,
+      "qualname": "JSONFormulationRepository",
+      "count": 1
+    },
+    {
+      "file": "services/__init__.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 9,
+      "qualname": "canonical_alias_name",
+      "count": 102372
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 26,
+      "qualname": "augment_fat_nutrients",
+      "count": 336
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 44,
+      "qualname": "_norm_name",
+      "count": 22638
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 80,
+      "qualname": "_clone_with_name",
+      "count": 28
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 124,
+      "qualname": "_augment_energy_nutrients",
+      "count": 300
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 132,
+      "qualname": "_norm_name",
+      "count": 64877
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 136,
+      "qualname": "_clone_energy",
+      "count": 275
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 162,
+      "qualname": "_find_amount",
+      "count": 792
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 210,
+      "qualname": "_augment_branded_water",
+      "count": 300
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 223,
+      "qualname": "_norm",
+      "count": 77
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 227,
+      "qualname": "<genexpr>",
+      "count": 26
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 231,
+      "qualname": "_find",
+      "count": 5
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 275,
+      "qualname": "_augment_nitrogen",
+      "count": 300
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 283,
+      "qualname": "_norm",
+      "count": 10920
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 311,
+      "qualname": "_augment_alias_nutrients",
+      "count": 300
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 337,
+      "qualname": "_key",
+      "count": 19770
+    },
+    {
+      "file": "services/nutrient_normalizer.py",
+      "line": 364,
+      "qualname": "normalize_nutrients",
+      "count": 300
+    },
+    {
+      "file": "ui/__init__.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/adapters/__init__.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/adapters/formulation_mapper.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/adapters/formulation_mapper.py",
+      "line": 15,
+      "qualname": "FormulationMapper",
+      "count": 1
+    },
+    {
+      "file": "ui/adapters/formulation_mapper.py",
+      "line": 18,
+      "qualname": "ui_item_to_ingredient",
+      "count": 72
+    },
+    {
+      "file": "ui/adapters/formulation_mapper.py",
+      "line": 30,
+      "qualname": "<genexpr>",
+      "count": 2987
+    },
+    {
+      "file": "ui/adapters/formulation_mapper.py",
+      "line": 67,
+      "qualname": "ui_items_to_formulation",
+      "count": 6
+    },
+    {
+      "file": "ui/adapters/formulation_mapper.py",
+      "line": 91,
+      "qualname": "ingredient_to_ui_item",
+      "count": 602
+    },
+    {
+      "file": "ui/adapters/formulation_mapper.py",
+      "line": 128,
+      "qualname": "formulation_to_ui_items",
+      "count": 104
+    },
+    {
+      "file": "ui/adapters/formulation_mapper.py",
+      "line": 144,
+      "qualname": "NutrientDisplayMapper",
+      "count": 1
+    },
+    {
+      "file": "ui/adapters/formulation_mapper.py",
+      "line": 147,
+      "qualname": "totals_to_display_dict",
+      "count": 87
+    },
+    {
+      "file": "ui/adapters/formulation_mapper.py",
+      "line": 202,
+      "qualname": "<genexpr>",
+      "count": 46
+    },
+    {
+      "file": "ui/delegates/__init__.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/delegates/label_table_delegate.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/delegates/label_table_delegate.py",
+      "line": 15,
+      "qualname": "LabelTableDelegate",
+      "count": 1
+    },
+    {
+      "file": "ui/delegates/label_table_delegate.py",
+      "line": 18,
+      "qualname": "LabelTableDelegate.__init__",
+      "count": 1
+    },
+    {
+      "file": "ui/delegates/label_table_delegate.py",
+      "line": 39,
+      "qualname": "LabelTableDelegate._resolve_table",
+      "count": 551
+    },
+    {
+      "file": "ui/delegates/label_table_delegate.py",
+      "line": 49,
+      "qualname": "LabelTableDelegate.paint",
+      "count": 3658
+    },
+    {
+      "file": "ui/delegates/label_table_delegate.py",
+      "line": 230,
+      "qualname": "LabelTableDelegate._resolve_background_color",
+      "count": 258
+    },
+    {
+      "file": "ui/delegates/label_table_delegate.py",
+      "line": 247,
+      "qualname": "LabelTableDelegate._draw_selection_handles",
+      "count": 310
+    },
+    {
+      "file": "ui/delegates/selection_bar_delegate.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/delegates/selection_bar_delegate.py",
+      "line": 13,
+      "qualname": "SelectionBarDelegate",
+      "count": 1
+    },
+    {
+      "file": "ui/delegates/selection_bar_delegate.py",
+      "line": 16,
+      "qualname": "SelectionBarDelegate.__init__",
+      "count": 5
+    },
+    {
+      "file": "ui/delegates/selection_bar_delegate.py",
+      "line": 26,
+      "qualname": "SelectionBarDelegate.paint",
+      "count": 8488
+    },
+    {
+      "file": "ui/main_window.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/main_window.py",
+      "line": 23,
+      "qualname": "MainWindow",
+      "count": 1
+    },
+    {
+      "file": "ui/main_window.py",
+      "line": 26,
+      "qualname": "MainWindow.__init__",
+      "count": 1
+    },
+    {
+      "file": "ui/main_window.py",
+      "line": 50,
+      "qualname": "MainWindow._set_window_progress",
+      "count": 48
+    },
+    {
+      "file": "ui/main_window.py",
+      "line": 57,
+      "qualname": "MainWindow._build_ui",
+      "count": 1
+    },
+    {
+      "file": "ui/main_window.py",
+      "line": 83,
+      "qualname": "MainWindow._load_last_path",
+      "count": 1
+    },
+    {
+      "file": "ui/main_window.py",
+      "line": 93,
+      "qualname": "MainWindow._save_last_path",
+      "count": 6
+    },
+    {
+      "file": "ui/presenters/__init__.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 29,
+      "qualname": "FormulationPresenter",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 36,
+      "qualname": "FormulationPresenter.__init__",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 50,
+      "qualname": "FormulationPresenter.formulation_name",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 57,
+      "qualname": "FormulationPresenter.get_ui_items",
+      "count": 104
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 65,
+      "qualname": "FormulationPresenter.add_ingredient_from_details",
+      "count": 2
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 75,
+      "qualname": "<genexpr>",
+      "count": 62
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 97,
+      "qualname": "FormulationPresenter.add_ingredient_from_details_safe",
+      "count": 2
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 112,
+      "qualname": "FormulationPresenter.remove_ingredient_safe",
+      "count": 4
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 121,
+      "qualname": "FormulationPresenter.update_ingredient_amount",
+      "count": 9
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 145,
+      "qualname": "FormulationPresenter.set_lock_state",
+      "count": 3
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 157,
+      "qualname": "FormulationPresenter.calculate_totals",
+      "count": 87
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 166,
+      "qualname": "FormulationPresenter.normalize_to_target_weight",
+      "count": 4
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 421,
+      "qualname": "FormulationPresenter.parse_import_file",
+      "count": 3
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 442,
+      "qualname": "FormulationPresenter.build_import_preview_items",
+      "count": 3
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 467,
+      "qualname": "FormulationPresenter.build_hydrated_items_from_payload",
+      "count": 3
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 504,
+      "qualname": "FormulationPresenter.resolve_legacy_export_flags",
+      "count": 3
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 514,
+      "qualname": "FormulationPresenter.get_total_weight",
+      "count": 42
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 522,
+      "qualname": "FormulationPresenter.get_ingredient_count",
+      "count": 264
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 530,
+      "qualname": "FormulationPresenter.has_ingredients",
+      "count": 36
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 538,
+      "qualname": "FormulationPresenter.get_ui_item",
+      "count": 40
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 553,
+      "qualname": "FormulationPresenter.get_locked_count",
+      "count": 4
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 570,
+      "qualname": "FormulationPresenter.load_from_ui_items",
+      "count": 6
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 583,
+      "qualname": "FormulationPresenter.normalize_export_flags",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 595,
+      "qualname": "FormulationPresenter.normalize_items_nutrients",
+      "count": 49
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 738,
+      "qualname": "FormulationPresenter.calculate_totals_with_fallback",
+      "count": 87
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 805,
+      "qualname": "FormulationPresenter.build_totals_rows",
+      "count": 26
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 814,
+      "qualname": "_cat_rank",
+      "count": 3063
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 820,
+      "qualname": "_order_val",
+      "count": 3063
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 826,
+      "qualname": "<lambda>",
+      "count": 3063
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 850,
+      "qualname": "FormulationPresenter.normalize_quantity_mode",
+      "count": 6
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 856,
+      "qualname": "FormulationPresenter.is_percent_mode",
+      "count": 685
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 859,
+      "qualname": "FormulationPresenter.current_mass_unit",
+      "count": 353
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 864,
+      "qualname": "FormulationPresenter.quantity_mode_label",
+      "count": 3
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 875,
+      "qualname": "FormulationPresenter.mass_decimals",
+      "count": 165
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 884,
+      "qualname": "FormulationPresenter.normalization_dialog_values",
+      "count": 9
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 897,
+      "qualname": "FormulationPresenter.convert_to_grams",
+      "count": 9
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 902,
+      "qualname": "FormulationPresenter.display_amount_for_unit",
+      "count": 156
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 907,
+      "qualname": "FormulationPresenter.format_mass_amount",
+      "count": 7
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 913,
+      "qualname": "FormulationPresenter.amount_to_percent",
+      "count": 153
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 918,
+      "qualname": "FormulationPresenter.format_amount_for_status",
+      "count": 7
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 934,
+      "qualname": "FormulationPresenter.apply_percent_edit",
+      "count": 4
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 952,
+      "qualname": "<genexpr>",
+      "count": 9
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 973,
+      "qualname": "<genexpr>",
+      "count": 4
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 989,
+      "qualname": "<genexpr>",
+      "count": 8
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 998,
+      "qualname": "FormulationPresenter.build_export_payload",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/formulation_presenter.py",
+      "line": 1041,
+      "qualname": "FormulationPresenter.safe_base_name",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 14,
+      "qualname": "LabelPresenter",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 17,
+      "qualname": "LabelPresenter.build_base_label_nutrients",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 145,
+      "qualname": "LabelPresenter.build_additional_nutrients",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 175,
+      "qualname": "LabelPresenter.build_household_measure_options",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 186,
+      "qualname": "LabelPresenter.build_no_significant_order",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 198,
+      "qualname": "LabelPresenter.build_nutrient_usda_map",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 243,
+      "qualname": "LabelPresenter.build_no_significant_thresholds",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 255,
+      "qualname": "LabelPresenter.build_no_significant_display_map",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 258,
+      "qualname": "LabelPresenter.filter_no_significant_for_fat",
+      "count": 3
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 269,
+      "qualname": "LabelPresenter.filter_no_significant_for_carb",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 279,
+      "qualname": "LabelPresenter.parse_label_mapping",
+      "count": 2774
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 296,
+      "qualname": "LabelPresenter.find_total_entry",
+      "count": 2669
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 307,
+      "qualname": "_match_entry",
+      "count": 88629
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 354,
+      "qualname": "LabelPresenter.fraction_from_ratio",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 368,
+      "qualname": "LabelPresenter.portion_factor",
+      "count": 147
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 371,
+      "qualname": "LabelPresenter.household_unit_label",
+      "count": 98
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 377,
+      "qualname": "LabelPresenter.capacity_label",
+      "count": 4
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 389,
+      "qualname": "LabelPresenter.auto_household_amount",
+      "count": 3
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 402,
+      "qualname": "LabelPresenter.portion_description",
+      "count": 98
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 413,
+      "qualname": "LabelPresenter.format_number_for_unit",
+      "count": 704
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 428,
+      "qualname": "LabelPresenter.format_additional_amount",
+      "count": 120
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 444,
+      "qualname": "LabelPresenter.format_nutrient_amount",
+      "count": 784
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 455,
+      "qualname": "LabelPresenter.format_vd_value",
+      "count": 904
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 481,
+      "qualname": "LabelPresenter.format_manual_amount",
+      "count": 10
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 492,
+      "qualname": "LabelPresenter.format_manual_vd",
+      "count": 10
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 510,
+      "qualname": "LabelPresenter.parse_user_float",
+      "count": 4
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 519,
+      "qualname": "LabelPresenter.active_label_nutrients",
+      "count": 147
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 547,
+      "qualname": "LabelPresenter.build_label_table_rows",
+      "count": 49
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 628,
+      "qualname": "<genexpr>",
+      "count": 60
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 669,
+      "qualname": "LabelPresenter.build_linear_preview_text",
+      "count": 49
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 758,
+      "qualname": "<genexpr>",
+      "count": 60
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 794,
+      "qualname": "LabelPresenter.eligible_no_significant",
+      "count": 49
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 817,
+      "qualname": "LabelPresenter.portion_amount",
+      "count": 82
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 879,
+      "qualname": "LabelPresenter.human_join",
+      "count": 26
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 886,
+      "qualname": "LabelPresenter.sort_no_significant_list",
+      "count": 75
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 890,
+      "qualname": "<lambda>",
+      "count": 125
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 896,
+      "qualname": "LabelPresenter.factor_for_energy",
+      "count": 636
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 915,
+      "qualname": "LabelPresenter.compute_energy_label_values",
+      "count": 139
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 926,
+      "qualname": "<genexpr>",
+      "count": 272
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 927,
+      "qualname": "<genexpr>",
+      "count": 607
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 973,
+      "qualname": "LabelPresenter.label_amount_from_totals",
+      "count": 2138
+    },
+    {
+      "file": "ui/presenters/label_presenter.py",
+      "line": 1020,
+      "qualname": "LabelPresenter.effective_label_nutrient",
+      "count": 1745
+    },
+    {
+      "file": "ui/presenters/search_presenter.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/search_presenter.py",
+      "line": 11,
+      "qualname": "SearchPresenter",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/search_presenter.py",
+      "line": 17,
+      "qualname": "SearchPresenter.__init__",
+      "count": 1
+    },
+    {
+      "file": "ui/presenters/search_presenter.py",
+      "line": 108,
+      "qualname": "SearchPresenter.get_page",
+      "count": 5
+    },
+    {
+      "file": "ui/presenters/search_presenter.py",
+      "line": 116,
+      "qualname": "SearchPresenter.get_total_pages",
+      "count": 10
+    },
+    {
+      "file": "ui/presenters/search_presenter.py",
+      "line": 143,
+      "qualname": "SearchPresenter.build_details_rows",
+      "count": 35
+    },
+    {
+      "file": "ui/presenters/search_presenter.py",
+      "line": 163,
+      "qualname": "SearchPresenter.build_result_rows",
+      "count": 10
+    },
+    {
+      "file": "ui/presenters/search_presenter.py",
+      "line": 182,
+      "qualname": "SearchPresenter.build_search_status",
+      "count": 10
+    },
+    {
+      "file": "ui/presenters/search_presenter.py",
+      "line": 191,
+      "qualname": "SearchPresenter.build_paging_state",
+      "count": 5
+    },
+    {
+      "file": "ui/presenters/search_presenter.py",
+      "line": 203,
+      "qualname": "SearchPresenter.collect_prefetch_ids",
+      "count": 5
+    },
+    {
+      "file": "ui/presenters/search_presenter.py",
+      "line": 249,
+      "qualname": "SearchPresenter.get_result_count",
+      "count": 15
+    },
+    {
+      "file": "ui/tabs/__init__.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 34,
+      "qualname": "FormulationTabMixin",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 38,
+      "qualname": "MainWindow._init_formulation_state",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 72,
+      "qualname": "MainWindow._build_formulation_tab_ui",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 202,
+      "qualname": "MainWindow._is_importing",
+      "count": 23
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 208,
+      "qualname": "MainWindow.on_remove_formulation_clicked",
+      "count": 4
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 215,
+      "qualname": "MainWindow.on_formulation_cell_double_clicked",
+      "count": 6
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 225,
+      "qualname": "MainWindow.on_lock_toggled_from_table",
+      "count": 3
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 256,
+      "qualname": "MainWindow.on_edit_quantity_clicked",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 267,
+      "qualname": "MainWindow.on_quantity_mode_changed",
+      "count": 3
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 278,
+      "qualname": "MainWindow.on_normalize_total_clicked",
+      "count": 4
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 378,
+      "qualname": "MainWindow.on_export_state_clicked",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 430,
+      "qualname": "MainWindow.on_import_state_clicked",
+      "count": 3
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 466,
+      "qualname": "MainWindow._set_import_controls_enabled",
+      "count": 6
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 480,
+      "qualname": "MainWindow._prefill_import_state",
+      "count": 3
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 512,
+      "qualname": "MainWindow._start_import_hydration",
+      "count": 3
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 555,
+      "qualname": "MainWindow._cleanup",
+      "count": 3
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 567,
+      "qualname": "MainWindow._on_import_progress",
+      "count": 36
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 572,
+      "qualname": "MainWindow._on_import_finished",
+      "count": 3
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 617,
+      "qualname": "MainWindow._reset_import_ui_state",
+      "count": 3
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 626,
+      "qualname": "MainWindow._total_weight",
+      "count": 42
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 630,
+      "qualname": "MainWindow._is_percent_mode",
+      "count": 325
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 633,
+      "qualname": "MainWindow._current_mass_unit",
+      "count": 190
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 636,
+      "qualname": "MainWindow._quantity_mode_label",
+      "count": 3
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 639,
+      "qualname": "MainWindow._set_quantity_mode",
+      "count": 6
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 643,
+      "qualname": "<genexpr>",
+      "count": 6
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 652,
+      "qualname": "MainWindow._mass_decimals",
+      "count": 149
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 655,
+      "qualname": "MainWindow._display_amount_for_unit",
+      "count": 149
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 660,
+      "qualname": "MainWindow._amount_to_percent",
+      "count": 153
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 665,
+      "qualname": "MainWindow._update_quantity_headers",
+      "count": 27
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 682,
+      "qualname": "MainWindow._set_item_enabled",
+      "count": 447
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 694,
+      "qualname": "MainWindow._apply_column_state",
+      "count": 149
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 709,
+      "qualname": "MainWindow._can_edit_column",
+      "count": 6
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 717,
+      "qualname": "MainWindow._populate_formulation_tables",
+      "count": 27
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 771,
+      "qualname": "MainWindow._populate_totals_table",
+      "count": 26
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 810,
+      "qualname": "MainWindow._calculate_totals",
+      "count": 87
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 817,
+      "qualname": "MainWindow._update_toggle_export_button",
+      "count": 31
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 827,
+      "qualname": "MainWindow._create_question_icon",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 845,
+      "qualname": "MainWindow._refresh_formulation_views",
+      "count": 24
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 858,
+      "qualname": "MainWindow._select_preview_row",
+      "count": 8
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 872,
+      "qualname": "MainWindow._ensure_preview_selection",
+      "count": 27
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 884,
+      "qualname": "MainWindow._show_nutrients_for_row",
+      "count": 35
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 892,
+      "qualname": "MainWindow._show_nutrients_for_selected_preview",
+      "count": 35
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 913,
+      "qualname": "MainWindow._add_row_to_formulation",
+      "count": 2
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 947,
+      "qualname": "MainWindow._start_add_fetch",
+      "count": 2
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 974,
+      "qualname": "MainWindow._cleanup",
+      "count": 2
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 986,
+      "qualname": "MainWindow._on_add_progress",
+      "count": 2
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 991,
+      "qualname": "MainWindow._on_add_finished",
+      "count": 2
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 1000,
+      "qualname": "MainWindow._reset_add_ui_state",
+      "count": 2
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 1007,
+      "qualname": "MainWindow._format_amount_for_status",
+      "count": 7
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 1017,
+      "qualname": "MainWindow._prompt_quantity",
+      "count": 9
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 1061,
+      "qualname": "MainWindow._edit_quantity_for_row",
+      "count": 7
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 1094,
+      "qualname": "MainWindow._apply_percent_edit",
+      "count": 4
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 1143,
+      "qualname": "MainWindow._remove_selected_from_formulation",
+      "count": 4
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 1168,
+      "qualname": "MainWindow._run_in_thread",
+      "count": 17
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 1184,
+      "qualname": "MainWindow._cleanup",
+      "count": 17
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 1197,
+      "qualname": "MainWindow._on_add_details_loaded",
+      "count": 2
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 1247,
+      "qualname": "MainWindow._upgrade_item_to_full",
+      "count": 2
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 1251,
+      "qualname": "MainWindow.on_totals_checkbox_changed",
+      "count": 5
+    },
+    {
+      "file": "ui/tabs/formulation_tab.py",
+      "line": 1264,
+      "qualname": "MainWindow.on_toggle_export_clicked",
+      "count": 2
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 37,
+      "qualname": "LabelTabMixin",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 41,
+      "qualname": "MainWindow._init_label_state",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 75,
+      "qualname": "MainWindow._build_label_tab_ui",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 244,
+      "qualname": "MainWindow.<lambda>",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 247,
+      "qualname": "MainWindow.<lambda>",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 262,
+      "qualname": "MainWindow._setup_label_table_widget",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 330,
+      "qualname": "MainWindow._build_base_label_nutrients",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 333,
+      "qualname": "MainWindow._build_additional_nutrients",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 336,
+      "qualname": "MainWindow._build_household_measure_options",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 339,
+      "qualname": "MainWindow._snapshot_label_settings",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 361,
+      "qualname": "MainWindow._apply_label_settings",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 459,
+      "qualname": "MainWindow._current_portion_factor",
+      "count": 147
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 463,
+      "qualname": "MainWindow._update_capacity_label",
+      "count": 4
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 474,
+      "qualname": "MainWindow._auto_fill_household_measure",
+      "count": 3
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 492,
+      "qualname": "MainWindow._on_portion_value_changed",
+      "count": 4
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 498,
+      "qualname": "MainWindow._on_portion_unit_changed",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 505,
+      "qualname": "MainWindow._on_household_unit_changed",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 514,
+      "qualname": "MainWindow._on_household_amount_changed",
+      "count": 3
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 520,
+      "qualname": "MainWindow._on_breakdown_fat_toggled",
+      "count": 3
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 527,
+      "qualname": "MainWindow._on_breakdown_carb_toggled",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 534,
+      "qualname": "MainWindow._current_household_unit_label",
+      "count": 98
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 541,
+      "qualname": "MainWindow._portion_description_for_table",
+      "count": 98
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 550,
+      "qualname": "MainWindow._parse_user_float",
+      "count": 4
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 553,
+      "qualname": "MainWindow._active_label_nutrients",
+      "count": 147
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 561,
+      "qualname": "MainWindow._on_label_table_cell_double_clicked",
+      "count": 5
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 578,
+      "qualname": "<genexpr>",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 585,
+      "qualname": "MainWindow._prompt_manual_value_for_nutrient",
+      "count": 5
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 611,
+      "qualname": "MainWindow._eligible_no_significant",
+      "count": 49
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 626,
+      "qualname": "MainWindow._update_no_significant_controls",
+      "count": 46
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 645,
+      "qualname": "MainWindow._update_additional_controls",
+      "count": 50
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 649,
+      "qualname": "<genexpr>",
+      "count": 150
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 655,
+      "qualname": "MainWindow._on_select_no_significant_clicked",
+      "count": 3
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 677,
+      "qualname": "_remember_state",
+      "count": 8
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 679,
+      "qualname": "_toggle_if_unchanged",
+      "count": 9
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 711,
+      "qualname": "MainWindow._on_select_additional_clicked",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 727,
+      "qualname": "_remember_state",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 729,
+      "qualname": "_toggle_if_unchanged",
+      "count": 4
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 769,
+      "qualname": "MainWindow.eventFilter",
+      "count": 882
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 787,
+      "qualname": "MainWindow._format_compact_display",
+      "count": 99
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 819,
+      "qualname": "MainWindow._refresh_no_significant_display",
+      "count": 48
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 830,
+      "qualname": "MainWindow._refresh_additional_display",
+      "count": 51
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 840,
+      "qualname": "MainWindow._sort_no_significant_list",
+      "count": 49
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 846,
+      "qualname": "MainWindow._update_label_table_preview",
+      "count": 49
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 982,
+      "qualname": "MainWindow._update_linear_preview",
+      "count": 49
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 1005,
+      "qualname": "MainWindow._render_label_pixmap",
+      "count": 2
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 1143,
+      "qualname": "MainWindow._update_label_preview",
+      "count": 49
+    },
+    {
+      "file": "ui/tabs/label_tab.py",
+      "line": 1156,
+      "qualname": "MainWindow._on_export_label_table_clicked",
+      "count": 2
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 24,
+      "qualname": "SearchTabMixin",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 28,
+      "qualname": "MainWindow._init_search_state",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 40,
+      "qualname": "MainWindow._build_search_tab_ui",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 178,
+      "qualname": "MainWindow.on_search_clicked",
+      "count": 5
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 217,
+      "qualname": "MainWindow._start_search",
+      "count": 5
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 248,
+      "qualname": "MainWindow._prefetch_fdc_id",
+      "count": 12
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 275,
+      "qualname": "MainWindow._show_current_search_page",
+      "count": 5
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 292,
+      "qualname": "MainWindow._prefetch_visible_results",
+      "count": 5
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 302,
+      "qualname": "MainWindow._update_paging_buttons",
+      "count": 5
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 329,
+      "qualname": "MainWindow.on_result_double_clicked",
+      "count": 2
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 335,
+      "qualname": "MainWindow.on_search_selection_changed",
+      "count": 3
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 363,
+      "qualname": "MainWindow.on_preview_selection_changed",
+      "count": 10
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 369,
+      "qualname": "MainWindow._populate_table",
+      "count": 10
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 386,
+      "qualname": "MainWindow._populate_details_table",
+      "count": 35
+    },
+    {
+      "file": "ui/tabs/search_tab.py",
+      "line": 400,
+      "qualname": "MainWindow._on_search_success",
+      "count": 5
+    },
+    {
+      "file": "ui/tabs/table_utils.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/table_utils.py",
+      "line": 10,
+      "qualname": "apply_selection_bar",
+      "count": 5
+    },
+    {
+      "file": "ui/tabs/table_utils.py",
+      "line": 14,
+      "qualname": "attach_copy_shortcut",
+      "count": 6
+    },
+    {
+      "file": "ui/tabs/table_utils.py",
+      "line": 47,
+      "qualname": "set_search_column_widths",
+      "count": 1
+    },
+    {
+      "file": "ui/tabs/table_utils.py",
+      "line": 69,
+      "qualname": "set_formulation_column_widths",
+      "count": 1
+    },
+    {
+      "file": "ui/workers.py",
+      "line": 1,
+      "qualname": "<module>",
+      "count": 1
+    },
+    {
+      "file": "ui/workers.py",
+      "line": 11,
+      "qualname": "ApiWorker",
+      "count": 1
+    },
+    {
+      "file": "ui/workers.py",
+      "line": 17,
+      "qualname": "ApiWorker.__init__",
+      "count": 17
+    },
+    {
+      "file": "ui/workers.py",
+      "line": 32,
+      "qualname": "ImportWorker",
+      "count": 1
+    },
+    {
+      "file": "ui/workers.py",
+      "line": 39,
+      "qualname": "ImportWorker.__init__",
+      "count": 3
+    },
+    {
+      "file": "ui/workers.py",
+      "line": 100,
+      "qualname": "AddWorker",
+      "count": 1
+    },
+    {
+      "file": "ui/workers.py",
+      "line": 107,
+      "qualname": "AddWorker.__init__",
+      "count": 2
+    }
+  ]
+}

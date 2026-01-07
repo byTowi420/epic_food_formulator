@@ -460,12 +460,6 @@ class LabelTabMixin:
         return self.label_presenter.portion_factor(self.portion_size_input.value())
 
 
-    def _format_fraction_amount(self, value: float) -> str:
-        return self.label_presenter.format_fraction_amount(value)
-
-    def _fraction_from_ratio(self, ratio: float) -> str:
-        return self.label_presenter.fraction_from_ratio(ratio)
-
     def _update_capacity_label(self) -> None:
         unit_name = self.household_unit_combo.currentText()
         capacity = self.household_capacity_map.get(unit_name)
@@ -552,24 +546,6 @@ class LabelTabMixin:
             self._current_household_unit_label(),
         )
 
-
-    def _format_number_for_unit(self, value: float, unit: str) -> str:
-        return self.label_presenter.format_number_for_unit(value, unit)
-
-    def _format_additional_amount(self, value: float, unit: str) -> str:
-        return self.label_presenter.format_additional_amount(value, unit)
-
-    def _format_nutrient_amount(self, nutrient: Dict[str, Any], factor: float) -> str:
-        return self.label_presenter.format_nutrient_amount(nutrient, factor)
-
-    def _format_vd_value(self, nutrient: Dict[str, Any], factor: float, effective_amount: float | None = None) -> str:  # type: ignore[override]
-        return self.label_presenter.format_vd_value(nutrient, factor, effective_amount)
-
-    def _format_manual_amount(self, nutrient: Dict[str, Any], manual_amount: float) -> str:
-        return self.label_presenter.format_manual_amount(nutrient, manual_amount)
-
-    def _format_manual_vd(self, nutrient: Dict[str, Any], manual_amount: float) -> str:
-        return self.label_presenter.format_manual_vd(nutrient, manual_amount)
 
     def _parse_user_float(self, text: str) -> float | None:
         return self.label_presenter.parse_user_float(text)
@@ -861,76 +837,11 @@ class LabelTabMixin:
         )
 
 
-    def _human_join(self, items: list[str]) -> str:
-        return self.label_presenter.human_join(items)
-
     def _sort_no_significant_list(self, names: list[str]) -> list[str]:
         return self.label_presenter.sort_no_significant_list(
             names,
             self.label_no_sig_order,
         )
-
-    def _parse_label_mapping(self, label_name: str) -> tuple[str, str]:
-        return self.label_presenter.parse_label_mapping(
-            self.label_nutrient_usda_map,
-            label_name,
-        )
-
-    def _find_total_entry(self, canonical_name: str, unit: str) -> Dict[str, Any] | None:
-        if not self._last_totals:
-            self._last_totals = self._calculate_totals()
-        return self.label_presenter.find_total_entry(
-            self._last_totals,
-            canonical_name,
-            unit,
-        )
-
-    def _convert_label_amount_unit(
-        self, amount: float, from_unit: str, to_unit: str
-    ) -> float | None:
-        return self.label_presenter.convert_label_amount_unit(amount, from_unit, to_unit)
-
-    def _factor_for_energy(self, name: str) -> float | None:
-        return self.label_presenter.factor_for_energy(name)
-
-
-    def _compute_energy_label_values(self) -> Dict[str, float] | None:
-        if not self._last_totals:
-            self._last_totals = self._calculate_totals()
-        return self.label_presenter.compute_energy_label_values(
-            display_nutrients=self._active_label_nutrients(),
-            nutrient_map=self.label_nutrient_usda_map,
-            manual_overrides=self.label_manual_overrides,
-            totals=self._last_totals,
-            portion_factor=self._current_portion_factor(),
-        )
-
-
-    def _label_amount_from_totals(self, nutrient: Dict[str, Any]) -> Dict[str, float] | None:
-        if not self._last_totals:
-            self._last_totals = self._calculate_totals()
-        return self.label_presenter.label_amount_from_totals(
-            nutrient,
-            totals=self._last_totals,
-            nutrient_map=self.label_nutrient_usda_map,
-            manual_overrides=self.label_manual_overrides,
-            display_nutrients=self._active_label_nutrients(),
-            portion_factor=self._current_portion_factor(),
-        )
-
-
-    def _effective_label_nutrient(self, nutrient: Dict[str, Any]) -> Dict[str, Any]:
-        if not self._last_totals:
-            self._last_totals = self._calculate_totals()
-        return self.label_presenter.effective_label_nutrient(
-            nutrient,
-            totals=self._last_totals,
-            nutrient_map=self.label_nutrient_usda_map,
-            manual_overrides=self.label_manual_overrides,
-            display_nutrients=self._active_label_nutrients(),
-            portion_factor=self._current_portion_factor(),
-        )
-
 
     def _update_label_table_preview(self) -> None:
         table = self.label_table_widget
@@ -1227,83 +1138,6 @@ class LabelTabMixin:
             if sel_model:
                 for idx in selected_indexes:
                     sel_model.select(idx, QItemSelectionModel.Select)
-
-
-    def _remove_image_background(self, image: QImage, tolerance: int = 6) -> QImage:
-        """
-        Convierte en transparente los píxeles que coinciden con el color de fondo dentro de una tolerancia.
-        Esto permite exportar la tabla sin fondo (solo texto y líneas).
-        """
-        bg = image.pixelColor(0, 0)
-        result = QImage(image)
-        width = result.width()
-        height = result.height()
-
-        for y in range(height):
-            for x in range(width):
-                c = result.pixelColor(x, y)
-                if (
-                    abs(c.red() - bg.red()) <= tolerance
-                    and abs(c.green() - bg.green()) <= tolerance
-                    and abs(c.blue() - bg.blue()) <= tolerance
-                ):
-                    c.setAlpha(0)
-                    result.setPixelColor(x, y, c)
-        return result
-
-
-    def _strip_to_strokes(self, image: QImage) -> QImage:
-        """
-        Deja solo trazos (texto y líneas) eliminando fondos claros residuales.
-        Conserva píxeles cercanos al color de texto (#272727) o líneas (#c0c0c0) y elimina el resto.
-        """
-        text_color = QColor("#272727")
-        grid_color = QColor("#c0c0c0")
-        text_r, text_g, text_b = text_color.red(), text_color.green(), text_color.blue()
-        grid_r, grid_g, grid_b = grid_color.red(), grid_color.green(), grid_color.blue()
-        text_tol = 45  # distancia máxima para conservar texto (cubre antialias y #8F8F8F/#9B9B9B)
-        grid_tol = 8   # líneas muy cercanas al gris exacto
-        result = QImage(image.size(), QImage.Format_ARGB32)
-        result.fill(Qt.transparent)
-        width = image.width()
-        height = image.height()
-
-        for y in range(height):
-            for x in range(width):
-                c = image.pixelColor(x, y)
-                if c.alpha() == 0:
-                    continue
-                r, g, b = c.red(), c.green(), c.blue()
-                dist_text = ((r - text_r) ** 2 + (g - text_g) ** 2 + (b - text_b) ** 2) ** 0.5
-                dist_grid = ((r - grid_r) ** 2 + (g - grid_g) ** 2 + (b - grid_b) ** 2) ** 0.5
-                if dist_text <= text_tol:
-                    out = QColor(text_color)
-                    out.setAlpha(c.alpha())
-                    result.setPixelColor(x, y, out)
-                    continue
-                if dist_grid <= grid_tol:
-                    out = QColor(grid_color)
-                    out.setAlpha(c.alpha())
-                    result.setPixelColor(x, y, out)
-                    continue
-                # otherwise leave transparent
-        return result
-
-
-    def _clear_white_background(self, image: QImage, threshold: int = 245) -> QImage:
-        """
-        Hace transparente cualquier pixel casi blanco (>= threshold en R,G,B), preservando otros colores.
-        """
-        result = QImage(image)
-        width = result.width()
-        height = result.height()
-        for y in range(height):
-            for x in range(width):
-                c = result.pixelColor(x, y)
-                if c.red() >= threshold and c.green() >= threshold and c.blue() >= threshold:
-                    c.setAlpha(0)
-                    result.setPixelColor(x, y, c)
-        return result
 
 
     def _update_label_preview(self, force_recalc_totals: bool = False) -> None:

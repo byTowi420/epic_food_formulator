@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List
 
 from PySide6.QtCore import QObject, Signal, Slot
 
+from domain.exceptions import USDAHTTPError
 from infrastructure.api.usda_repository import FoodRepository
 
 
@@ -33,7 +34,7 @@ class ImportWorker(QObject):
     """Hydrate formulation items in a worker thread with retry + progress feedback."""
 
     progress = Signal(str)
-    finished = Signal(list)
+    finished = Signal(list, list)
     error = Signal(str)
 
     def __init__(
@@ -52,6 +53,7 @@ class ImportWorker(QObject):
     @Slot()
     def run(self) -> None:
         hydrated_payload: list[Dict[str, Any]] = []
+        warnings: list[str] = []
         try:
             repository = self._food_repository_provider()
         except Exception as exc:  # noqa: BLE001 - surface setup errors
@@ -62,14 +64,17 @@ class ImportWorker(QObject):
             try:
                 fdc_id_int = int(item.get("fdc_id"))
             except Exception:
-                self.error.emit("Uno de los ingredientes no tiene FDC ID valido.")
-                return
+                warnings.append(
+                    f"Ingrediente omitido: FDC ID invalido ({item.get('fdc_id')})."
+                )
+                continue
 
             base_item = dict(item)
             base_item["fdc_id"] = fdc_id_int
 
             attempts = 0
             details: Dict[str, Any] | None = None
+            skip_item = False
             while attempts < self.max_attempts:
                 attempts += 1
                 self.progress.emit(f"{idx}/{total} ID #{fdc_id_int}")
@@ -81,6 +86,14 @@ class ImportWorker(QObject):
                     )
                     break
                 except Exception as exc:  # noqa: BLE001 - bubble up the root error
+                    if isinstance(exc, USDAHTTPError):
+                        msg = str(exc)
+                        if exc.status_code == 404 or "No data received for FDC ID" in msg:
+                            warnings.append(
+                                f"Ingrediente omitido: FDC {fdc_id_int} no encontrado en USDA."
+                            )
+                            skip_item = True
+                            break
                     if attempts < self.max_attempts:
                         self.progress.emit(
                             f"{idx}/{total} ID #{fdc_id_int} Failed - Retrying ({attempts}/{self.max_attempts})"
@@ -92,9 +105,14 @@ class ImportWorker(QObject):
                     )
                     return
 
+            if skip_item:
+                continue
+            if details is None:
+                continue
+
             hydrated_payload.append({"base": base_item, "details": details or {}})
 
-        self.finished.emit(hydrated_payload)
+        self.finished.emit(hydrated_payload, warnings)
 
 
 class AddWorker(QObject):

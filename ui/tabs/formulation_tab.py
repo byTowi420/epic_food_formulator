@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List
 
-from PySide6.QtCore import QCoreApplication, QItemSelectionModel, QThread, Qt, QTimer
+from PySide6.QtCore import QItemSelectionModel, QThread, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
@@ -569,11 +569,19 @@ class FormulationTabMixin:
         self.status_label.setText(f"Importando ingredientes: {message}")
 
 
-    def _on_import_finished(self, payload: list[Dict[str, Any]]) -> None:
-        meta = getattr(self, "_pending_import_meta", {}) or {}
-        self._pending_import_meta = {}
+    def _on_import_finished(
+        self,
+        payload: list[Dict[str, Any]],
+        warnings: list[str] | None = None,
+        meta: Dict[str, Any] | None = None,
+    ) -> None:
+        if meta is None:
+            meta = getattr(self, "_pending_import_meta", {}) or {}
+            self._pending_import_meta = {}
         if QThread.currentThread() is not self.thread():
-            QTimer.singleShot(0, lambda p=payload, m=meta: self._on_import_finished(p))
+            QTimer.singleShot(
+                0, lambda p=payload, w=warnings, m=meta: self._on_import_finished(p, w, m)
+            )
             return
         self._reset_import_ui_state()
         hydrated = self.formulation_presenter.build_hydrated_items_from_payload(
@@ -605,7 +613,19 @@ class FormulationTabMixin:
 
         self._refresh_formulation_views()
         source = meta.get("path", "archivo")
-        self.status_label.setText(f"Formulación importada desde {source}")
+        if not hydrated:
+            self.status_label.setText("Importacion completada sin ingredientes validos.")
+        else:
+            self.status_label.setText(f"Formulacion importada desde {source}")
+
+        combined_warnings: list[str] = []
+        meta_warnings = meta.get("warnings") or []
+        if isinstance(meta_warnings, list):
+            combined_warnings.extend(meta_warnings)
+        if warnings:
+            combined_warnings.extend(warnings)
+        if combined_warnings:
+            self._show_import_warnings(combined_warnings)
 
 
     def _on_import_error(self, message: str) -> None:
@@ -621,6 +641,27 @@ class FormulationTabMixin:
         self._suspend_no_sig_update = False
         self._set_window_progress(None)
         self._current_import_worker = None
+
+
+    def _show_import_warnings(self, warnings: list[str]) -> None:
+        cleaned: list[str] = []
+        for warning in warnings:
+            text = str(warning).strip()
+            if text and text not in cleaned:
+                cleaned.append(text)
+        if not cleaned:
+            return
+        limit = 12
+        if len(cleaned) > limit:
+            extra = len(cleaned) - limit
+            cleaned = cleaned[:limit]
+            cleaned.append(f"... y {extra} mas")
+        message = "\n".join(f"- {warning}" for warning in cleaned)
+        QMessageBox.warning(
+            self,
+            "Advertencias de importacion",
+            f"Se omitieron algunos ingredientes:\n{message}",
+        )
 
 
     def _total_weight(self) -> float:
@@ -656,12 +697,6 @@ class FormulationTabMixin:
         return self.formulation_presenter.display_amount_for_unit(
             amount_g, self.quantity_mode
         )
-
-    def _format_mass_amount(self, amount_g: float) -> str:
-        return self.formulation_presenter.format_mass_amount(
-            amount_g, self.quantity_mode
-        )
-
 
     def _amount_to_percent(self, amount_g: float, total: float | None = None) -> float:
         total_weight = self._total_weight() if total is None else total
@@ -719,47 +754,6 @@ class FormulationTabMixin:
             return column == self.amount_g_column_index
         return column == self.percent_column_index
 
-
-    def _hydrate_items(self, items: list[Dict[str, Any]]) -> list[Dict[str, Any]] | None:
-        """Fetch USDA details for items to populate description/nutrients."""
-        def _on_progress(index: int, total: int, fdc_id_int: int) -> None:
-            self.status_label.setText(
-                f"Importando ingrediente {index + 1}/{total} (FDC {fdc_id_int})..."
-            )
-            QCoreApplication.processEvents()
-
-        def _on_details(details: Dict[str, Any]) -> None:
-            self.nutrient_ordering.update_reference_from_details(details)
-
-        hydrated, error = self.formulation_presenter.hydrate_items(
-            items,
-            on_progress=_on_progress,
-            on_details=_on_details,
-            detail_format="abridged",
-        )
-        if error:
-            code = error.get("code")
-            if code == "missing_fdc":
-                QMessageBox.warning(
-                    self,
-                    "FDC ID faltante",
-                    "Uno de los ingredientes no tiene FDC ID.",
-                )
-            elif code == "invalid_fdc":
-                QMessageBox.warning(
-                    self,
-                    "FDC ID inválido",
-                    f"FDC ID no numérico: {error.get('fdc_id', '')}",
-                )
-            elif code == "fetch_error":
-                QMessageBox.critical(
-                    self,
-                    "Error al cargar ingrediente",
-                    f"No se pudo cargar el FDC {error.get('fdc_id', '')}:\n{error.get('error', '')}",
-                )
-            return None
-
-        return hydrated
 
     def _populate_formulation_tables(self) -> None:
         """Refresh formulation tables with current items."""

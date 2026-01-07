@@ -1,32 +1,31 @@
-# Epic Food Formulator
+# Food Formulator
 
-A desktop application for formulating food recipes with detailed nutritional analysis using USDA FoodData Central database.
+Desktop app for building food formulations with nutrition analysis using the USDA FoodData Central database.
 
 ## Features
 
-- **USDA Database Search**: Access 350,000+ foods from FoodData Central
-- **Recipe Formulation**: Create formulations with multiple ingredients
-- **Nutrient Calculations**: Automatic calculation of nutritional totals per 100g
-- **Locking System**: Lock ingredient proportions during adjustments
-- **FDA Labels**: Generate nutrition facts labels (FDA/NLEA format)
-- **Excel Export**: Professional multi-sheet Excel reports
-- **JSON Persistence**: Save and load formulations
+- USDA search with ingredient import
+- Formulation in g/% with locks and target-weight normalization (g/kg/ton/lb/oz)
+- Nutrient totals per 100 g and per ingredient
+- Nutrition label preview (vertical + linear) with manual overrides and PNG export
+- Excel export and JSON save/load
 
 ## Architecture
 
-This project follows **Clean Architecture** principles:
+The app follows a layered architecture with presenters:
 
-- **Domain Layer**: Pure business logic (calculations, validations)
-- **Application Layer**: Use cases orchestrating workflows
-- **Infrastructure Layer**: External APIs, caching, file I/O
-- **UI Layer**: PySide6 (Qt) desktop interface
+- **Domain**: models and core logic (`domain/models.py`, `domain/services/*`)
+- **Application**: use cases (`application/use_cases.py`)
+- **Infrastructure**: USDA repository + cache and persistence (`infrastructure/*`)
+- **UI**: PySide6 tabs, presenters, adapters (`ui/*`)
+- **Shared normalization**: USDA nutrient normalization helpers (`services/nutrient_normalizer.py`)
 
-See [docs/architecture.md](docs/architecture.md) for detailed architecture documentation.
+See `docs/architecture.md` for details.
 
 ## Requirements
 
 - Python 3.11+
-- USDA FoodData Central API key (free at https://fdc.nal.usda.gov/api-key-signup.html)
+- USDA FoodData Central API key (https://fdc.nal.usda.gov/api-key-signup.html)
 
 ## Installation
 
@@ -34,153 +33,102 @@ See [docs/architecture.md](docs/architecture.md) for detailed architecture docum
 
 ```bash
 git clone <repository-url>
-cd epic_food_formulator
+cd food_formulator
 ```
 
 ### 2. Create Virtual Environment
 
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+python -m venv .venv
+.\.venv\Scriptsctivate
 ```
 
 ### 3. Install Dependencies
 
 ```bash
-# Production dependencies
 pip install -r requirements.txt
-
-# Development dependencies (for testing, linting)
 pip install -r requirements-dev.txt
 ```
 
 ### 4. Configure API Key
 
 ```bash
-# Copy example environment file
-cp .env.example .env
-
-# Edit .env and add your USDA API key
-# USDA_API_KEY="your-key-here"
+# Set environment variable
+setx USDA_API_KEY "your-key-here"
 ```
 
 ## Usage
-
-### Run Application
 
 ```bash
 python main.py
 ```
 
-### Workflow
+Typical workflow:
+1. Search foods
+2. Add ingredients + quantities
+3. Adjust formulation (locks/targets)
+4. Review totals + label
+5. Save or export
 
-1. **Search Foods**: Enter search term and click search
-2. **Add Ingredients**: Select food and specify amount
-3. **Adjust Formulation**: Modify amounts, lock proportions
-4. **View Nutrients**: See totals and FDA label
-5. **Save/Export**: Save as JSON or export to Excel
-
-## Development
-
-### Project Structure
+## Project Structure
 
 ```
-epic_food_formulator/
-├── config/                  # Configuration and DI container
-├── domain/                  # Business logic (no dependencies)
-│   ├── models.py
-│   ├── exceptions.py
-│   └── services/
-├── application/             # Use cases
-│   └── use_cases.py
-├── infrastructure/          # External concerns
-│   ├── api/                # USDA API client, cache
-│   ├── normalizers/        # Data normalization
-│   └── persistence/        # JSON, Excel
-├── ui/                      # PySide6 UI
-│   ├── main_window.py
-│   └── workers.py
-├── tests/                   # Unit and integration tests
-│   ├── unit/
-│   └── integration/
-└── main.py                  # Entry point
-```
-
-### Running Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov
-
-# Run specific test file
-pytest tests/unit/test_models.py
-
-# Run only unit tests
-pytest tests/unit/
-
-# Run with verbose output
-pytest -v
-```
-
-### Code Quality
-
-```bash
-# Format code
-black .
-
-# Lint code
-ruff check .
-
-# Type checking
-mypy .
-
-# Auto-fix linting issues
-ruff check --fix .
+food_formulator/
+|-- application/
+|   `-- use_cases.py
+|-- config/
+|   |-- constants.py
+|   `-- container.py
+|-- domain/
+|   |-- exceptions.py
+|   |-- models.py
+|   `-- services/
+|       |-- formulation_service.py
+|       |-- nutrient_calculator.py
+|       `-- unit_normalizer.py
+|-- infrastructure/
+|   |-- api/
+|   |   |-- cache.py
+|   |   `-- usda_repository.py
+|   `-- persistence/
+|       |-- excel_exporter.py
+|       |-- formulation_importer.py
+|       `-- json_repository.py
+|-- services/
+|   `-- nutrient_normalizer.py
+|-- ui/
+|   |-- adapters/
+|   |-- delegates/
+|   |-- presenters/
+|   |-- tabs/
+|   |-- main_window.py
+|   `-- workers.py
+|-- tools/
+|-- tests/
+`-- main.py
 ```
 
 ## API Usage Example
 
 ```python
+from decimal import Decimal
 from config.container import Container
 from domain.models import Formulation
-from decimal import Decimal
 
-# Initialize DI container
 container = Container()
-
-# Create formulation
 formulation = Formulation(name="My Recipe")
 
-# Add ingredient
 food = container.add_ingredient.execute(
     formulation=formulation,
-    fdc_id=171705,  # Chicken breast
-    amount_g=Decimal("150")
+    fdc_id=171705,
+    amount_g=Decimal("150"),
 )
 
-# Calculate totals
 totals = container.calculate_totals.execute(formulation)
-print(f"Protein per 100g: {totals.get('Protein', 0)}g")
+print(f"Protein per 100g: {totals.get('Protein', 0)} g")
 
-# Export to Excel
 container.export_formulation.execute(
     formulation=formulation,
-    output_path="my_recipe.xlsx"
+    output_path="my_recipe.xlsx",
 )
 ```
-
-## Contributing
-
-See [docs/architecture.md](docs/architecture.md) for architecture details and migration strategy.
-
-## License
-
-[Specify license here]
-
-## Acknowledgments
-
-- USDA FoodData Central for nutrition database
-- PySide6 (Qt for Python) for UI framework

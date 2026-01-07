@@ -7,8 +7,7 @@ Pure business logic with no UI dependencies.
 from decimal import Decimal
 from typing import Dict
 
-from config.constants import ATWATER_CARBOHYDRATE, ATWATER_FAT, ATWATER_PROTEIN, KCAL_TO_KJ
-from domain.models import Formulation, Ingredient
+from domain.models import Formulation
 
 
 class NutrientCalculator:
@@ -64,83 +63,3 @@ class NutrientCalculator:
             name: amount * normalization_factor for name, amount in nutrient_sums.items()
         }
 
-    def calculate_per_ingredient(
-        self,
-        formulation: Formulation,
-    ) -> Dict[int, Dict[str, Decimal]]:
-        """Calculate nutrients for each ingredient (not normalized).
-
-        Args:
-            formulation: The formulation to calculate
-
-        Returns:
-            Dictionary mapping ingredient index to nutrient amounts
-            Amounts are absolute (not per 100g)
-        """
-        result: Dict[int, Dict[str, Decimal]] = {}
-
-        for idx, ingredient in enumerate(formulation.ingredients):
-            ingredient_nutrients: Dict[str, Decimal] = {}
-            ingredient_weight = ingredient.amount_g
-
-            for nutrient in ingredient.food.nutrients:
-                # Scale from per-100g to actual ingredient amount
-                scaled_amount = nutrient.amount * (ingredient_weight / Decimal("100"))
-                ingredient_nutrients[nutrient.name] = scaled_amount
-
-            result[idx] = ingredient_nutrients
-
-        return result
-
-    def calculate_energy(
-        self,
-        protein_g: Decimal,
-        carbohydrate_g: Decimal,
-        fat_g: Decimal,
-    ) -> tuple[Decimal, Decimal]:
-        """Calculate energy using Atwater factors.
-
-        Args:
-            protein_g: Grams of protein
-            carbohydrate_g: Grams of carbohydrate
-            fat_g: Grams of fat
-
-        Returns:
-            Tuple of (kcal, kJ)
-
-        Note:
-            Uses 4-9-4 system:
-            - Protein: 4 kcal/g
-            - Carbohydrate: 4 kcal/g
-            - Fat: 9 kcal/g
-        """
-        kcal = (
-            protein_g * Decimal(str(ATWATER_PROTEIN))
-            + carbohydrate_g * Decimal(str(ATWATER_CARBOHYDRATE))
-            + fat_g * Decimal(str(ATWATER_FAT))
-        )
-        kj = kcal * Decimal(str(KCAL_TO_KJ))
-
-        return (kcal, kj)
-
-    def get_nutrient_value(
-        self,
-        totals: Dict[str, Decimal],
-        nutrient_name: str,
-    ) -> Decimal:
-        """Get a specific nutrient value from totals.
-
-        Args:
-            totals: Dictionary of nutrient totals
-            nutrient_name: Name of nutrient (case-insensitive)
-
-        Returns:
-            Nutrient amount or Decimal("0") if not found
-        """
-        # Case-insensitive lookup
-        nutrient_name_lower = nutrient_name.lower()
-        for name, amount in totals.items():
-            if name.lower() == nutrient_name_lower:
-                return amount
-
-        return Decimal("0")

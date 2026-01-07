@@ -1,0 +1,109 @@
+# Auditoria codigo
+
+Cada linea: elemento | status | notas
+
+## Handlers en duda (UI + workers)
+- ui/main_window.py:79 MainWindow.food_repository | status: en duda (no visto en trace) | notas:
+- ui/presenters/formulation_presenter.py:121 FormulationPresenter.update_ingredient_amount | status: usado (trace) | notas: Actualiza cantidad del ingrediente (g), con o sin mantener el total.
+- ui/presenters/formulation_presenter.py:221 FormulationPresenter._export_to_excel_legacy | status: en duda (no visto en trace) | notas:
+- ui/presenters/formulation_presenter.py:604 FormulationPresenter.split_header_unit | status: en duda (no visto en trace) | notas:
+- ui/presenters/formulation_presenter.py:610 FormulationPresenter.nutrients_by_header | status: en duda (no visto en trace) | notas:
+- ui/presenters/formulation_presenter.py:647 FormulationPresenter.collect_nutrient_columns | status: en duda (no visto en trace) | notas:
+- ui/presenters/label_presenter.py:334 LabelPresenter.convert_label_amount_unit | status: en duda (no visto en trace) | notas:
+- ui/presenters/label_presenter.py:343 LabelPresenter.format_fraction_amount | status: en duda (no visto en trace) | notas:
+- ui/presenters/search_presenter.py:29 SearchPresenter.search | status: en duda (no visto en trace) | notas:
+- ui/presenters/search_presenter.py:57 SearchPresenter.search_all | status: en duda (no visto en trace) | notas:
+- ui/presenters/search_presenter.py:121 SearchPresenter.get_total_count | status: en duda (no visto en trace) | notas:
+- ui/presenters/search_presenter.py:124 SearchPresenter.get_food_details | status: en duda (no visto en trace) | notas:
+- ui/presenters/search_presenter.py:186 SearchPresenter.build_details_status | status: en duda (no visto en trace) | notas:
+- ui/presenters/search_presenter.py:219 SearchPresenter.prefetch_food_details | status: en duda (no visto en trace) | notas:
+- ui/presenters/search_presenter.py:233 SearchPresenter.get_last_results | status: en duda (no visto en trace) | notas:
+- ui/presenters/search_presenter.py:241 SearchPresenter.get_last_query | status: en duda (no visto en trace) | notas:
+- ui/presenters/search_presenter.py:257 SearchPresenter._sort_results | status: en duda (no visto en trace) | notas:
+- ui/presenters/search_presenter.py:271 SearchPresenter._filter_results_by_query | status: en duda (no visto en trace) | notas:
+- ui/tabs/formulation_tab.py:215 FormulationTabMixin.on_formulation_cell_double_clicked | status: usado (trace) | notas: Doble clic en fila: abre edicion de cantidad si columna editable.
+- ui/tabs/formulation_tab.py:611 FormulationTabMixin._on_import_error | status: en duda (no visto en trace) | notas:
+- ui/tabs/formulation_tab.py:709 FormulationTabMixin._can_edit_column | status: usado (trace) | notas: Define columna editable segun modo (g vs %).
+- ui/tabs/formulation_tab.py:1241 FormulationTabMixin._on_add_error | status: en duda (no visto en trace) | notas:
+- ui/tabs/formulation_tab.py:1264 FormulationTabMixin.on_toggle_export_clicked | status: usado (trace) | notas: Alterna todos los checks de exportacion en la tabla de totales.
+- ui/tabs/label_tab.py:498 LabelTabMixin._on_portion_unit_changed | status: usado (trace) | notas: Al cambiar unidad de porcion, actualiza capacidad y preview.
+- ui/tabs/search_tab.py:190 SearchTabMixin.on_prev_page_clicked | status: en duda (no visto en trace) | notas:
+- ui/tabs/search_tab.py:239 SearchTabMixin._fetch_all_pages | status: en duda (no visto en trace) | notas:
+- ui/tabs/search_tab.py:313 SearchTabMixin.on_fdc_search_clicked | status: en duda (no visto en trace) | notas:
+- ui/tabs/search_tab.py:348 SearchTabMixin.on_add_selected_clicked | status: en duda (no visto en trace) | notas:
+- ui/tabs/search_tab.py:356 SearchTabMixin.on_formulation_preview_double_clicked | status: en duda (no visto en trace) | notas:
+- ui/tabs/search_tab.py:416 SearchTabMixin._on_search_error | status: en duda (no visto en trace) | notas:
+- ui/tabs/search_tab.py:422 SearchTabMixin._on_details_success | status: en duda (no visto en trace) | notas:
+- ui/tabs/search_tab.py:432 SearchTabMixin._on_details_error | status: en duda (no visto en trace) | notas:
+- ui/workers.py:23 ApiWorker.run | status: en duda (no visto en trace) | notas:
+- ui/workers.py:53 ImportWorker.run | status: en duda (no visto en trace) | notas:
+- ui/workers.py:125 AddWorker.run | status: en duda (no visto en trace) | notas:
+
+## Otros candidatos no ejecutados (no handlers)
+- application/use_cases.py:23 SearchFoodsUseCase.__init__ | status: en duda (no visto en trace) | notas:
+- application/use_cases.py:26 SearchFoodsUseCase.execute | status: en duda (no visto en trace) | notas:
+- application/use_cases.py:59 AddIngredientUseCase.__init__ | status: en duda (no visto en trace) | notas:
+- application/use_cases.py:67 AddIngredientUseCase.execute | status: en duda (no visto en trace) | notas:
+- application/use_cases.py:140 SaveFormulationUseCase.__init__ | status: en duda (no visto en trace) | notas:
+- application/use_cases.py:143 SaveFormulationUseCase.execute | status: en duda (no visto en trace) | notas:
+- application/use_cases.py:159 LoadFormulationUseCase.__init__ | status: en duda (no visto en trace) | notas:
+- application/use_cases.py:162 LoadFormulationUseCase.execute | status: en duda (no visto en trace) | notas:
+- application/use_cases.py:211 AdjustFormulationUseCase.__init__ | status: en duda (no visto en trace) | notas:
+- application/use_cases.py:214 AdjustFormulationUseCase.execute | status: en duda (no visto en trace) | notas:
+- config/container.py:67 Container.food_repository | status: en duda (no visto en trace) | notas:
+- config/container.py:77 Container.json_repository | status: en duda (no visto en trace) | notas:
+- config/container.py:116 Container.search_foods | status: en duda (no visto en trace) | notas:
+- config/container.py:123 Container.add_ingredient | status: en duda (no visto en trace) | notas:
+- config/container.py:140 Container.save_formulation | status: en duda (no visto en trace) | notas:
+- config/container.py:147 Container.load_formulation | status: en duda (no visto en trace) | notas:
+- config/container.py:164 Container.adjust_formulation | status: en duda (no visto en trace) | notas:
+- domain/exceptions.py:53 USDAHTTPError.__init__ | status: en duda (no visto en trace) | notas:
+- domain/exceptions.py:90 FormulationImportError.__init__ | status: en duda (no visto en trace) | notas:
+- domain/models.py:34 Nutrient.scale | status: en duda (no visto en trace) | notas:
+- domain/models.py:67 Food.get_nutrient | status: en duda (no visto en trace) | notas:
+- domain/models.py:75 Food.has_nutrient | status: en duda (no visto en trace) | notas:
+- domain/models.py:97 Ingredient.fdc_id | status: en duda (no visto en trace) | notas:
+- domain/models.py:102 Ingredient.description | status: en duda (no visto en trace) | notas:
+- domain/models.py:106 Ingredient.calculate_percentage | status: en duda (no visto en trace) | notas:
+- domain/models.py:112 Ingredient.get_nutrient_amount | status: en duda (no visto en trace) | notas:
+- domain/models.py:171 Formulation.get_locked_ingredients | status: en duda (no visto en trace) | notas:
+- domain/models.py:175 Formulation.get_unlocked_ingredients | status: en duda (no visto en trace) | notas:
+- domain/models.py:179 Formulation.get_total_locked_weight | status: en duda (no visto en trace) | notas:
+- domain/models.py:186 Formulation.clear | status: en duda (no visto en trace) | notas:
+- domain/services/formulation_service.py:16 FormulationService.adjust_to_target_weight | status: en duda (no visto en trace) | notas:
+- domain/services/formulation_service.py:69 FormulationService.distribute_percentages | status: en duda (no visto en trace) | notas:
+- domain/services/formulation_service.py:94 FormulationService.normalize_to_100g | status: en duda (no visto en trace) | notas:
+- domain/services/formulation_service.py:134 FormulationService.lock_ingredient | status: en duda (no visto en trace) | notas:
+- domain/services/formulation_service.py:148 FormulationService.unlock_ingredient | status: en duda (no visto en trace) | notas:
+- domain/services/formulation_service.py:162 FormulationService.set_ingredient_amount | status: en duda (no visto en trace) | notas:
+- domain/services/nutrient_ordering.py:135 NutrientOrdering.infer_unit | status: en duda (no visto en trace) | notas:
+- infrastructure/api/cache.py:16 Cache.get | status: en duda (no visto en trace) | notas:
+- infrastructure/api/cache.py:27 Cache.set | status: en duda (no visto en trace) | notas:
+- infrastructure/api/cache.py:37 Cache.clear | status: en duda (no visto en trace) | notas:
+- infrastructure/api/cache.py:41 Cache.delete | status: en duda (no visto en trace) | notas:
+- infrastructure/api/cache.py:62 InMemoryCache.get | status: en duda (no visto en trace) | notas:
+- infrastructure/api/cache.py:77 InMemoryCache.set | status: en duda (no visto en trace) | notas:
+- infrastructure/api/cache.py:88 InMemoryCache.clear | status: en duda (no visto en trace) | notas:
+- infrastructure/api/cache.py:93 InMemoryCache.delete | status: en duda (no visto en trace) | notas:
+- infrastructure/api/cache.py:98 InMemoryCache.size | status: en duda (no visto en trace) | notas:
+- infrastructure/api/cache.py:110 NullCache.get | status: en duda (no visto en trace) | notas:
+- infrastructure/api/cache.py:114 NullCache.set | status: en duda (no visto en trace) | notas:
+- infrastructure/api/cache.py:117 NullCache.clear | status: en duda (no visto en trace) | notas:
+- infrastructure/api/cache.py:120 NullCache.delete | status: en duda (no visto en trace) | notas:
+- infrastructure/api/usda_repository.py:31 _normalize_food_payload | status: en duda (no visto en trace) | notas:
+- infrastructure/api/usda_repository.py:87 FoodRepository.search | status: en duda (no visto en trace) | notas:
+- infrastructure/api/usda_repository.py:107 FoodRepository.get_by_id | status: en duda (no visto en trace) | notas:
+- infrastructure/api/usda_repository.py:127 FoodRepository.has_cached | status: en duda (no visto en trace) | notas:
+- infrastructure/api/usda_repository.py:148 USDAFoodRepository.__init__ | status: en duda (no visto en trace) | notas:
+- infrastructure/api/usda_repository.py:168 USDAFoodRepository._create_session | status: en duda (no visto en trace) | notas:
+- infrastructure/api/usda_repository.py:193 USDAFoodRepository.search | status: en duda (no visto en trace) | notas:
+- infrastructure/api/usda_repository.py:263 USDAFoodRepository.get_by_id | status: en duda (no visto en trace) | notas:
+- infrastructure/api/usda_repository.py:324 USDAFoodRepository.has_cached | status: en duda (no visto en trace) | notas:
+- infrastructure/api/usda_repository.py:336 USDAFoodRepository._request | status: en duda (no visto en trace) | notas:
+- infrastructure/persistence/json_repository.py:18 JSONFormulationRepository.__init__ | status: en duda (no visto en trace) | notas:
+- infrastructure/persistence/json_repository.py:27 JSONFormulationRepository.save | status: en duda (no visto en trace) | notas:
+- infrastructure/persistence/json_repository.py:48 JSONFormulationRepository.load | status: en duda (no visto en trace) | notas:
+- infrastructure/persistence/json_repository.py:77 JSONFormulationRepository.list_files | status: en duda (no visto en trace) | notas:
+- infrastructure/persistence/json_repository.py:88 JSONFormulationRepository.delete | status: en duda (no visto en trace) | notas:
+- infrastructure/persistence/json_repository.py:104 JSONFormulationRepository._formulation_to_dict | status: en duda (no visto en trace) | notas:
+- infrastructure/persistence/json_repository.py:132 JSONFormulationRepository._dict_to_formulation | status: en duda (no visto en trace) | notas:

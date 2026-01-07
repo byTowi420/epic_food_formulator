@@ -20,7 +20,6 @@ from openpyxl.utils import get_column_letter
 from config.container import Container
 from config.constants import DATA_TYPE_PRIORITY
 from domain.models import Formulation, Food, Ingredient, Nutrient
-from domain.services.label_generator import LabelRow
 from domain.exceptions import FormulationImportError
 from domain.services.unit_normalizer import convert_mass, normalize_mass_unit
 from services.nutrient_normalizer import augment_fat_nutrients, normalize_nutrients
@@ -62,37 +61,6 @@ class FormulationPresenter:
             List of dicts for UI tables
         """
         return FormulationMapper.formulation_to_ui_items(self._formulation)
-
-    def add_ingredient(
-        self,
-        fdc_id: int,
-        amount_g: float,
-    ) -> Dict[str, Any]:
-        """Add ingredient to formulation.
-
-        Args:
-            fdc_id: USDA Food ID
-            amount_g: Amount in grams
-
-        Returns:
-            UI item dict for the added ingredient
-
-        Raises:
-            Exception: If ingredient cannot be added
-        """
-        # Use AddIngredientUseCase
-        food = self._container.add_ingredient.execute(
-            self._formulation,
-            fdc_id,
-            Decimal(str(amount_g)),
-        )
-
-        # Return last added ingredient as UI item
-        last_ingredient = self._formulation.ingredients[-1]
-        return FormulationMapper.ingredient_to_ui_item(
-            last_ingredient,
-            len(self._formulation.ingredients) - 1,
-        )
 
     def add_ingredient_from_details(
         self,
@@ -141,14 +109,6 @@ class FormulationPresenter:
                 details.get("dataType"),
             )
 
-    def remove_ingredient(self, index: int) -> None:
-        """Remove ingredient at index.
-
-        Args:
-            index: Index of ingredient to remove
-        """
-        self._formulation.remove_ingredient(index)
-
     def remove_ingredient_safe(self, index: int) -> tuple[bool, str | None]:
         """Remove ingredient and ensure at least one unlocked remains."""
         if index < 0 or index >= self.get_ingredient_count():
@@ -182,19 +142,6 @@ class FormulationPresenter:
             ingredient = self._formulation.get_ingredient(index)
             ingredient.amount_g = Decimal(str(amount_g))
 
-    def toggle_lock(self, index: int) -> bool:
-        """Toggle ingredient lock state.
-
-        Args:
-            index: Ingredient index
-
-        Returns:
-            New lock state
-        """
-        ingredient = self._formulation.get_ingredient(index)
-        ingredient.locked = not ingredient.locked
-        return ingredient.locked
-
     def set_lock_state(self, index: int, locked: bool) -> tuple[bool, str | None]:
         """Set lock state with validation (keeps at least one unlocked)."""
         if index < 0 or index >= self.get_ingredient_count():
@@ -216,67 +163,12 @@ class FormulationPresenter:
         totals = self._container.calculate_totals.execute(self._formulation)
         return NutrientDisplayMapper.totals_to_display_dict(totals, self._formulation)
 
-    def get_label_rows(self, serving_size_g: float = 100.0) -> List[LabelRow]:
-        """Get FDA nutrition label rows.
-
-        Args:
-            serving_size_g: Serving size in grams
-
-        Returns:
-            List of LabelRow objects
-        """
-        totals = self._container.calculate_totals.execute(self._formulation)
-        return self._container.label_generator.generate_label(
-            totals,
-            Decimal(str(serving_size_g)),
-        )
-
-    def adjust_to_target_weight(self, target_g: float) -> None:
-        """Adjust unlocked ingredients to reach target weight.
-
-        Args:
-            target_g: Target total weight in grams
-        """
-        self._container.adjust_formulation.execute(
-            self._formulation,
-            Decimal(str(target_g)),
-        )
-
-    def normalize_to_100g(self) -> None:
-        """Normalize formulation to 100g total."""
-        self._container.formulation_service.normalize_to_100g(self._formulation)
-
     def normalize_to_target_weight(self, target_g: float) -> None:
         """Normalize formulation to a target total weight in grams."""
         self._container.formulation_service.scale_to_target_weight(
             self._formulation,
             Decimal(str(target_g)),
         )
-
-    def clear(self) -> None:
-        """Clear all ingredients."""
-        self._formulation.clear()
-
-    def load_from_file(self, filename: str) -> None:
-        """Load formulation from file.
-
-        Args:
-            filename: Filename to load
-        """
-        loaded = self._container.load_formulation.execute(filename)
-        self._formulation = loaded
-
-    def save_to_file(self, filename: str) -> str:
-        """Save formulation to file.
-
-        Args:
-            filename: Filename to save
-
-        Returns:
-            Full path to saved file
-        """
-        path = self._container.save_formulation.execute(self._formulation, filename)
-        return str(path)
 
     def export_to_excel(
         self,
@@ -608,57 +500,6 @@ class FormulationPresenter:
                 }
             )
         return hydrated
-
-    def hydrate_items(
-        self,
-        items: List[Dict[str, Any]],
-        *,
-        on_progress: Callable[[int, int, int], None] | None = None,
-        on_details: Callable[[Dict[str, Any]], None] | None = None,
-        detail_format: str = "abridged",
-    ) -> tuple[List[Dict[str, Any]] | None, Dict[str, Any] | None]:
-        """Fetch USDA details for items to populate description/nutrients."""
-        hydrated: List[Dict[str, Any]] = []
-        total = len(items)
-        for index, item in enumerate(items):
-            fdc_id = item.get("fdc_id") or item.get("fdcId")
-            if fdc_id is None:
-                return None, {"code": "missing_fdc"}
-            try:
-                fdc_id_int = int(fdc_id)
-            except ValueError:
-                return None, {"code": "invalid_fdc", "fdc_id": fdc_id}
-
-            if on_progress:
-                on_progress(index, total, fdc_id_int)
-
-            try:
-                details = self._container.food_repository.get_by_id(
-                    fdc_id_int,
-                    detail_format=detail_format,
-                )
-            except Exception as exc:  # noqa: BLE001
-                return None, {"code": "fetch_error", "fdc_id": fdc_id_int, "error": str(exc)}
-
-            if on_details:
-                on_details(details)
-
-            hydrated.append(
-                {
-                    "fdc_id": fdc_id_int,
-                    "description": details.get("description", "")
-                    or item.get("description", ""),
-                    "brand": details.get("brandOwner", "") or item.get("brand", ""),
-                    "data_type": details.get("dataType", "") or item.get("data_type", ""),
-                    "amount_g": float(item.get("amount_g", 0.0) or 0.0),
-                    "nutrients": normalize_nutrients(
-                        details.get("foodNutrients", []) or [], details.get("dataType")
-                    ),
-                    "locked": bool(item.get("locked", False)),
-                }
-            )
-
-        return hydrated, None
 
     def resolve_legacy_export_flags(
         self,
