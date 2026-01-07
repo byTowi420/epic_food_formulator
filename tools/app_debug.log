@@ -1,0 +1,1259 @@
+2026-01-06 21:24:17,767 [MainThread] DEBUG calculate_totals_with_fallback start items=0
+2026-01-06 21:24:17,775 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=0
+2026-01-06 21:24:17,777 [MainThread] DEBUG calculate_totals_with_fallback start items=0
+2026-01-06 21:24:17,781 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=0
+2026-01-06 21:24:17,899 [MainThread] DEBUG calculate_totals_with_fallback start items=0
+2026-01-06 21:24:17,902 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=0
+2026-01-06 21:24:17,975 [MainThread] DEBUG calculate_totals_with_fallback start items=0
+2026-01-06 21:24:18,010 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=0
+2026-01-06 21:24:44,298 [Dummy-1] DEBUG Starting new HTTPS connection (1): api.nal.usda.gov:443
+2026-01-06 21:24:49,427 [Dummy-1] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=egg&pageSize=200&pageNumber=1&dataType=Foundation&dataType=SR+Legacy&dataType=Survey+%28FNDDS%29 HTTP/1.1" 200 None
+2026-01-06 21:24:55,340 [Dummy-1] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=egg&pageSize=200&pageNumber=2&dataType=Foundation&dataType=SR+Legacy&dataType=Survey+%28FNDDS%29 HTTP/1.1" 400 157
+2026-01-06 21:24:55,836 [Dummy-1] DEBUG https://api.nal.usda.gov:443 "POST /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:24:58,292 [Dummy-1] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=egg&pageSize=200&pageNumber=3&dataType=Foundation&dataType=SR+Legacy&dataType=Survey+%28FNDDS%29 HTTP/1.1" 400 157
+2026-01-06 21:24:58,805 [Dummy-1] DEBUG https://api.nal.usda.gov:443 "POST /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:00,443 [Dummy-1] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=egg&pageSize=200&pageNumber=4&dataType=Foundation&dataType=SR+Legacy&dataType=Survey+%28FNDDS%29 HTTP/1.1" 200 None
+2026-01-06 21:25:00,903 [MainThread] DEBUG Prefetching fdc_id=323793
+2026-01-06 21:25:00,905 [MainThread] DEBUG Prefetching fdc_id=323697
+2026-01-06 21:25:00,912 [Dummy-2] DEBUG Starting new HTTPS connection (2): api.nal.usda.gov:443
+2026-01-06 21:25:01,222 [Dummy-3] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/323793?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:01,223 [Dummy-3] DEBUG Prefetch done fdc_id=323793
+2026-01-06 21:25:02,495 [Dummy-2] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/323697?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:02,497 [Dummy-2] DEBUG Prefetch done fdc_id=323697
+2026-01-06 21:25:05,139 [MainThread] DEBUG Prefetching fdc_id=748967
+2026-01-06 21:25:05,331 [MainThread] DEBUG UI double click row=7
+2026-01-06 21:25:05,333 [MainThread] DEBUG _add_row_to_formulation row=7
+2026-01-06 21:25:05,464 [Dummy-4] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/748967?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:05,466 [Dummy-4] DEBUG Prefetch done fdc_id=748967
+2026-01-06 21:25:07,196 [MainThread] DEBUG _prompt_quantity returned mode=g value=100.0
+2026-01-06 21:25:07,216 [MainThread] DEBUG _start_add_fetch fdc_id=748967 mode=g value=100.0
+2026-01-06 21:25:07,220 [Dummy-5] DEBUG AddWorker start fdc_id=748967 attempts=4
+2026-01-06 21:25:07,220 [Dummy-5] DEBUG AddWorker attempt 1 fetching fdc_id=748967 timeout=8.0
+2026-01-06 21:25:07,221 [Dummy-5] DEBUG AddWorker success fdc_id=748967 nutrients=95
+2026-01-06 21:25:07,269 [MainThread] DEBUG _on_add_finished fdc_id=748967 mode=g value=100.0 nutrients=95
+2026-01-06 21:25:07,272 [MainThread] DEBUG _on_add_details_loaded fdc_id=748967 mode=g value=100.0 nutrients_count=95
+2026-01-06 21:25:07,275 [MainThread] DEBUG _augment_fat_nutrients input=95
+2026-01-06 21:25:07,754 [MainThread] DEBUG _refresh_formulation_views count=1
+2026-01-06 21:25:07,756 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:25:07,978 [MainThread] DEBUG _populate_formulation_tables rows=1
+2026-01-06 21:25:08,044 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:25:08,045 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:25:08,047 [MainThread] DEBUG calculate_totals_with_fallback start items=1
+2026-01-06 21:25:08,155 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=94
+2026-01-06 21:25:08,366 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:25:08,368 [MainThread] DEBUG calculate_totals_with_fallback start items=1
+2026-01-06 21:25:08,488 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=94
+2026-01-06 21:25:10,883 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:25:10,886 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:25:20,290 [Dummy-6] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=milk+whole&pageSize=200&pageNumber=1&dataType=Foundation&dataType=SR+Legacy&dataType=Survey+%28FNDDS%29 HTTP/1.1" 200 None
+2026-01-06 21:25:21,817 [Dummy-6] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=milk+whole&pageSize=200&pageNumber=2&dataType=Foundation&dataType=SR+Legacy&dataType=Survey+%28FNDDS%29 HTTP/1.1" 400 157
+2026-01-06 21:25:22,336 [Dummy-6] DEBUG https://api.nal.usda.gov:443 "POST /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:23,483 [Dummy-6] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=milk+whole&pageSize=200&pageNumber=3&dataType=Foundation&dataType=SR+Legacy&dataType=Survey+%28FNDDS%29 HTTP/1.1" 200 None
+2026-01-06 21:25:24,403 [Dummy-6] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=milk+whole&pageSize=200&pageNumber=4&dataType=Foundation&dataType=SR+Legacy&dataType=Survey+%28FNDDS%29 HTTP/1.1" 400 157
+2026-01-06 21:25:25,019 [Dummy-6] DEBUG https://api.nal.usda.gov:443 "POST /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:26,043 [Dummy-6] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=milk+whole&pageSize=200&pageNumber=5&dataType=Foundation&dataType=SR+Legacy&dataType=Survey+%28FNDDS%29 HTTP/1.1" 200 None
+2026-01-06 21:25:26,503 [MainThread] DEBUG Prefetching fdc_id=2259796
+2026-01-06 21:25:26,505 [MainThread] DEBUG Prefetching fdc_id=746766
+2026-01-06 21:25:26,825 [Dummy-7] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2259796?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:26,828 [Dummy-7] DEBUG Prefetch done fdc_id=2259796
+2026-01-06 21:25:26,893 [Dummy-8] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/746766?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:26,900 [Dummy-8] DEBUG Prefetch done fdc_id=746766
+2026-01-06 21:25:29,260 [MainThread] DEBUG Prefetching fdc_id=746782
+2026-01-06 21:25:29,438 [MainThread] DEBUG UI double click row=2
+2026-01-06 21:25:29,439 [MainThread] DEBUG _add_row_to_formulation row=2
+2026-01-06 21:25:29,581 [Dummy-9] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/746782?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:29,583 [Dummy-9] DEBUG Prefetch done fdc_id=746782
+2026-01-06 21:25:31,355 [MainThread] DEBUG _prompt_quantity returned mode=g value=50.0
+2026-01-06 21:25:31,370 [MainThread] DEBUG _start_add_fetch fdc_id=746782 mode=g value=50.0
+2026-01-06 21:25:31,375 [Dummy-10] DEBUG AddWorker start fdc_id=746782 attempts=4
+2026-01-06 21:25:31,376 [Dummy-10] DEBUG AddWorker attempt 1 fetching fdc_id=746782 timeout=8.0
+2026-01-06 21:25:31,378 [Dummy-10] DEBUG AddWorker success fdc_id=746782 nutrients=157
+2026-01-06 21:25:31,436 [MainThread] DEBUG _on_add_finished fdc_id=746782 mode=g value=50.0 nutrients=157
+2026-01-06 21:25:31,439 [MainThread] DEBUG _on_add_details_loaded fdc_id=746782 mode=g value=50.0 nutrients_count=157
+2026-01-06 21:25:31,442 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:25:32,251 [MainThread] DEBUG _refresh_formulation_views count=2
+2026-01-06 21:25:32,254 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:25:32,459 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:25:32,786 [MainThread] DEBUG _populate_formulation_tables rows=2
+2026-01-06 21:25:32,814 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:25:32,815 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:25:32,816 [MainThread] DEBUG calculate_totals_with_fallback start items=2
+2026-01-06 21:25:33,001 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=159
+2026-01-06 21:25:33,288 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:25:33,290 [MainThread] DEBUG calculate_totals_with_fallback start items=2
+2026-01-06 21:25:33,457 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=159
+2026-01-06 21:25:35,805 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:25:35,810 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:25:36,026 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:25:38,284 [Dummy-11] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=milk+whole&pageSize=200&pageNumber=1 HTTP/1.1" 200 None
+2026-01-06 21:25:39,637 [Dummy-11] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=milk+whole&pageSize=200&pageNumber=2 HTTP/1.1" 200 None
+2026-01-06 21:25:40,911 [Dummy-11] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=milk+whole&pageSize=200&pageNumber=3 HTTP/1.1" 200 None
+2026-01-06 21:25:42,128 [Dummy-11] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=milk+whole&pageSize=200&pageNumber=4 HTTP/1.1" 200 None
+2026-01-06 21:25:43,131 [Dummy-11] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=milk+whole&pageSize=200&pageNumber=5 HTTP/1.1" 200 None
+2026-01-06 21:25:43,330 [MainThread] DEBUG Prefetching fdc_id=2259796
+2026-01-06 21:25:43,334 [MainThread] DEBUG Prefetching fdc_id=746766
+2026-01-06 21:25:43,336 [Dummy-12] DEBUG Prefetch done fdc_id=2259796
+2026-01-06 21:25:43,341 [Dummy-13] DEBUG Prefetch done fdc_id=746766
+2026-01-06 21:25:44,366 [MainThread] DEBUG Prefetching fdc_id=174867
+2026-01-06 21:25:44,370 [MainThread] DEBUG Prefetching fdc_id=174865
+2026-01-06 21:25:44,543 [MainThread] DEBUG Prefetching fdc_id=169649
+2026-01-06 21:25:44,546 [MainThread] DEBUG Prefetching fdc_id=168825
+2026-01-06 21:25:44,549 [Dummy-14] DEBUG Starting new HTTPS connection (3): api.nal.usda.gov:443
+2026-01-06 21:25:44,554 [Dummy-15] DEBUG Starting new HTTPS connection (4): api.nal.usda.gov:443
+2026-01-06 21:25:44,735 [MainThread] DEBUG Prefetching fdc_id=2705392
+2026-01-06 21:25:44,739 [MainThread] DEBUG Prefetching fdc_id=2705385
+2026-01-06 21:25:44,743 [Dummy-16] DEBUG Starting new HTTPS connection (5): api.nal.usda.gov:443
+2026-01-06 21:25:44,753 [Dummy-17] DEBUG Starting new HTTPS connection (6): api.nal.usda.gov:443
+2026-01-06 21:25:44,778 [Dummy-18] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/174867?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:44,781 [Dummy-18] DEBUG Prefetch done fdc_id=174867
+2026-01-06 21:25:44,784 [Dummy-19] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/174865?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:44,788 [Dummy-19] DEBUG Prefetch done fdc_id=174865
+2026-01-06 21:25:44,952 [MainThread] DEBUG Prefetching fdc_id=2486931
+2026-01-06 21:25:44,954 [MainThread] DEBUG Prefetching fdc_id=2620729
+2026-01-06 21:25:45,128 [MainThread] DEBUG Prefetching fdc_id=2453152
+2026-01-06 21:25:45,132 [MainThread] DEBUG Prefetching fdc_id=2425855
+2026-01-06 21:25:45,136 [Dummy-20] DEBUG Starting new HTTPS connection (7): api.nal.usda.gov:443
+2026-01-06 21:25:45,143 [Dummy-21] DEBUG Starting new HTTPS connection (8): api.nal.usda.gov:443
+2026-01-06 21:25:45,269 [Dummy-22] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2620729?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:45,271 [Dummy-22] DEBUG Prefetch done fdc_id=2620729
+2026-01-06 21:25:45,284 [Dummy-23] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2486931?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:45,286 [Dummy-23] DEBUG Prefetch done fdc_id=2486931
+2026-01-06 21:25:45,306 [MainThread] DEBUG Prefetching fdc_id=2599881
+2026-01-06 21:25:45,309 [MainThread] DEBUG Prefetching fdc_id=2638662
+2026-01-06 21:25:45,508 [MainThread] DEBUG Prefetching fdc_id=1896799
+2026-01-06 21:25:45,512 [MainThread] DEBUG Prefetching fdc_id=2089755
+2026-01-06 21:25:45,516 [Dummy-24] DEBUG Starting new HTTPS connection (9): api.nal.usda.gov:443
+2026-01-06 21:25:45,523 [Dummy-25] DEBUG Starting new HTTPS connection (10): api.nal.usda.gov:443
+2026-01-06 21:25:45,649 [Dummy-26] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2599881?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:45,651 [Dummy-26] DEBUG Prefetch done fdc_id=2599881
+2026-01-06 21:25:45,664 [Dummy-27] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2638662?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:45,667 [Dummy-27] DEBUG Prefetch done fdc_id=2638662
+2026-01-06 21:25:45,718 [MainThread] DEBUG Prefetching fdc_id=2460507
+2026-01-06 21:25:45,721 [MainThread] DEBUG Prefetching fdc_id=2460771
+2026-01-06 21:25:45,833 [MainThread] DEBUG Prefetching fdc_id=2192619
+2026-01-06 21:25:45,836 [MainThread] DEBUG Prefetching fdc_id=1046807
+2026-01-06 21:25:45,999 [Dummy-28] DEBUG Starting new HTTPS connection (11): api.nal.usda.gov:443
+2026-01-06 21:25:46,038 [Dummy-29] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2460507?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:46,039 [Dummy-29] DEBUG Prefetch done fdc_id=2460507
+2026-01-06 21:25:46,048 [Dummy-30] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2460771?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:46,049 [Dummy-30] DEBUG Prefetch done fdc_id=2460771
+2026-01-06 21:25:46,358 [MainThread] DEBUG Prefetching fdc_id=2616911
+2026-01-06 21:25:46,362 [MainThread] DEBUG Prefetching fdc_id=2542576
+2026-01-06 21:25:46,373 [Dummy-31] DEBUG Starting new HTTPS connection (12): api.nal.usda.gov:443
+2026-01-06 21:25:46,497 [MainThread] DEBUG Prefetching fdc_id=2484085
+2026-01-06 21:25:46,500 [MainThread] DEBUG Prefetching fdc_id=2425870
+2026-01-06 21:25:46,506 [Dummy-32] DEBUG Starting new HTTPS connection (13): api.nal.usda.gov:443
+2026-01-06 21:25:46,511 [Dummy-33] DEBUG Starting new HTTPS connection (14): api.nal.usda.gov:443
+2026-01-06 21:25:46,608 [Dummy-34] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/1046807?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:46,610 [Dummy-34] DEBUG Prefetch done fdc_id=1046807
+2026-01-06 21:25:46,683 [Dummy-35] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2616911?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:46,685 [Dummy-35] DEBUG Prefetch done fdc_id=2616911
+2026-01-06 21:25:46,693 [MainThread] DEBUG Prefetching fdc_id=2038880
+2026-01-06 21:25:46,697 [MainThread] DEBUG Prefetching fdc_id=2624790
+2026-01-06 21:25:47,010 [Dummy-36] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2038880?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:47,011 [Dummy-36] DEBUG Prefetch done fdc_id=2038880
+2026-01-06 21:25:47,016 [Dummy-37] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2624790?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:47,017 [Dummy-37] DEBUG Prefetch done fdc_id=2624790
+2026-01-06 21:25:47,220 [Dummy-15] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/168825?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:47,230 [Dummy-14] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/169649?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:47,247 [Dummy-14] DEBUG Prefetch done fdc_id=169649
+2026-01-06 21:25:47,250 [Dummy-15] DEBUG Prefetch done fdc_id=168825
+2026-01-06 21:25:47,404 [Dummy-16] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2705392?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:47,408 [Dummy-16] DEBUG Prefetch done fdc_id=2705392
+2026-01-06 21:25:47,446 [Dummy-17] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2705385?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:47,449 [Dummy-17] DEBUG Prefetch done fdc_id=2705385
+2026-01-06 21:25:47,794 [Dummy-20] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2453152?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:47,796 [Dummy-20] DEBUG Prefetch done fdc_id=2453152
+2026-01-06 21:25:47,798 [Dummy-21] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2425855?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:47,801 [Dummy-21] DEBUG Prefetch done fdc_id=2425855
+2026-01-06 21:25:47,968 [Dummy-24] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/1896799?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:48,012 [Dummy-24] WARNING Connection pool is full, discarding connection: api.nal.usda.gov. Connection pool size: 8
+2026-01-06 21:25:48,013 [Dummy-25] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2089755?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:48,018 [Dummy-24] DEBUG Prefetch done fdc_id=1896799
+2026-01-06 21:25:48,021 [Dummy-25] WARNING Connection pool is full, discarding connection: api.nal.usda.gov. Connection pool size: 8
+2026-01-06 21:25:48,026 [Dummy-25] DEBUG Prefetch done fdc_id=2089755
+2026-01-06 21:25:49,590 [MainThread] DEBUG Prefetching fdc_id=2543046
+2026-01-06 21:25:49,789 [MainThread] DEBUG UI double click row=3
+2026-01-06 21:25:49,790 [MainThread] DEBUG _add_row_to_formulation row=3
+2026-01-06 21:25:49,928 [Dummy-38] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2543046?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:49,931 [Dummy-38] DEBUG Prefetch done fdc_id=2543046
+2026-01-06 21:25:50,756 [MainThread] DEBUG _prompt_quantity returned mode=g value=100.0
+2026-01-06 21:25:50,788 [MainThread] DEBUG _start_add_fetch fdc_id=2543046 mode=g value=100.0
+2026-01-06 21:25:50,795 [Dummy-39] DEBUG AddWorker start fdc_id=2543046 attempts=4
+2026-01-06 21:25:50,796 [Dummy-39] DEBUG AddWorker attempt 1 fetching fdc_id=2543046 timeout=8.0
+2026-01-06 21:25:50,797 [Dummy-39] DEBUG AddWorker success fdc_id=2543046 nutrients=14
+2026-01-06 21:25:50,934 [MainThread] DEBUG _on_add_finished fdc_id=2543046 mode=g value=100.0 nutrients=14
+2026-01-06 21:25:50,935 [MainThread] DEBUG _on_add_details_loaded fdc_id=2543046 mode=g value=100.0 nutrients_count=14
+2026-01-06 21:25:50,937 [MainThread] DEBUG _augment_fat_nutrients input=14
+2026-01-06 21:25:51,055 [MainThread] DEBUG _refresh_formulation_views count=3
+2026-01-06 21:25:51,058 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:25:51,145 [Dummy-28] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2192619?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:51,147 [Dummy-28] WARNING Connection pool is full, discarding connection: api.nal.usda.gov. Connection pool size: 8
+2026-01-06 21:25:51,149 [Dummy-28] DEBUG Prefetch done fdc_id=2192619
+2026-01-06 21:25:51,156 [Dummy-31] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2542576?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:51,157 [Dummy-31] WARNING Connection pool is full, discarding connection: api.nal.usda.gov. Connection pool size: 8
+2026-01-06 21:25:51,159 [Dummy-31] DEBUG Prefetch done fdc_id=2542576
+2026-01-06 21:25:51,167 [Dummy-33] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2425870?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:51,168 [Dummy-33] WARNING Connection pool is full, discarding connection: api.nal.usda.gov. Connection pool size: 8
+2026-01-06 21:25:51,170 [Dummy-33] DEBUG Prefetch done fdc_id=2425870
+2026-01-06 21:25:51,176 [Dummy-32] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2484085?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:25:51,177 [Dummy-32] WARNING Connection pool is full, discarding connection: api.nal.usda.gov. Connection pool size: 8
+2026-01-06 21:25:51,178 [Dummy-32] DEBUG Prefetch done fdc_id=2484085
+2026-01-06 21:25:51,276 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:25:51,608 [MainThread] DEBUG _augment_fat_nutrients input=18
+2026-01-06 21:25:51,645 [MainThread] DEBUG _populate_formulation_tables rows=3
+2026-01-06 21:25:51,678 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:25:51,679 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:25:51,680 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:25:51,933 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=159
+2026-01-06 21:25:52,339 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:25:52,342 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:25:52,600 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=159
+2026-01-06 21:25:55,108 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:25:55,112 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:25:55,327 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:25:55,654 [MainThread] DEBUG _augment_fat_nutrients input=18
+2026-01-06 21:25:59,664 [MainThread] DEBUG _refresh_formulation_views count=2
+2026-01-06 21:25:59,672 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:25:59,860 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:26:00,187 [MainThread] DEBUG _populate_formulation_tables rows=2
+2026-01-06 21:26:00,211 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:26:00,212 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:26:00,213 [MainThread] DEBUG calculate_totals_with_fallback start items=2
+2026-01-06 21:26:00,379 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=159
+2026-01-06 21:26:00,686 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:26:00,688 [MainThread] DEBUG calculate_totals_with_fallback start items=2
+2026-01-06 21:26:00,856 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=159
+2026-01-06 21:26:03,285 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:26:03,289 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:26:03,497 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:26:18,677 [Dummy-40] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=water&pageSize=200&pageNumber=1&dataType=Foundation&dataType=SR+Legacy&dataType=Survey+%28FNDDS%29 HTTP/1.1" 400 157
+2026-01-06 21:26:19,496 [Dummy-40] DEBUG https://api.nal.usda.gov:443 "POST /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:26:21,371 [Dummy-41] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=generic&pageSize=200&pageNumber=1&dataType=Foundation&dataType=SR+Legacy&dataType=Survey+%28FNDDS%29 HTTP/1.1" 400 157
+2026-01-06 21:26:21,391 [Dummy-40] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd&query=water&pageSize=200&pageNumber=2&dataType=Foundation&dataType=SR+Legacy&dataType=Survey+%28FNDDS%29 HTTP/1.1" 200 None
+2026-01-06 21:26:21,721 [Dummy-41] DEBUG https://api.nal.usda.gov:443 "POST /fdc/v1/foods/search?api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:26:22,015 [MainThread] DEBUG Prefetching fdc_id=334194
+2026-01-06 21:26:22,018 [MainThread] DEBUG Prefetching fdc_id=332397
+2026-01-06 21:26:22,035 [MainThread] DEBUG Prefetching fdc_id=174158
+2026-01-06 21:26:22,336 [Dummy-42] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/334194?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:26:22,339 [Dummy-42] DEBUG Prefetch done fdc_id=334194
+2026-01-06 21:26:22,341 [Dummy-43] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/332397?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:26:22,344 [Dummy-43] DEBUG Prefetch done fdc_id=332397
+2026-01-06 21:26:22,345 [Dummy-44] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/174158?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:26:22,348 [Dummy-44] DEBUG Prefetch done fdc_id=174158
+2026-01-06 21:26:23,569 [MainThread] DEBUG Prefetching fdc_id=174158
+2026-01-06 21:26:23,580 [Dummy-45] DEBUG Prefetch done fdc_id=174158
+2026-01-06 21:26:23,764 [MainThread] DEBUG UI double click row=0
+2026-01-06 21:26:23,766 [MainThread] DEBUG _add_row_to_formulation row=0
+2026-01-06 21:26:25,173 [MainThread] DEBUG _prompt_quantity returned mode=g value=100.0
+2026-01-06 21:26:25,190 [MainThread] DEBUG _start_add_fetch fdc_id=174158 mode=g value=100.0
+2026-01-06 21:26:25,193 [Dummy-46] DEBUG AddWorker start fdc_id=174158 attempts=4
+2026-01-06 21:26:25,193 [Dummy-46] DEBUG AddWorker attempt 1 fetching fdc_id=174158 timeout=8.0
+2026-01-06 21:26:25,194 [Dummy-46] DEBUG AddWorker success fdc_id=174158 nutrients=71
+2026-01-06 21:26:25,243 [MainThread] DEBUG _on_add_finished fdc_id=174158 mode=g value=100.0 nutrients=71
+2026-01-06 21:26:25,245 [MainThread] DEBUG _on_add_details_loaded fdc_id=174158 mode=g value=100.0 nutrients_count=71
+2026-01-06 21:26:25,247 [MainThread] DEBUG _augment_fat_nutrients input=71
+2026-01-06 21:26:25,609 [MainThread] DEBUG _refresh_formulation_views count=3
+2026-01-06 21:26:25,612 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:26:25,808 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:26:26,176 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:26:26,335 [MainThread] DEBUG _populate_formulation_tables rows=3
+2026-01-06 21:26:26,375 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:26:26,375 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:26:26,377 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:26:26,573 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:26:26,895 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:26:26,897 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:26:27,084 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:26:29,493 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:26:29,497 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:26:29,693 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:26:29,992 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:26:36,231 [MainThread] DEBUG _refresh_formulation_views count=3
+2026-01-06 21:26:36,237 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:26:36,469 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:26:36,780 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:26:36,941 [MainThread] DEBUG _populate_formulation_tables rows=3
+2026-01-06 21:26:36,976 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:26:36,976 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:26:36,978 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:26:37,209 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:26:37,553 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:26:37,555 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:26:37,770 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:26:40,350 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:26:40,354 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:26:40,564 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:26:40,878 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:26:44,837 [MainThread] DEBUG _refresh_formulation_views count=3
+2026-01-06 21:26:44,842 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:26:45,028 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:26:45,319 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:26:45,460 [MainThread] DEBUG _populate_formulation_tables rows=3
+2026-01-06 21:26:45,493 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:26:45,493 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:26:45,495 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:26:45,706 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:26:46,006 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:26:46,008 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:26:46,189 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:26:48,616 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:26:48,620 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:26:48,826 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:26:49,185 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:26:52,613 [MainThread] DEBUG _refresh_formulation_views count=3
+2026-01-06 21:26:52,620 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:26:52,868 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:26:53,266 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:26:53,442 [MainThread] DEBUG _populate_formulation_tables rows=3
+2026-01-06 21:26:53,473 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:26:53,474 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:26:53,475 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:26:53,678 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:26:53,988 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:26:53,990 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:26:54,186 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:26:56,808 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:26:56,814 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:26:57,023 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:26:57,350 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:26:58,288 [MainThread] DEBUG _refresh_formulation_views count=3
+2026-01-06 21:26:58,298 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:26:58,485 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:26:58,791 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:26:58,942 [MainThread] DEBUG _populate_formulation_tables rows=3
+2026-01-06 21:26:58,975 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:26:58,975 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:26:58,976 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:26:59,170 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:26:59,476 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:26:59,485 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:26:59,677 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:27:02,181 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:27:02,188 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:27:02,430 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:27:02,761 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:27:03,054 [MainThread] DEBUG _refresh_formulation_views count=3
+2026-01-06 21:27:03,057 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:27:03,246 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:27:03,550 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:27:03,750 [MainThread] DEBUG _populate_formulation_tables rows=3
+2026-01-06 21:27:03,788 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:27:03,788 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:27:03,790 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:27:03,981 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:27:04,283 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:27:04,285 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:27:04,473 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:27:07,038 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:27:07,042 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:27:07,233 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:27:07,536 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:27:12,141 [MainThread] DEBUG _refresh_formulation_views count=3
+2026-01-06 21:27:12,145 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:27:12,326 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:27:12,622 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:27:12,766 [MainThread] DEBUG _populate_formulation_tables rows=3
+2026-01-06 21:27:12,797 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:27:12,797 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:27:12,799 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:27:12,983 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:27:13,327 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:27:13,330 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:27:13,531 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:27:15,837 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:27:15,841 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:27:16,029 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:27:16,353 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:27:20,122 [MainThread] DEBUG _refresh_formulation_views count=3
+2026-01-06 21:27:20,127 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:27:20,373 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:27:20,675 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:27:20,823 [MainThread] DEBUG _populate_formulation_tables rows=3
+2026-01-06 21:27:20,854 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:27:20,854 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:27:20,856 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:27:21,036 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:27:21,344 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:27:21,346 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:27:21,529 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:27:24,431 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:27:24,436 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:27:24,642 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:27:24,976 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:27:27,702 [MainThread] DEBUG _refresh_formulation_views count=3
+2026-01-06 21:27:27,711 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:27:27,903 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:27:28,215 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:27:28,372 [MainThread] DEBUG _populate_formulation_tables rows=3
+2026-01-06 21:27:28,410 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:27:28,411 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:27:28,412 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:27:28,617 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:27:28,949 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:27:28,951 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:27:29,156 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:27:31,570 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:27:31,574 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:27:31,764 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:27:32,058 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:27:35,577 [MainThread] DEBUG _refresh_formulation_views count=3
+2026-01-06 21:27:35,583 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:27:35,808 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:27:36,130 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:27:36,292 [MainThread] DEBUG _populate_formulation_tables rows=3
+2026-01-06 21:27:36,335 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:27:36,335 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:27:36,337 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:27:36,564 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:27:36,896 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:27:36,897 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:27:37,107 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:27:39,724 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:27:39,728 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:27:39,953 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:27:40,291 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:27:49,554 [MainThread] DEBUG _refresh_formulation_views count=3
+2026-01-06 21:27:49,559 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:27:49,796 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:27:50,128 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:27:50,317 [MainThread] DEBUG _populate_formulation_tables rows=3
+2026-01-06 21:27:50,371 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:27:50,372 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:27:50,374 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:27:50,620 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:27:50,978 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:27:50,981 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:27:51,187 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:27:54,110 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:27:54,114 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:27:54,304 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:27:54,613 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:27:57,352 [MainThread] DEBUG _refresh_formulation_views count=3
+2026-01-06 21:27:57,356 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:27:57,542 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:27:57,846 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:27:58,010 [MainThread] DEBUG _populate_formulation_tables rows=3
+2026-01-06 21:27:58,050 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:27:58,050 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:27:58,051 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:27:58,261 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:27:58,601 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:27:58,603 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:27:58,815 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:28:01,383 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:28:01,391 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:28:01,619 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:28:01,958 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:28:06,512 [MainThread] DEBUG _refresh_formulation_views count=3
+2026-01-06 21:28:06,518 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:28:06,748 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:28:07,045 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:28:07,218 [MainThread] DEBUG _populate_formulation_tables rows=3
+2026-01-06 21:28:07,258 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:28:07,259 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:28:07,261 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:28:07,464 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:28:07,798 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:28:07,800 [MainThread] DEBUG calculate_totals_with_fallback start items=3
+2026-01-06 21:28:08,007 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=177
+2026-01-06 21:28:10,329 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:28:10,333 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:28:10,540 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:28:10,846 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:29:04,165 [MainThread] DEBUG _populate_formulation_tables rows=31
+2026-01-06 21:29:04,594 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:29:04,704 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:29:04,745 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=0
+2026-01-06 21:29:04,754 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:29:04,794 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=0
+2026-01-06 21:29:04,925 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:29:04,975 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=0
+2026-01-06 21:29:05,587 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/171320?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:05,972 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/172336?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:06,364 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/748366?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:06,686 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/173468?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:07,007 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2644283?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:07,336 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2707920?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:07,656 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2720960?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:07,976 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2257045?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:08,667 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/1999631?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:09,066 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/746772?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:09,476 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/746776?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:09,798 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/746778?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:10,127 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2257046?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:10,598 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2257044?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:11,017 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/1999630?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:11,347 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/173532?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:11,938 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/173534?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:12,287 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2003591?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:12,647 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2003597?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:13,078 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/169102?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:13,417 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/168113?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:13,747 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/171354?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:14,079 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/1104812?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:14,477 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/169707?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:14,819 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/169758?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:15,166 [Dummy-47] DEBUG https://api.nal.usda.gov:443 "GET /fdc/v1/food/2512381?format=abridged&api_key=74Dh97KuZSr4GHZ4Zp8Q3MBgy2JZ7svhbppMv5kd HTTP/1.1" 200 None
+2026-01-06 21:29:15,258 [MainThread] DEBUG _augment_fat_nutrients input=95
+2026-01-06 21:29:15,291 [MainThread] DEBUG _augment_fat_nutrients input=95
+2026-01-06 21:29:15,501 [MainThread] DEBUG _augment_fat_nutrients input=71
+2026-01-06 21:29:15,525 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:29:15,724 [MainThread] DEBUG _augment_fat_nutrients input=124
+2026-01-06 21:29:15,763 [MainThread] DEBUG _augment_fat_nutrients input=125
+2026-01-06 21:29:16,091 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:29:16,123 [MainThread] DEBUG _augment_fat_nutrients input=103
+2026-01-06 21:29:16,376 [MainThread] DEBUG _augment_fat_nutrients input=38
+2026-01-06 21:29:16,389 [MainThread] DEBUG _augment_fat_nutrients input=39
+2026-01-06 21:29:16,524 [MainThread] DEBUG _augment_fat_nutrients input=92
+2026-01-06 21:29:16,551 [MainThread] DEBUG _augment_fat_nutrients input=93
+2026-01-06 21:29:16,766 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:29:16,773 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:29:16,843 [MainThread] DEBUG _augment_fat_nutrients input=65
+2026-01-06 21:29:16,866 [MainThread] DEBUG _augment_fat_nutrients input=66
+2026-01-06 21:29:17,048 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:17,095 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:17,418 [MainThread] DEBUG _augment_fat_nutrients input=15
+2026-01-06 21:29:17,424 [MainThread] DEBUG _augment_fat_nutrients input=16
+2026-01-06 21:29:17,512 [MainThread] DEBUG _augment_fat_nutrients input=58
+2026-01-06 21:29:17,530 [MainThread] DEBUG _augment_fat_nutrients input=59
+2026-01-06 21:29:17,722 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:29:17,759 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:29:18,084 [MainThread] DEBUG _augment_fat_nutrients input=52
+2026-01-06 21:29:18,104 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:29:18,279 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:29:18,320 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:29:18,671 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:18,724 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:19,111 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:19,167 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:19,551 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:19,603 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:19,955 [MainThread] DEBUG _augment_fat_nutrients input=61
+2026-01-06 21:29:19,974 [MainThread] DEBUG _augment_fat_nutrients input=62
+2026-01-06 21:29:20,155 [MainThread] DEBUG _augment_fat_nutrients input=65
+2026-01-06 21:29:20,175 [MainThread] DEBUG _augment_fat_nutrients input=66
+2026-01-06 21:29:20,425 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:29:20,471 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:29:20,878 [MainThread] DEBUG _augment_fat_nutrients input=25
+2026-01-06 21:29:20,887 [MainThread] DEBUG _augment_fat_nutrients input=26
+2026-01-06 21:29:20,996 [MainThread] DEBUG _augment_fat_nutrients input=113
+2026-01-06 21:29:21,029 [MainThread] DEBUG _augment_fat_nutrients input=114
+2026-01-06 21:29:21,284 [MainThread] DEBUG _augment_fat_nutrients input=33
+2026-01-06 21:29:21,295 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:29:21,391 [MainThread] DEBUG _augment_fat_nutrients input=33
+2026-01-06 21:29:21,402 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:29:21,516 [MainThread] DEBUG _augment_fat_nutrients input=70
+2026-01-06 21:29:21,537 [MainThread] DEBUG _augment_fat_nutrients input=71
+2026-01-06 21:29:21,741 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:29:21,762 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:29:21,990 [MainThread] DEBUG _augment_fat_nutrients input=70
+2026-01-06 21:29:22,018 [MainThread] DEBUG _augment_fat_nutrients input=71
+2026-01-06 21:29:22,269 [MainThread] DEBUG _augment_fat_nutrients input=23
+2026-01-06 21:29:22,280 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:29:22,410 [MainThread] DEBUG _augment_fat_nutrients input=109
+2026-01-06 21:29:22,456 [MainThread] DEBUG _augment_fat_nutrients input=110
+2026-01-06 21:29:22,878 [MainThread] DEBUG _augment_fat_nutrients input=100
+2026-01-06 21:29:22,917 [MainThread] DEBUG _augment_fat_nutrients input=101
+2026-01-06 21:29:23,225 [MainThread] DEBUG _augment_fat_nutrients input=29
+2026-01-06 21:29:23,237 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:29:25,201 [MainThread] DEBUG _refresh_formulation_views count=31
+2026-01-06 21:29:25,220 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:29:25,440 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:29:25,623 [MainThread] DEBUG _augment_fat_nutrients input=126
+2026-01-06 21:29:25,922 [MainThread] DEBUG _augment_fat_nutrients input=104
+2026-01-06 21:29:26,176 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:29:26,299 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:29:26,501 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:29:26,557 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:29:26,678 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:27,031 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:29:27,073 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:29:27,242 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:29:27,596 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:29:27,738 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:29:28,021 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:28,337 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:28,622 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:28,936 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:29:29,099 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:29:29,274 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:29:29,695 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:29:29,757 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:29:29,977 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:29:30,083 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:29:30,178 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:29:30,367 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:29:30,531 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:29:30,723 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:29:30,784 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:29:31,064 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:29:31,275 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:29:31,355 [MainThread] DEBUG _populate_formulation_tables rows=31
+2026-01-06 21:29:31,672 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:29:31,672 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:29:31,674 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:29:31,944 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=215
+2026-01-06 21:29:32,329 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:29:32,331 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:29:32,608 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=215
+2026-01-06 21:29:36,792 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:29:36,829 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:29:37,271 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:29:37,637 [MainThread] DEBUG _augment_fat_nutrients input=126
+2026-01-06 21:29:38,256 [MainThread] DEBUG _augment_fat_nutrients input=104
+2026-01-06 21:29:38,780 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:29:39,124 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:29:39,688 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:29:39,848 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:29:40,170 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:41,039 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:29:41,152 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:29:41,559 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:29:42,366 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:29:42,752 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:29:43,505 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:44,296 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:45,016 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:29:45,767 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:29:46,166 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:29:46,545 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:29:47,439 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:29:47,585 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:29:48,075 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:29:48,270 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:29:48,467 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:29:48,833 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:29:49,200 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:29:49,614 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:29:49,742 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:29:50,397 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:29:50,815 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:33:52,825 [MainThread] DEBUG _populate_formulation_tables rows=31
+2026-01-06 21:33:53,203 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:33:53,322 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:33:53,360 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=0
+2026-01-06 21:33:53,366 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:33:53,396 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=0
+2026-01-06 21:33:53,478 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:33:53,507 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=0
+2026-01-06 21:33:53,860 [MainThread] DEBUG _augment_fat_nutrients input=95
+2026-01-06 21:33:53,917 [MainThread] DEBUG _augment_fat_nutrients input=95
+2026-01-06 21:33:54,231 [MainThread] DEBUG _augment_fat_nutrients input=71
+2026-01-06 21:33:54,253 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:33:54,468 [MainThread] DEBUG _augment_fat_nutrients input=124
+2026-01-06 21:33:54,511 [MainThread] DEBUG _augment_fat_nutrients input=125
+2026-01-06 21:33:54,947 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:33:54,988 [MainThread] DEBUG _augment_fat_nutrients input=103
+2026-01-06 21:33:55,261 [MainThread] DEBUG _augment_fat_nutrients input=38
+2026-01-06 21:33:55,274 [MainThread] DEBUG _augment_fat_nutrients input=39
+2026-01-06 21:33:55,444 [MainThread] DEBUG _augment_fat_nutrients input=92
+2026-01-06 21:33:55,477 [MainThread] DEBUG _augment_fat_nutrients input=93
+2026-01-06 21:33:55,692 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:33:55,698 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:33:55,787 [MainThread] DEBUG _augment_fat_nutrients input=65
+2026-01-06 21:33:55,811 [MainThread] DEBUG _augment_fat_nutrients input=66
+2026-01-06 21:33:55,997 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:33:56,043 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:33:56,350 [MainThread] DEBUG _augment_fat_nutrients input=15
+2026-01-06 21:33:56,356 [MainThread] DEBUG _augment_fat_nutrients input=16
+2026-01-06 21:33:56,440 [MainThread] DEBUG _augment_fat_nutrients input=58
+2026-01-06 21:33:56,463 [MainThread] DEBUG _augment_fat_nutrients input=59
+2026-01-06 21:33:56,666 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:33:56,702 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:33:57,015 [MainThread] DEBUG _augment_fat_nutrients input=52
+2026-01-06 21:33:57,034 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:33:57,198 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:33:57,233 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:33:57,545 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:33:57,591 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:33:57,938 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:33:58,013 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:33:58,352 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:33:58,399 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:33:58,735 [MainThread] DEBUG _augment_fat_nutrients input=61
+2026-01-06 21:33:58,754 [MainThread] DEBUG _augment_fat_nutrients input=62
+2026-01-06 21:33:58,934 [MainThread] DEBUG _augment_fat_nutrients input=65
+2026-01-06 21:33:58,956 [MainThread] DEBUG _augment_fat_nutrients input=66
+2026-01-06 21:33:59,190 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:33:59,241 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:33:59,650 [MainThread] DEBUG _augment_fat_nutrients input=25
+2026-01-06 21:33:59,659 [MainThread] DEBUG _augment_fat_nutrients input=26
+2026-01-06 21:33:59,764 [MainThread] DEBUG _augment_fat_nutrients input=113
+2026-01-06 21:33:59,796 [MainThread] DEBUG _augment_fat_nutrients input=114
+2026-01-06 21:34:00,042 [MainThread] DEBUG _augment_fat_nutrients input=33
+2026-01-06 21:34:00,056 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:34:00,165 [MainThread] DEBUG _augment_fat_nutrients input=33
+2026-01-06 21:34:00,177 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:34:00,288 [MainThread] DEBUG _augment_fat_nutrients input=70
+2026-01-06 21:34:00,309 [MainThread] DEBUG _augment_fat_nutrients input=71
+2026-01-06 21:34:00,507 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:34:00,530 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:34:00,727 [MainThread] DEBUG _augment_fat_nutrients input=70
+2026-01-06 21:34:00,748 [MainThread] DEBUG _augment_fat_nutrients input=71
+2026-01-06 21:34:00,938 [MainThread] DEBUG _augment_fat_nutrients input=23
+2026-01-06 21:34:00,945 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:34:01,049 [MainThread] DEBUG _augment_fat_nutrients input=109
+2026-01-06 21:34:01,081 [MainThread] DEBUG _augment_fat_nutrients input=110
+2026-01-06 21:34:01,391 [MainThread] DEBUG _augment_fat_nutrients input=100
+2026-01-06 21:34:01,421 [MainThread] DEBUG _augment_fat_nutrients input=101
+2026-01-06 21:34:01,642 [MainThread] DEBUG _augment_fat_nutrients input=29
+2026-01-06 21:34:01,651 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:34:04,149 [MainThread] DEBUG _refresh_formulation_views count=31
+2026-01-06 21:34:04,164 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:34:04,347 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:34:04,497 [MainThread] DEBUG _augment_fat_nutrients input=126
+2026-01-06 21:34:04,771 [MainThread] DEBUG _augment_fat_nutrients input=104
+2026-01-06 21:34:05,022 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:34:05,137 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:34:05,322 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:34:05,371 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:34:05,480 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:34:05,785 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:34:05,823 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:34:05,978 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:34:06,284 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:34:06,407 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:34:06,661 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:34:06,962 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:34:07,289 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:34:07,604 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:34:07,762 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:34:07,929 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:34:08,328 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:34:08,392 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:34:08,620 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:34:08,704 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:34:08,796 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:34:08,962 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:34:09,125 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:34:09,312 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:34:09,372 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:34:09,648 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:34:09,839 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:34:09,912 [MainThread] DEBUG _populate_formulation_tables rows=31
+2026-01-06 21:34:10,199 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:34:10,200 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:34:10,201 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:34:10,475 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=215
+2026-01-06 21:34:10,852 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:34:10,854 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:34:11,121 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=215
+2026-01-06 21:34:14,407 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:34:14,458 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:34:14,669 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:34:14,832 [MainThread] DEBUG _augment_fat_nutrients input=126
+2026-01-06 21:34:15,127 [MainThread] DEBUG _augment_fat_nutrients input=104
+2026-01-06 21:34:15,390 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:34:15,510 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:34:15,735 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:34:15,789 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:34:15,919 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:34:16,253 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:34:16,296 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:34:16,465 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:34:16,793 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:34:16,937 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:34:17,219 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:34:17,508 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:34:17,792 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:34:18,127 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:34:18,299 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:34:18,481 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:34:18,877 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:34:18,944 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:34:19,164 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:34:19,250 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:34:19,334 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:34:19,495 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:34:19,666 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:34:19,860 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:34:19,917 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:34:20,190 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:34:20,374 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:36:50,037 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:36:50,044 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:36:50,335 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=215
+2026-01-06 21:36:50,697 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:41:37,096 [MainThread] DEBUG _refresh_formulation_views count=31
+2026-01-06 21:41:37,134 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:41:37,320 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:41:37,535 [MainThread] DEBUG _augment_fat_nutrients input=126
+2026-01-06 21:41:37,811 [MainThread] DEBUG _augment_fat_nutrients input=104
+2026-01-06 21:41:38,128 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:41:38,235 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:41:38,418 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:41:38,468 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:41:38,582 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:41:38,958 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:41:39,006 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:41:39,178 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:41:39,549 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:41:39,688 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:41:39,963 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:41:40,287 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:41:40,608 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:41:40,934 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:41:41,090 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:41:41,265 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:41:41,661 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:41:41,726 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:41:41,943 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:41:42,026 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:41:42,108 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:41:42,264 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:41:42,422 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:41:42,606 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:41:42,661 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:41:42,938 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:41:43,125 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:41:43,200 [MainThread] DEBUG _populate_formulation_tables rows=31
+2026-01-06 21:41:43,528 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:41:43,528 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:41:43,530 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:41:43,793 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=215
+2026-01-06 21:41:44,165 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:41:44,167 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:41:44,454 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=215
+2026-01-06 21:41:52,143 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:41:52,162 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:41:52,419 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:41:52,629 [MainThread] DEBUG _augment_fat_nutrients input=126
+2026-01-06 21:41:52,978 [MainThread] DEBUG _augment_fat_nutrients input=104
+2026-01-06 21:41:53,283 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:41:53,414 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:41:53,608 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:41:53,661 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:41:53,803 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:41:54,112 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:41:54,150 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:41:54,300 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:41:54,603 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:41:54,733 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:41:54,985 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:41:55,290 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:41:55,572 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:41:55,892 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:41:56,050 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:41:56,214 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:41:56,611 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:41:56,673 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:41:56,882 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:41:56,966 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:41:57,049 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:41:57,210 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:41:57,372 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:41:57,549 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:41:57,605 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:41:57,875 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:41:58,064 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:42:21,529 [MainThread] DEBUG _populate_formulation_tables rows=31
+2026-01-06 21:42:21,834 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:42:21,930 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:42:21,960 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=0
+2026-01-06 21:42:22,131 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:42:22,174 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=0
+2026-01-06 21:42:22,488 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:42:22,518 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=0
+2026-01-06 21:42:22,956 [MainThread] DEBUG _augment_fat_nutrients input=95
+2026-01-06 21:42:22,993 [MainThread] DEBUG _augment_fat_nutrients input=95
+2026-01-06 21:42:23,297 [MainThread] DEBUG _augment_fat_nutrients input=71
+2026-01-06 21:42:23,326 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:42:23,546 [MainThread] DEBUG _augment_fat_nutrients input=124
+2026-01-06 21:42:23,596 [MainThread] DEBUG _augment_fat_nutrients input=125
+2026-01-06 21:42:23,945 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:42:23,976 [MainThread] DEBUG _augment_fat_nutrients input=103
+2026-01-06 21:42:24,254 [MainThread] DEBUG _augment_fat_nutrients input=38
+2026-01-06 21:42:24,267 [MainThread] DEBUG _augment_fat_nutrients input=39
+2026-01-06 21:42:24,412 [MainThread] DEBUG _augment_fat_nutrients input=92
+2026-01-06 21:42:24,440 [MainThread] DEBUG _augment_fat_nutrients input=93
+2026-01-06 21:42:24,656 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:42:24,663 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:42:24,736 [MainThread] DEBUG _augment_fat_nutrients input=65
+2026-01-06 21:42:24,757 [MainThread] DEBUG _augment_fat_nutrients input=66
+2026-01-06 21:42:24,941 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:24,988 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:25,309 [MainThread] DEBUG _augment_fat_nutrients input=15
+2026-01-06 21:42:25,316 [MainThread] DEBUG _augment_fat_nutrients input=16
+2026-01-06 21:42:25,404 [MainThread] DEBUG _augment_fat_nutrients input=58
+2026-01-06 21:42:25,427 [MainThread] DEBUG _augment_fat_nutrients input=59
+2026-01-06 21:42:25,643 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:42:25,735 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:42:26,365 [MainThread] DEBUG _augment_fat_nutrients input=52
+2026-01-06 21:42:26,388 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:42:26,686 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:42:26,740 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:42:27,058 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:27,103 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:27,533 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:27,638 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:28,061 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:28,108 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:28,474 [MainThread] DEBUG _augment_fat_nutrients input=61
+2026-01-06 21:42:28,493 [MainThread] DEBUG _augment_fat_nutrients input=62
+2026-01-06 21:42:28,681 [MainThread] DEBUG _augment_fat_nutrients input=65
+2026-01-06 21:42:28,706 [MainThread] DEBUG _augment_fat_nutrients input=66
+2026-01-06 21:42:28,942 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:42:28,990 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:42:29,412 [MainThread] DEBUG _augment_fat_nutrients input=25
+2026-01-06 21:42:29,421 [MainThread] DEBUG _augment_fat_nutrients input=26
+2026-01-06 21:42:29,531 [MainThread] DEBUG _augment_fat_nutrients input=113
+2026-01-06 21:42:29,568 [MainThread] DEBUG _augment_fat_nutrients input=114
+2026-01-06 21:42:29,824 [MainThread] DEBUG _augment_fat_nutrients input=33
+2026-01-06 21:42:29,835 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:42:29,932 [MainThread] DEBUG _augment_fat_nutrients input=33
+2026-01-06 21:42:29,945 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:42:30,055 [MainThread] DEBUG _augment_fat_nutrients input=70
+2026-01-06 21:42:30,083 [MainThread] DEBUG _augment_fat_nutrients input=71
+2026-01-06 21:42:30,379 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:42:30,412 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:42:30,692 [MainThread] DEBUG _augment_fat_nutrients input=70
+2026-01-06 21:42:30,723 [MainThread] DEBUG _augment_fat_nutrients input=71
+2026-01-06 21:42:30,987 [MainThread] DEBUG _augment_fat_nutrients input=23
+2026-01-06 21:42:31,001 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:42:31,094 [MainThread] DEBUG _augment_fat_nutrients input=109
+2026-01-06 21:42:31,127 [MainThread] DEBUG _augment_fat_nutrients input=110
+2026-01-06 21:42:31,444 [MainThread] DEBUG _augment_fat_nutrients input=100
+2026-01-06 21:42:31,474 [MainThread] DEBUG _augment_fat_nutrients input=101
+2026-01-06 21:42:31,704 [MainThread] DEBUG _augment_fat_nutrients input=29
+2026-01-06 21:42:31,713 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:42:33,631 [MainThread] DEBUG _refresh_formulation_views count=31
+2026-01-06 21:42:33,649 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:42:33,834 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:42:33,984 [MainThread] DEBUG _augment_fat_nutrients input=126
+2026-01-06 21:42:34,246 [MainThread] DEBUG _augment_fat_nutrients input=104
+2026-01-06 21:42:34,481 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:42:34,589 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:42:34,802 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:42:34,855 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:42:34,972 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:35,270 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:42:35,307 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:42:35,458 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:42:35,765 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:42:35,890 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:42:36,152 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:36,466 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:36,783 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:37,106 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:42:37,269 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:42:37,447 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:42:37,847 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:42:37,910 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:42:38,119 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:42:38,208 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:42:38,293 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:42:38,456 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:42:38,618 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:42:38,806 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:42:38,862 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:42:39,163 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:42:39,357 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:42:39,427 [MainThread] DEBUG _populate_formulation_tables rows=31
+2026-01-06 21:42:39,736 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:42:39,736 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:42:39,737 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:42:40,012 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=215
+2026-01-06 21:42:40,395 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:42:40,397 [MainThread] DEBUG calculate_totals_with_fallback start items=31
+2026-01-06 21:42:40,685 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=215
+2026-01-06 21:42:48,339 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:42:48,358 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:42:48,546 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:42:48,696 [MainThread] DEBUG _augment_fat_nutrients input=126
+2026-01-06 21:42:48,966 [MainThread] DEBUG _augment_fat_nutrients input=104
+2026-01-06 21:42:49,196 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:42:49,304 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:42:49,497 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:42:49,550 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:42:49,667 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:49,980 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:42:50,017 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:42:50,177 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:42:50,486 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:42:50,615 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:42:50,874 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:51,174 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:51,463 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:42:51,778 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:42:51,999 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:42:52,217 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:42:52,753 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:42:52,835 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:42:53,155 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:42:53,258 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:42:53,368 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:42:53,548 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:42:53,739 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:42:53,939 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:42:53,997 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:42:54,269 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:42:54,481 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:44:33,939 [MainThread] DEBUG _refresh_formulation_views count=30
+2026-01-06 21:44:33,962 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:44:34,117 [MainThread] DEBUG _augment_fat_nutrients input=126
+2026-01-06 21:44:34,396 [MainThread] DEBUG _augment_fat_nutrients input=104
+2026-01-06 21:44:34,630 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:44:34,736 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:44:34,918 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:44:34,969 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:44:35,077 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:44:35,387 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:44:35,424 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:44:35,574 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:44:35,868 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:44:36,008 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:44:36,264 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:44:36,555 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:44:36,841 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:44:37,294 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:44:37,531 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:44:37,740 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:44:38,172 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:44:38,234 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:44:38,468 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:44:38,556 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:44:38,653 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:44:38,913 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:44:39,119 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:44:39,378 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:44:39,431 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:44:39,702 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:44:39,891 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:44:39,989 [MainThread] DEBUG _populate_formulation_tables rows=30
+2026-01-06 21:44:40,286 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:44:40,287 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:44:40,288 [MainThread] DEBUG calculate_totals_with_fallback start items=30
+2026-01-06 21:44:40,572 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=215
+2026-01-06 21:44:40,954 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:44:40,956 [MainThread] DEBUG calculate_totals_with_fallback start items=30
+2026-01-06 21:44:41,238 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=215
+2026-01-06 21:44:48,910 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:44:48,931 [MainThread] DEBUG _augment_fat_nutrients input=73
+2026-01-06 21:44:49,085 [MainThread] DEBUG _augment_fat_nutrients input=126
+2026-01-06 21:44:49,384 [MainThread] DEBUG _augment_fat_nutrients input=104
+2026-01-06 21:44:49,627 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:44:49,741 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:44:49,934 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:44:49,987 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:44:50,129 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:44:50,428 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:44:50,465 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:44:50,624 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:44:50,940 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:44:51,073 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:44:51,345 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:44:51,654 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:44:51,954 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:44:52,342 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:44:52,542 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:44:52,757 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:44:53,304 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:44:53,401 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:44:53,648 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:44:53,770 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:44:53,857 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:44:54,020 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:44:54,188 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:44:54,388 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:44:54,443 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:44:54,709 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:44:54,894 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:44:55,193 [MainThread] DEBUG _refresh_formulation_views count=29
+2026-01-06 21:44:55,209 [MainThread] DEBUG _augment_fat_nutrients input=126
+2026-01-06 21:44:55,480 [MainThread] DEBUG _augment_fat_nutrients input=104
+2026-01-06 21:44:55,713 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:44:55,820 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:44:56,007 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:44:56,056 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:44:56,167 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:44:56,483 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:44:56,524 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:44:56,706 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:44:57,009 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:44:57,136 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:44:57,401 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:44:57,704 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:44:57,986 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:44:58,301 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:44:58,458 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:44:58,631 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:44:59,068 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:44:59,182 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:44:59,432 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:44:59,517 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:44:59,602 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:44:59,767 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:44:59,922 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:45:00,128 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:45:00,185 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:45:00,489 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:45:00,681 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:45:00,754 [MainThread] DEBUG _populate_formulation_tables rows=29
+2026-01-06 21:45:01,051 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:45:01,051 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:45:01,052 [MainThread] DEBUG calculate_totals_with_fallback start items=29
+2026-01-06 21:45:01,325 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=215
+2026-01-06 21:45:01,696 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:45:01,698 [MainThread] DEBUG calculate_totals_with_fallback start items=29
+2026-01-06 21:45:01,992 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=215
+2026-01-06 21:45:15,484 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:45:15,518 [MainThread] DEBUG _augment_fat_nutrients input=126
+2026-01-06 21:45:16,118 [MainThread] DEBUG _augment_fat_nutrients input=104
+2026-01-06 21:45:16,641 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:45:16,891 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:45:17,314 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:45:17,427 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:45:17,681 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:45:18,368 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:45:18,453 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:45:18,792 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:45:19,474 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:45:19,763 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:45:20,353 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:45:21,023 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:45:21,680 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:45:22,523 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:45:22,988 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:45:23,474 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:45:24,568 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:45:24,714 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:45:25,211 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:45:25,408 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:45:25,604 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:45:25,969 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:45:26,331 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:45:26,746 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:45:26,872 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:45:27,488 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:45:27,912 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:45:28,360 [MainThread] DEBUG _refresh_formulation_views count=28
+2026-01-06 21:45:28,395 [MainThread] DEBUG _augment_fat_nutrients input=104
+2026-01-06 21:45:28,920 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:45:29,173 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:45:29,655 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:45:29,767 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:45:30,013 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:45:30,777 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:45:30,863 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:45:31,208 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:45:31,889 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:45:32,179 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:45:32,775 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:45:33,437 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:45:34,078 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:45:34,809 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:45:35,237 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:45:35,688 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:45:36,601 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:45:36,744 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:45:37,237 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:45:37,434 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:45:37,628 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:45:37,992 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:45:38,353 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:45:38,768 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:45:38,894 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:45:39,503 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:45:39,929 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:45:40,091 [MainThread] DEBUG _populate_formulation_tables rows=28
+2026-01-06 21:45:40,745 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:45:40,746 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:45:40,749 [MainThread] DEBUG calculate_totals_with_fallback start items=28
+2026-01-06 21:45:41,361 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=215
+2026-01-06 21:45:42,211 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:45:42,215 [MainThread] DEBUG calculate_totals_with_fallback start items=28
+2026-01-06 21:45:42,816 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=215
+2026-01-06 21:46:04,826 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:46:04,870 [MainThread] DEBUG _augment_fat_nutrients input=104
+2026-01-06 21:46:05,581 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:46:05,992 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:46:06,545 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:46:06,720 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:46:07,032 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:46:07,874 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:46:07,981 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:46:08,322 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:46:09,009 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:46:09,301 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:46:09,887 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:46:10,541 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:46:11,189 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:46:11,941 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:46:12,301 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:46:12,697 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:46:13,778 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:46:13,922 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:46:14,411 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:46:14,609 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:46:14,807 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:46:15,173 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:46:15,541 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:46:15,974 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:46:16,109 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:46:16,724 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:46:17,146 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:46:17,782 [MainThread] DEBUG _refresh_formulation_views count=27
+2026-01-06 21:46:17,811 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:46:18,056 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:46:18,483 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:46:18,607 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:46:18,878 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:46:19,609 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:46:19,704 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:46:20,063 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:46:20,763 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:46:21,047 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:46:21,786 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:46:22,730 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:46:23,621 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:46:24,913 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:46:25,335 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:46:25,949 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:46:26,905 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:46:27,019 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:46:27,655 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:46:28,392 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:46:28,678 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:46:29,234 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:46:29,561 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:46:30,233 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:46:30,429 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:46:31,599 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:46:32,507 [MainThread] DEBUG _augment_fat_nutrients input=30
+2026-01-06 21:46:32,790 [MainThread] DEBUG _populate_formulation_tables rows=27
+2026-01-06 21:46:33,800 [MainThread] DEBUG _populate_formulation_tables done
+2026-01-06 21:46:33,802 [MainThread] DEBUG _populate_totals_table start
+2026-01-06 21:46:33,808 [MainThread] DEBUG calculate_totals_with_fallback start items=27
+2026-01-06 21:46:34,939 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=213
+2026-01-06 21:46:35,971 [MainThread] DEBUG _populate_totals_table done
+2026-01-06 21:46:35,976 [MainThread] DEBUG calculate_totals_with_fallback start items=27
+2026-01-06 21:46:36,758 [MainThread] DEBUG calculate_totals_with_fallback done (via presenter) nutrients=213
+2026-01-06 21:46:56,499 [MainThread] DEBUG _refresh_formulation_views done
+2026-01-06 21:46:56,530 [MainThread] DEBUG _augment_fat_nutrients input=41
+2026-01-06 21:46:56,777 [MainThread] DEBUG _augment_fat_nutrients input=94
+2026-01-06 21:46:57,271 [MainThread] DEBUG _augment_fat_nutrients input=20
+2026-01-06 21:46:57,383 [MainThread] DEBUG _augment_fat_nutrients input=68
+2026-01-06 21:46:57,634 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:46:58,327 [MainThread] DEBUG _augment_fat_nutrients input=19
+2026-01-06 21:46:58,414 [MainThread] DEBUG _augment_fat_nutrients input=60
+2026-01-06 21:46:58,761 [MainThread] DEBUG _augment_fat_nutrients input=122
+2026-01-06 21:46:59,440 [MainThread] DEBUG _augment_fat_nutrients input=53
+2026-01-06 21:46:59,741 [MainThread] DEBUG _augment_fat_nutrients input=118
+2026-01-06 21:47:00,350 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:47:01,016 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:47:01,661 [MainThread] DEBUG _augment_fat_nutrients input=157
+2026-01-06 21:47:02,388 [MainThread] DEBUG _augment_fat_nutrients input=63
+2026-01-06 21:47:02,817 [MainThread] DEBUG _augment_fat_nutrients input=67
+2026-01-06 21:47:03,208 [MainThread] DEBUG _augment_fat_nutrients input=159
+2026-01-06 21:47:04,103 [MainThread] DEBUG _augment_fat_nutrients input=27
+2026-01-06 21:47:04,248 [MainThread] DEBUG _augment_fat_nutrients input=115
+2026-01-06 21:47:04,739 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:47:04,932 [MainThread] DEBUG _augment_fat_nutrients input=34
+2026-01-06 21:47:05,123 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:47:05,497 [MainThread] DEBUG _augment_fat_nutrients input=74
+2026-01-06 21:47:05,854 [MainThread] DEBUG _augment_fat_nutrients input=72
+2026-01-06 21:47:06,282 [MainThread] DEBUG _augment_fat_nutrients input=24
+2026-01-06 21:47:06,407 [MainThread] DEBUG _augment_fat_nutrients input=111
+2026-01-06 21:47:07,021 [MainThread] DEBUG _augment_fat_nutrients input=102
+2026-01-06 21:47:07,489 [MainThread] DEBUG _augment_fat_nutrients input=30

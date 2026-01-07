@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor, QIcon, QPainter, QPen, QPalette
-from PySide6.QtWidgets import QApplication, QStyle, QStyleOptionViewItem, QStyledItemDelegate, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QStyle,
+    QStyleOptionViewItem,
+    QStyledItemDelegate,
+    QTableWidget,
+    QWidget,
+)
 
 
 class LabelTableDelegate(QStyledItemDelegate):
@@ -27,6 +34,17 @@ class LabelTableDelegate(QStyledItemDelegate):
         self.handle_color = QColor("#1f6fbd")
         self.grid_color = QColor("#c0c0c0")
         self.suppress_hover = False
+        self._table = parent if isinstance(parent, QTableWidget) else None
+
+    def _resolve_table(self, widget: QWidget | None) -> QTableWidget | None:
+        if isinstance(widget, QTableWidget):
+            return widget
+        parent = widget.parentWidget() if widget else None
+        while parent is not None and not isinstance(parent, QTableWidget):
+            parent = parent.parentWidget()
+        if isinstance(parent, QTableWidget):
+            return parent
+        return self._table
 
     def paint(self, painter: QPainter, option, index) -> None:  # type: ignore[override]
         state = option.state
@@ -52,7 +70,7 @@ class LabelTableDelegate(QStyledItemDelegate):
             painter.restore()
 
         # For fat-child name column, avoid elide and draw across the adjacent amount column.
-        if (is_fat_child and index.column() == 0) or (is_header_span and index.column() == 1):
+        if is_header_span and index.column() == 1:
             opt = QStyleOptionViewItem(option)
             self.initStyleOption(opt, index)
             opt.state = state
@@ -72,32 +90,93 @@ class LabelTableDelegate(QStyledItemDelegate):
             text_rect = opt.rect
             clip_rect = opt.rect
             extra = 0
-            if is_fat_child:
-                try:
-                    extra = opt.widget.columnWidth(1) - 6  # leave small gap before amount text
-                except Exception:
-                    extra = 0
-                if extra > 0:
-                    text_rect.setWidth(text_rect.width() + extra)
-                    clip_rect.setWidth(clip_rect.width() + extra)
-                text_rect.adjust(4, 0, -2, 0)  # small padding, avoid hitting amount text
-                align = Qt.AlignLeft | Qt.AlignVCenter
-            else:
-                # Header span: extend into VD column to avoid elide, keep centered on its own column.
-                try:
-                    extra = opt.widget.columnWidth(2) - 6
-                except Exception:
-                    extra = 0
-                if extra > 0:
-                    shift = extra // 2
-                    text_rect.adjust(-shift, 0, extra - shift, 0)
-                    clip_rect.adjust(-shift, 0, extra - shift, 0)
-                text_rect.adjust(0, 0, -2, 0)
-                align = Qt.AlignCenter
+            # Header span: extend into VD column to avoid elide, keep centered on its own column.
+            table = self._resolve_table(opt.widget)
+            if table is not None:
+                extra = table.columnWidth(2) - 6
+            if extra > 0:
+                shift = extra // 2
+                text_rect.adjust(-shift, 0, extra - shift, 0)
+                clip_rect.adjust(-shift, 0, extra - shift, 0)
+            text_rect.adjust(0, 0, -2, 0)
             painter.setClipRect(clip_rect)
             painter.setPen(opt.palette.color(QPalette.Text))
             painter.setFont(opt.font)
-            painter.drawText(text_rect, align, str(index.data() or ""))
+            painter.drawText(text_rect, Qt.AlignCenter, str(index.data() or ""))
+            painter.restore()
+        elif is_fat_child and index.column() == 0:
+            opt = QStyleOptionViewItem(option)
+            self.initStyleOption(opt, index)
+            opt.state = state
+            opt.state &= ~(QStyle.State_HasFocus | QStyle.State_Selected)
+            opt.palette.setBrush(QPalette.Base, Qt.transparent)
+            opt.palette.setBrush(QPalette.Window, Qt.transparent)
+            opt.palette.setBrush(QPalette.AlternateBase, Qt.transparent)
+            opt.palette.setBrush(QPalette.Highlight, Qt.transparent)
+            opt.palette.setBrush(QPalette.HighlightedText, opt.palette.brush(QPalette.Text))
+            opt.backgroundBrush = QBrush(Qt.transparent)
+            opt.text = ""
+            opt.icon = QIcon()
+            style = opt.widget.style() if opt.widget else QApplication.style()
+            style.drawControl(QStyle.CE_ItemViewItem, opt, painter, opt.widget)
+
+            painter.save()
+            text_rect = opt.rect.adjusted(0, 0, 0, 0)
+            extra = 0
+            table = self._resolve_table(opt.widget)
+            if table is not None:
+                extra = table.columnWidth(1) - 6  # leave small gap before amount text
+            if extra > 0:
+                text_rect.setWidth(text_rect.width() + extra)
+            text_rect.adjust(4, 0, -2, 0)  # small padding, avoid hitting amount text
+            painter.setClipRect(opt.rect)
+            painter.setPen(opt.palette.color(QPalette.Text))
+            painter.setFont(opt.font)
+            painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, str(index.data() or ""))
+            painter.restore()
+        elif is_fat_child and index.column() == 1:
+            opt = QStyleOptionViewItem(option)
+            self.initStyleOption(opt, index)
+            opt.state = state
+            opt.state &= ~(QStyle.State_HasFocus | QStyle.State_Selected)
+            opt.palette.setBrush(QPalette.Base, Qt.transparent)
+            opt.palette.setBrush(QPalette.Window, Qt.transparent)
+            opt.palette.setBrush(QPalette.AlternateBase, Qt.transparent)
+            opt.palette.setBrush(QPalette.Highlight, Qt.transparent)
+            opt.palette.setBrush(QPalette.HighlightedText, opt.palette.brush(QPalette.Text))
+            opt.backgroundBrush = QBrush(Qt.transparent)
+            opt.text = ""
+            opt.icon = QIcon()
+            style = opt.widget.style() if opt.widget else QApplication.style()
+            style.drawControl(QStyle.CE_ItemViewItem, opt, painter, opt.widget)
+
+            table = self._resolve_table(opt.widget)
+            if table is not None:
+                name_item = table.item(index.row(), 0)
+                if name_item is not None:
+                    source_index = index.sibling(index.row(), 0)
+                    left_rect = table.visualRect(source_index)
+                    if not left_rect.isNull():
+                        text_rect = left_rect.adjusted(0, 0, 0, 0)
+                        extra = table.columnWidth(1) - 6
+                        if extra > 0:
+                            text_rect.setWidth(text_rect.width() + extra)
+                        text_rect.adjust(4, 0, -2, 0)
+                        painter.save()
+                        painter.setClipRect(opt.rect)
+                        painter.setPen(opt.palette.color(QPalette.Text))
+                        painter.setFont(name_item.font())
+                        painter.drawText(
+                            text_rect,
+                            Qt.AlignLeft | Qt.AlignVCenter,
+                            name_item.text(),
+                        )
+                        painter.restore()
+
+            painter.save()
+            painter.setPen(opt.palette.color(QPalette.Text))
+            painter.setFont(opt.font)
+            painter.drawText(opt.rect, opt.displayAlignment, str(index.data() or ""))
             painter.restore()
         else:
             # Camino normal sin super().paint para evitar que Qt re-inserte State_Selected

@@ -279,32 +279,35 @@ class SearchTabMixin:
         )
         self._populate_table(slice_results, base_index=start)
         self._prefetch_visible_results(slice_results)
-        total_pages = self.search_presenter.get_total_pages(self.search_page_size)
         total_count = self.search_presenter.get_result_count()
         self.status_label.setText(
-            f"Se encontraron {total_count} resultados (pagina {self.search_page}/{total_pages})."
+            self.search_presenter.build_search_status(
+                total_count,
+                self.search_page,
+                self.search_page_size,
+            )
         )
 
 
     def _prefetch_visible_results(self, foods, limit: int = 2) -> None:
         """Proactively fetch details for the first results on screen to warm the cache."""
-        count = 0
-        for food in foods:
-            fdc_id = food.get("fdcId")
-            if fdc_id is None:
-                continue
+        prefetch_ids = self.search_presenter.collect_prefetch_ids(
+            foods or [],
+            limit=limit,
+        )
+        for fdc_id in prefetch_ids:
             self._prefetch_fdc_id(fdc_id)
-            count += 1
-            if count >= limit:
-                break
 
 
     def _update_paging_buttons(self, count: int) -> None:
-        has_query = bool(self.last_query)
-        self.prev_page_button.setEnabled(has_query and self.search_page > 1)
-        self.next_page_button.setEnabled(
-            has_query and (self.search_page * self.search_page_size < count)
+        state = self.search_presenter.build_paging_state(
+            has_query=bool(self.last_query),
+            page=self.search_page,
+            page_size=self.search_page_size,
+            total_count=count,
         )
+        self.prev_page_button.setEnabled(state["enable_prev"])
+        self.next_page_button.setEnabled(state["enable_next"])
 
 
     def on_fdc_search_clicked(self) -> None:
@@ -365,56 +368,46 @@ class SearchTabMixin:
     # ---- Table helpers ----
     def _populate_table(self, foods, base_index: int = 0) -> None:
         self.table.setRowCount(0)
-
-        for row_idx, food in enumerate(foods):
+        rows = self.search_presenter.build_result_rows(
+            foods or [],
+            base_index=base_index,
+        )
+        for row_idx, row in enumerate(rows):
             self.table.insertRow(row_idx)
-
-            fdc_id = str(food.get("fdcId", ""))
-            description = food.get("description", "") or ""
-            brand = food.get("brandOwner", "") or ""
-            data_type = food.get("dataType", "") or ""
-
-            self.table.setItem(row_idx, 0, QTableWidgetItem(fdc_id))
-            self.table.setItem(row_idx, 1, QTableWidgetItem(description))
-            self.table.setItem(row_idx, 2, QTableWidgetItem(brand))
-            self.table.setItem(row_idx, 3, QTableWidgetItem(data_type))
+            self.table.setItem(row_idx, 0, QTableWidgetItem(row["fdc_id"]))
+            self.table.setItem(row_idx, 1, QTableWidgetItem(row["description"]))
+            self.table.setItem(row_idx, 2, QTableWidgetItem(row["brand"]))
+            self.table.setItem(row_idx, 3, QTableWidgetItem(row["data_type"]))
             self.table.setVerticalHeaderItem(
-                row_idx, QTableWidgetItem(str(base_index + row_idx + 1))
+                row_idx, QTableWidgetItem(row["row_number"])
             )
 
 
     def _populate_details_table(self, nutrients) -> None:
-        nutrients = nutrients or []
-        ordering = getattr(self, "nutrient_ordering", None)
-        if ordering is not None:
-            nutrients = ordering.sort_nutrients_for_display(nutrients)
         self.details_table.setRowCount(0)
-
-        row_idx = 0
-        for n in nutrients:
-            if n.get("amount") is None:
-                continue
+        ordering = getattr(self, "nutrient_ordering", None)
+        rows = self.search_presenter.build_details_rows(
+            nutrients or [],
+            ordering=ordering,
+        )
+        for row_idx, row in enumerate(rows):
             self.details_table.insertRow(row_idx)
-            nut = n.get("nutrient") or {}
-            name = nut.get("name", "") or ""
-            unit = nut.get("unitName", "") or ""
-            amount = n.get("amount")
-            amount_text = "" if amount is None else str(amount)
-
-            self.details_table.setItem(row_idx, 0, QTableWidgetItem(name))
-            self.details_table.setItem(row_idx, 1, QTableWidgetItem(amount_text))
-            self.details_table.setItem(row_idx, 2, QTableWidgetItem(unit))
-            row_idx += 1
+            self.details_table.setItem(row_idx, 0, QTableWidgetItem(row["name"]))
+            self.details_table.setItem(row_idx, 1, QTableWidgetItem(row["amount"]))
+            self.details_table.setItem(row_idx, 2, QTableWidgetItem(row["unit"]))
 
 
     def _on_search_success(self, foods) -> None:
         self._last_results_count = len(foods)
         self.search_page = 1
         self._show_current_search_page()
-        total_pages = self.search_presenter.get_total_pages(self.search_page_size)
         total_count = self.search_presenter.get_result_count()
         self.status_label.setText(
-            f"Se encontraron {total_count} resultados (pagina {self.search_page}/{total_pages})."
+            self.search_presenter.build_search_status(
+                total_count,
+                self.search_page,
+                self.search_page_size,
+            )
         )
         self.search_button.setEnabled(True)
         self._update_paging_buttons(self.search_presenter.get_result_count())
@@ -430,11 +423,8 @@ class SearchTabMixin:
         details = payload.get("details", {}) if isinstance(payload, dict) else {}
         nutrients = payload.get("nutrients", []) if isinstance(payload, dict) else []
         self._populate_details_table(nutrients)
-
-        desc = details.get("description", "") or ""
-        fdc_id = details.get("fdcId", "")
         self.status_label.setText(
-            f"Detalles de {fdc_id} - {desc} ({len(nutrients)} nutrientes)"
+            self.search_presenter.build_details_status(details, len(nutrients))
         )
         self.fdc_id_button.setEnabled(True)
 

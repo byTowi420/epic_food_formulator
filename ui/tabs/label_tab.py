@@ -55,71 +55,17 @@ class LabelTabMixin:
         self.label_no_significant: list[str] = []
         self.label_additional_selected: list[str] = []
         self._label_display_nutrients: list[Dict[str, Any]] = []
+        self._label_additional_rows: list[Dict[str, Any]] = []
+        self._label_additional_start_row: int | None = None
         self.label_manual_hint_color = QColor(204, 255, 204)
-        self.label_no_sig_order = [
-            "Energia",
-            "Carbohidratos",
-            "Proteinas",
-            "Grasas totales",
-            "Grasas saturadas",
-            "Grasas trans",
-            "Fibra alimentaria",
-            "Sodio",
-        ]
-        self.label_nutrient_usda_map = {
-            "Energia": "Energy (kcal)",
-            "Carbohidratos": "Carbohydrate, by difference (g)",
-            "Azúcares": "Sugars, Total (g)",
-            "Polialcoholes": "Sugar alcohol (g)",
-            "Almidón": "Starch (g)",
-            "Polidextrosas": "Polydextrose (g)",
-            "Proteinas": "Protein (g)",
-            "Grasas totales": "Total lipid (fat) (g)",
-            "Grasas saturadas": "Fatty acids, total saturated (g)",
-            "Grasas monoinsaturadas": "Fatty acids, total monounsaturated (g)",
-            "Grasas poliinsaturadas": "Fatty acids, total polyunsaturated (g)",
-            "Grasas trans": "Fatty acids, total trans (g)",
-            "Colesterol": "Cholesterol (mg)",
-            "Fibra alimentaria": "Fiber, total dietary (g)",
-            "Sodio": "Sodium, Na (mg)",
-            "Vitamina A": "Vitamin A, RAE (μg)",
-            "Vitamina D": "Vitamin D (D2 + D3) (μg)",
-            "Vitamina C": "Vitamin C, total ascorbic acid (mg)",
-            "Vitamina E": "Vitamin E (alpha-tocopherol) (mg)",
-            "Tiamina": "Thiamin (mg)",
-            "Riboflavina": "Riboflavin (mg)",
-            "Niacina": "Niacin (mg)",
-            "Vitamina B6": "Vitamin B-6 (mg)",
-            "Acido fólico": "Folate, DFE (μg)",
-            "Vitaminia B12": "Vitamin B-12 (μg)",
-            "Biotina": "Biotin (μg)",
-            "Acido pantoténico": "Pantothenic acid (mg)",
-            "Calcio": "Calcium, Ca (mg)",
-            "Hierro": "Iron, Fe (mg)",
-            "Magnesio": "Magnesium, Mg (mg)",
-            "Zinc": "Zinc, Zn (mg)",
-            "Yodo": "Iodine, I (μg)",
-            "Vitamina K": "Vitamin K (phylloquinone) (μg)",
-            "Fósforo": "Phosphorus, P (mg)",
-            "Flúor": "Fluoride, F (mg)",
-            "Cobre": "Copper, Cu (mg)",
-            "Selenio": "Selenium, Se (μg)",
-            "Molibdeno": "Molybdenum, Mo (μg)",
-            "Cromo": "Chromium, Cr (μg)",
-            "Manganeso": "Manganese, Mn (mg)",
-            "Colina": "Choline, total (mg)",
-        }
-        self.label_no_significant_thresholds = {
-            "Energia": {"unit": "kcal", "max": 4.0, "kj_max": 17.0},
-            "Carbohidratos": {"unit": "g", "max": 0.5},
-            "Proteinas": {"unit": "g", "max": 0.5},
-            "Grasas totales": {"unit": "g", "max": 0.5},
-            "Grasas saturadas": {"unit": "g", "max": 0.2},
-            "Grasas trans": {"unit": "g", "max": 0.2},
-            "Fibra alimentaria": {"unit": "g", "max": 0.5},
-            "Sodio": {"unit": "mg", "max": 5.0},
-        }
-        self.label_no_significant_display_map = {"Energia": "Valor energético"}
+        self.label_no_sig_order = self.label_presenter.build_no_significant_order()
+        self.label_nutrient_usda_map = self.label_presenter.build_nutrient_usda_map()
+        self.label_no_significant_thresholds = (
+            self.label_presenter.build_no_significant_thresholds()
+        )
+        self.label_no_significant_display_map = (
+            self.label_presenter.build_no_significant_display_map()
+        )
         self.label_additional_catalog = self._build_additional_nutrients()
         self.label_additional_refs = {
             item["name"]: item.get("ref", "") for item in self.label_additional_catalog
@@ -511,7 +457,7 @@ class LabelTabMixin:
 
     # ---- Label calculations ----
     def _current_portion_factor(self) -> float:
-        return float(self.portion_size_input.value() or 0) / 100.0
+        return self.label_presenter.portion_factor(self.portion_size_input.value())
 
 
     def _format_fraction_amount(self, value: float) -> str:
@@ -523,27 +469,25 @@ class LabelTabMixin:
     def _update_capacity_label(self) -> None:
         unit_name = self.household_unit_combo.currentText()
         capacity = self.household_capacity_map.get(unit_name)
-        if capacity:
-            label_text = f"{capacity} ml"
-        else:
-            label_text = "-"
-        if unit_name == "Otro" and self.custom_household_unit_input.isVisible():
-            label_text = "Definir capacidad manualmente"
+        label_text = self.label_presenter.capacity_label(
+            unit_name,
+            capacity,
+            self.custom_household_unit_input.isVisible(),
+        )
         self.household_capacity_label.setText(label_text)
 
 
     def _auto_fill_household_measure(self) -> None:
-        if self.portion_unit_combo.currentText() != "ml":
-            return
         unit_name = self.household_unit_combo.currentText()
         capacity = self.household_capacity_map.get(unit_name)
-        if not capacity:
-            return
         portion_value = float(self.portion_size_input.value() or 0)
-        if portion_value <= 0:
+        text = self.label_presenter.auto_household_amount(
+            self.portion_unit_combo.currentText(),
+            portion_value,
+            capacity,
+        )
+        if not text:
             return
-        ratio = portion_value / float(capacity)
-        text = self._fraction_from_ratio(ratio)
         self._auto_updating_household_amount = True
         try:
             self.household_amount_input.setText(text or "")
@@ -580,44 +524,33 @@ class LabelTabMixin:
 
 
     def _on_breakdown_fat_toggled(self, _: bool) -> None:
-        fat_names = {
-            "Grasas totales",
-            "Grasas saturadas",
-            "Grasas trans",
-            "Grasas monoinsaturadas",
-            "Grasas poliinsaturadas",
-            "Colesterol",
-        }
-        self.label_no_significant = [n for n in self.label_no_significant if n not in fat_names]
+        self.label_no_significant = self.label_presenter.filter_no_significant_for_fat(
+            self.label_no_significant
+        )
         self._update_label_preview()
 
 
     def _on_breakdown_carb_toggled(self, _: bool) -> None:
-        carb_names = {
-            "Carbohidratos",
-            "Azúcares",
-            "Polialcoholes",
-            "Almidón",
-            "Polidextrosas",
-        }
-        self.label_no_significant = [n for n in self.label_no_significant if n not in carb_names]
+        self.label_no_significant = self.label_presenter.filter_no_significant_for_carb(
+            self.label_no_significant
+        )
         self._update_label_preview()
 
 
     def _current_household_unit_label(self) -> str:
-        if self.household_unit_combo.currentText() == "Otro":
-            custom = self.custom_household_unit_input.text().strip()
-            return custom or "Unidad"
-        return self.household_unit_combo.currentText()
+        return self.label_presenter.household_unit_label(
+            self.household_unit_combo.currentText(),
+            self.custom_household_unit_input.text(),
+        )
 
 
     def _portion_description_for_table(self) -> str:
-        measure_amount = self.household_amount_input.text().strip()
-        measure_unit = self._current_household_unit_label()
-        portion_unit = self.portion_unit_combo.currentText()
-        portion_value = self.portion_size_input.value()
-        measure_display = measure_unit if not measure_amount else f"{measure_amount} {measure_unit}"
-        return f"Porción {portion_value} {portion_unit} ({measure_display})"
+        return self.label_presenter.portion_description(
+            self.portion_size_input.value(),
+            self.portion_unit_combo.currentText(),
+            self.household_amount_input.text(),
+            self._current_household_unit_label(),
+        )
 
 
     def _format_number_for_unit(self, value: float, unit: str) -> str:
@@ -650,14 +583,27 @@ class LabelTabMixin:
         )
 
     def _on_label_table_cell_double_clicked(self, row: int, _: int) -> None:
-        if (
-            row < self.label_table_nutrient_start_row
-            or row >= self.label_table_nutrient_start_row + len(self._label_display_nutrients)
-        ):
+        base_start = self.label_table_nutrient_start_row
+        base_end = base_start + len(self._label_display_nutrients)
+        if base_start <= row < base_end:
+            idx = row - base_start
+            nutrient = self._label_display_nutrients[idx]
+            self._prompt_manual_value_for_nutrient(nutrient)
             return
-        idx = row - self.label_table_nutrient_start_row
-        nutrient = self._label_display_nutrients[idx]
-        self._prompt_manual_value_for_nutrient(nutrient)
+
+        add_start = self._label_additional_start_row
+        if add_start is None:
+            return
+        add_idx = row - add_start
+        if add_idx < 0 or add_idx >= len(self._label_additional_rows):
+            return
+        add_name = self._label_additional_rows[add_idx].get("name", "")
+        nutrient = next(
+            (n for n in self.label_additional_catalog if n.get("name") == add_name),
+            None,
+        )
+        if nutrient:
+            self._prompt_manual_value_for_nutrient(nutrient)
 
 
     def _prompt_manual_value_for_nutrient(self, nutrient: Dict[str, Any]) -> None:
@@ -1013,6 +959,8 @@ class LabelTabMixin:
         additional_rows = view["additional_rows"]
         note_text = view["note_text"]
         self._label_display_nutrients = view["filtered_nutrients"]
+        self._label_additional_rows = list(additional_rows)
+        self._label_additional_start_row = None
 
         total_rows = 3 + len(nutrient_rows) + len(additional_rows) + 1 + (1 if note_text else 0)
         table.setRowCount(total_rows)
@@ -1069,6 +1017,8 @@ class LabelTabMixin:
             table.setItem(row, 2, vd_item)
 
         additional_rows_start = 3 + len(nutrient_rows)
+        if additional_rows:
+            self._label_additional_start_row = additional_rows_start
         for add_idx, row_data in enumerate(additional_rows):
             row = additional_rows_start + add_idx
             name_item = QTableWidgetItem(row_data["name"])

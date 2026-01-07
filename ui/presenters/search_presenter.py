@@ -140,6 +140,82 @@ class SearchPresenter:
         nutrients = self._nutrient_ordering.sort_nutrients_for_display(nutrients)
         return {"details": details, "nutrients": nutrients}
 
+    def build_details_rows(
+        self,
+        nutrients: List[Dict[str, Any]],
+        *,
+        ordering: NutrientOrdering | None = None,
+    ) -> List[Dict[str, str]]:
+        rows: List[Dict[str, str]] = []
+        ordering = ordering or self._nutrient_ordering
+        nutrients = ordering.sort_nutrients_for_display(nutrients or [])
+        for nutrient in nutrients:
+            if nutrient.get("amount") is None:
+                continue
+            nut = nutrient.get("nutrient") or {}
+            name = nut.get("name", "") or ""
+            unit = nut.get("unitName", "") or ""
+            amount = nutrient.get("amount")
+            amount_text = "" if amount is None else str(amount)
+            rows.append({"name": name, "amount": amount_text, "unit": unit})
+        return rows
+
+    def build_result_rows(
+        self,
+        foods: List[Dict[str, Any]],
+        *,
+        base_index: int = 0,
+    ) -> List[Dict[str, str]]:
+        rows: List[Dict[str, str]] = []
+        for row_idx, food in enumerate(foods):
+            rows.append(
+                {
+                    "fdc_id": str(food.get("fdcId", "")),
+                    "description": food.get("description", "") or "",
+                    "brand": food.get("brandOwner", "") or "",
+                    "data_type": food.get("dataType", "") or "",
+                    "row_number": str(base_index + row_idx + 1),
+                }
+            )
+        return rows
+
+    def build_search_status(self, total_count: int, page: int, page_size: int) -> str:
+        total_pages = self.get_total_pages(page_size)
+        return f"Se encontraron {total_count} resultados (pagina {page}/{total_pages})."
+
+    def build_details_status(self, details: Dict[str, Any], nutrient_count: int) -> str:
+        desc = details.get("description", "") or ""
+        fdc_id = details.get("fdcId", "")
+        return f"Detalles de {fdc_id} - {desc} ({nutrient_count} nutrientes)"
+
+    def build_paging_state(
+        self,
+        *,
+        has_query: bool,
+        page: int,
+        page_size: int,
+        total_count: int,
+    ) -> Dict[str, bool]:
+        enable_prev = has_query and page > 1
+        enable_next = has_query and (page * page_size < total_count)
+        return {"enable_prev": enable_prev, "enable_next": enable_next}
+
+    def collect_prefetch_ids(
+        self,
+        foods: List[Dict[str, Any]],
+        *,
+        limit: int = 2,
+    ) -> List[Any]:
+        ids: List[Any] = []
+        for food in foods:
+            fdc_id = food.get("fdcId")
+            if fdc_id is None:
+                continue
+            ids.append(fdc_id)
+            if len(ids) >= limit:
+                break
+        return ids
+
     def prefetch_food_details(
         self,
         fdc_id: int,

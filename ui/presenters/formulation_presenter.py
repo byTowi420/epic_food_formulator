@@ -8,13 +8,22 @@ Handles all formulation-related operations:
 """
 
 from decimal import Decimal
+import logging
+import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
+
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, PatternFill
+from openpyxl.utils import get_column_letter
 
 from config.container import Container
-from domain.models import Formulation
+from config.constants import DATA_TYPE_PRIORITY
+from domain.models import Formulation, Food, Ingredient, Nutrient
 from domain.services.label_generator import LabelRow
 from domain.exceptions import FormulationImportError
+from domain.services.unit_normalizer import convert_mass, normalize_mass_unit
+from services.nutrient_normalizer import augment_fat_nutrients, normalize_nutrients
 from ui.adapters.formulation_mapper import FormulationMapper, NutrientDisplayMapper
 
 
@@ -85,6 +94,53 @@ class FormulationPresenter:
             len(self._formulation.ingredients) - 1,
         )
 
+    def add_ingredient_from_details(
+        self,
+        details: Dict[str, Any],
+        amount_g: float,
+    ) -> List[Dict[str, Any]]:
+        """Add ingredient using pre-fetched USDA details."""
+        nutrients = normalize_nutrients(
+            details.get("foodNutrients", []) or [],
+            details.get("dataType"),
+        )
+        domain_nutrients = tuple(
+            Nutrient(
+                name=n["nutrient"]["name"],
+                unit=n["nutrient"].get("unitName", ""),
+                amount=Decimal(str(n["amount"])) if n.get("amount") is not None else Decimal("0"),
+                nutrient_id=n["nutrient"].get("id"),
+                nutrient_number=n["nutrient"].get("number"),
+            )
+            for n in nutrients
+        )
+
+        food = Food(
+            fdc_id=details.get("fdcId", 0),
+            description=details.get("description", "") or "",
+            data_type=details.get("dataType", "") or "",
+            brand_owner=details.get("brandOwner", "") or "",
+            nutrients=domain_nutrients,
+        )
+        ingredient = Ingredient(food=food, amount_g=Decimal(str(amount_g)))
+        self._formulation.add_ingredient(ingredient)
+        return nutrients
+
+    def add_ingredient_from_details_safe(
+        self,
+        details: Dict[str, Any],
+        amount_g: float,
+    ) -> List[Dict[str, Any]]:
+        """Add ingredient using details with a safe nutrient fallback."""
+        try:
+            return self.add_ingredient_from_details(details, amount_g)
+        except Exception as exc:  # noqa: BLE001
+            logging.error("Error adding ingredient from details: %s", exc)
+            return normalize_nutrients(
+                details.get("foodNutrients", []) or [],
+                details.get("dataType"),
+            )
+
     def remove_ingredient(self, index: int) -> None:
         """Remove ingredient at index.
 
@@ -92,6 +148,15 @@ class FormulationPresenter:
             index: Index of ingredient to remove
         """
         self._formulation.remove_ingredient(index)
+
+    def remove_ingredient_safe(self, index: int) -> tuple[bool, str | None]:
+        """Remove ingredient and ensure at least one unlocked remains."""
+        if index < 0 or index >= self.get_ingredient_count():
+            return False, "row_invalid"
+        self._formulation.remove_ingredient(index)
+        if self.has_ingredients() and self.get_locked_count() == self.get_ingredient_count():
+            self._formulation.get_ingredient(0).locked = False
+        return True, None
 
     def update_ingredient_amount(
         self,
@@ -129,6 +194,18 @@ class FormulationPresenter:
         ingredient = self._formulation.get_ingredient(index)
         ingredient.locked = not ingredient.locked
         return ingredient.locked
+
+    def set_lock_state(self, index: int, locked: bool) -> tuple[bool, str | None]:
+        """Set lock state with validation (keeps at least one unlocked)."""
+        if index < 0 or index >= self.get_ingredient_count():
+            return False, "row_invalid"
+        if locked and self.get_locked_count(exclude_index=index) >= (
+            self.get_ingredient_count() - 1
+        ):
+            return False, "need_unlocked"
+        ingredient = self._formulation.get_ingredient(index)
+        ingredient.locked = locked
+        return True, None
 
     def calculate_totals(self) -> Dict[str, Dict[str, Any]]:
         """Calculate nutrient totals per 100g.
@@ -219,6 +296,236 @@ class FormulationPresenter:
             mass_unit=mass_unit,
         )
 
+    def export_to_excel_safe(
+        self,
+        output_path: str,
+        *,
+        export_flags: Dict[str, bool] | None = None,
+        mass_unit: str | None = None,
+        nutrient_ordering: Any | None = None,
+    ) -> None:
+        """Export formulation to Excel with a legacy fallback when needed."""
+        try:
+            self.export_to_excel(
+                output_path,
+                export_flags=export_flags,
+                mass_unit=mass_unit,
+            )
+            return
+        except Exception as exc:  # noqa: BLE001
+            logging.error(
+                "Export via use case failed (%s). Attempting legacy fallback.",
+                exc,
+            )
+            if nutrient_ordering is None:
+                raise
+        self._export_to_excel_legacy(
+            output_path,
+            export_flags=export_flags,
+            mass_unit=mass_unit,
+            nutrient_ordering=nutrient_ordering,
+        )
+
+    def _export_to_excel_legacy(
+        self,
+        output_path: str,
+        *,
+        export_flags: Dict[str, bool] | None,
+        mass_unit: str | None,
+        nutrient_ordering: Any,
+    ) -> None:
+        export_flags = export_flags or {}
+        mass_unit = normalize_mass_unit(mass_unit) or "g"
+        self.normalize_items_nutrients()
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Ingredientes"
+        totals_sheet = wb.create_sheet("Totales")
+
+        unit_decimals = self.mass_decimals(mass_unit)
+        unit_format = "0" if unit_decimals <= 0 else f"0.{'0' * unit_decimals}"
+
+        base_headers = [
+            "FDC ID",
+            "Ingrediente",
+            "Marca / Origen",
+            "Tipo de dato",
+            f"Cantidad ({mass_unit})",
+            "Cantidad (%)",
+        ]
+
+        nutrient_headers, header_categories, header_key_map = (
+            self.collect_nutrient_columns(
+                self.get_ui_items(),
+                nutrient_ordering,
+                export_flags,
+            )
+        )
+        header_by_key = {v: k for k, v in header_key_map.items()}
+
+        header_fill = PatternFill("solid", fgColor="D9D9D9")
+        total_fill = PatternFill("solid", fgColor="FFF2CC")
+        category_fills = {
+            "Proximates": PatternFill("solid", fgColor="DAEEF3"),
+            "Carbohydrates": PatternFill("solid", fgColor="E6B8B7"),
+            "Minerals": PatternFill("solid", fgColor="C4D79B"),
+            "Vitamins and Other Components": PatternFill("solid", fgColor="FFF2CC"),
+            "Lipids": PatternFill("solid", fgColor="D9E1F2"),
+            "Amino acids": PatternFill("solid", fgColor="E4DFEC"),
+        }
+        center = Alignment(horizontal="center", vertical="center")
+
+        # Row 1: group titles (base + nutrient categories)
+        ws.merge_cells(
+            start_row=1,
+            start_column=1,
+            end_row=1,
+            end_column=len(base_headers),
+        )
+        ws.cell(row=1, column=1, value="Detalles de formulacion").alignment = center
+
+        if nutrient_headers:
+            start_col = len(base_headers) + 1
+            col = start_col
+            while col < start_col + len(nutrient_headers):
+                idx = col - start_col
+                category = header_categories.get(nutrient_headers[idx], "Nutrientes")
+                run_start = col
+                while (
+                    col < start_col + len(nutrient_headers)
+                    and header_categories.get(
+                        nutrient_headers[col - start_col], "Nutrientes"
+                    )
+                    == category
+                ):
+                    col += 1
+                run_end = col - 1
+                ws.merge_cells(
+                    start_row=1, start_column=run_start, end_row=1, end_column=run_end
+                )
+                cat_cell = ws.cell(row=1, column=run_start, value=category)
+                cat_cell.alignment = center
+                cat_cell.fill = category_fills.get(category, header_fill)
+
+        # Row 2: headers
+        headers = base_headers + nutrient_headers
+        for col_idx, name in enumerate(headers, start=1):
+            cell = ws.cell(row=2, column=col_idx, value=name)
+            cell.fill = (
+                category_fills.get(header_categories.get(name, ""), header_fill)
+                if col_idx > len(base_headers)
+                else header_fill
+            )
+            cell.alignment = center
+
+        start_row = 3
+        grams_col = base_headers.index(f"Cantidad ({mass_unit})") + 1
+        percent_col = base_headers.index("Cantidad (%)") + 1
+        data_rows = self.get_ingredient_count()
+        end_row = start_row + data_rows - 1
+
+        # Write ingredient rows
+        for idx, item in enumerate(self.get_ui_items()):
+            row = start_row + idx
+            amount_g = float(item.get("amount_g", 0.0) or 0.0)
+            amount_val = convert_mass(amount_g, "g", mass_unit)
+            amount_display = float(amount_val) if amount_val is not None else amount_g
+            values = [
+                item.get("fdc_id", ""),
+                item.get("description", ""),
+                item.get("brand", ""),
+                item.get("data_type", ""),
+                amount_display,
+                None,  # placeholder for percent formula
+            ]
+            for col_idx, val in enumerate(values, start=1):
+                ws.cell(row=row, column=col_idx, value=val)
+
+            gram_cell = f"{get_column_letter(grams_col)}{row}"
+            total_range = (
+                f"${get_column_letter(grams_col)}${start_row}:${get_column_letter(grams_col)}${end_row}"
+            )
+            ws.cell(
+                row=row,
+                column=percent_col,
+                value=f"={gram_cell}/SUM({total_range})",
+            ).number_format = "0.00%"
+
+            nut_map = self.nutrients_by_header(
+                item.get("nutrients", []),
+                header_by_key,
+                nutrient_ordering,
+            )
+            for offset, header in enumerate(
+                nutrient_headers, start=len(base_headers) + 1
+            ):
+                if header in nut_map:
+                    ws.cell(row=row, column=offset, value=nut_map[header])
+
+        total_row = end_row + 1
+        ws.cell(row=total_row, column=1, value="Total")
+        ws.cell(row=total_row, column=2, value="Formulado")
+        ws.cell(row=total_row, column=3, value="Formulado")
+        ws.cell(row=total_row, column=4, value="Formulado")
+
+        gram_total_cell = ws.cell(
+            row=total_row,
+            column=grams_col,
+            value=(
+                f"=SUBTOTAL(9,{get_column_letter(grams_col)}{start_row}:"
+                f"{get_column_letter(grams_col)}{end_row})"
+            ),
+        )
+        gram_total_cell.fill = total_fill
+        percent_total_cell = ws.cell(row=total_row, column=percent_col, value="100%")
+        percent_total_cell.number_format = "0.00%"
+        percent_total_cell.fill = total_fill
+
+        for offset, header in enumerate(nutrient_headers, start=len(base_headers) + 1):
+            col_letter = get_column_letter(offset)
+            formula = (
+                f"=SUMPRODUCT(${get_column_letter(percent_col)}${start_row}:"
+                f"${get_column_letter(percent_col)}${end_row},"
+                f"${col_letter}${start_row}:${col_letter}${end_row})"
+            )
+            cell = ws.cell(row=total_row, column=offset, value=formula)
+            cell.fill = total_fill
+
+        for row in range(start_row, total_row + 1):
+            ws.cell(row=row, column=grams_col).number_format = unit_format
+
+        freeze_col = len(base_headers) + 1 if nutrient_headers else 1
+        ws.freeze_panes = f"{get_column_letter(freeze_col)}3"
+
+        widths = {
+            "A": 12,
+            "B": 35,
+            "C": 18,
+            "D": 14,
+            "E": 12,
+            "F": 12,
+        }
+        for col_letter, width in widths.items():
+            ws.column_dimensions[col_letter].width = width
+
+        totals_headers = ["Nutriente", "Total", "Unidad"]
+        for col_idx, name in enumerate(totals_headers, start=1):
+            cell = totals_sheet.cell(row=1, column=col_idx, value=name)
+            cell.fill = header_fill
+            cell.alignment = center
+
+        for idx, header in enumerate(nutrient_headers, start=1):
+            name_part, unit = self.split_header_unit(header)
+            totals_sheet.cell(row=idx + 1, column=1, value=name_part)
+            totals_sheet.cell(row=idx + 1, column=3, value=unit or "")
+            source_cell = (
+                f"Ingredientes!{get_column_letter(len(base_headers) + idx)}{total_row}"
+            )
+            totals_sheet.cell(row=idx + 1, column=2, value=f"={source_cell}")
+
+        wb.save(output_path)
+
     def parse_import_file(
         self,
         path: str,
@@ -239,6 +546,119 @@ class FormulationPresenter:
             "Formato no soportado",
             "Selecciona un archivo .json o .xlsx",
         )
+
+    def build_import_preview_items(
+        self,
+        base_items: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Prepare UI items for import preview (without USDA nutrients)."""
+        ui_items: List[Dict[str, Any]] = []
+        for item in base_items:
+            fdc_id = item.get("fdc_id")
+            description = (item.get("description") or "").strip()
+            if not description:
+                description = f"FDC {fdc_id}"
+            data_type = (item.get("data_type") or "").strip() or "Imported"
+            ui_items.append(
+                {
+                    "fdc_id": fdc_id,
+                    "description": description,
+                    "brand": item.get("brand", "") or "",
+                    "data_type": data_type,
+                    "amount_g": float(item.get("amount_g", 0.0) or 0.0),
+                    "locked": bool(item.get("locked", False)),
+                    "nutrients": [],
+                }
+            )
+        return ui_items
+
+    def build_hydrated_items_from_payload(
+        self,
+        payload: List[Dict[str, Any]],
+        *,
+        on_details: Callable[[Dict[str, Any]], None] | None = None,
+    ) -> List[Dict[str, Any]]:
+        """Convert ImportWorker payload into hydrated UI items."""
+        hydrated: List[Dict[str, Any]] = []
+        for entry in payload:
+            base = entry.get("base") or {}
+            details = entry.get("details") or {}
+            fdc_id = base.get("fdc_id") or details.get("fdcId")
+            try:
+                fdc_id_int = int(fdc_id) if fdc_id is not None else None
+            except Exception:
+                fdc_id_int = fdc_id
+
+            if on_details:
+                on_details(details)
+
+            nutrients = augment_fat_nutrients(details.get("foodNutrients", []) or [])
+            hydrated.append(
+                {
+                    "fdc_id": fdc_id_int,
+                    "description": details.get("description", "")
+                    or base.get("description", ""),
+                    "brand": details.get("brandOwner", "") or base.get("brand", ""),
+                    "data_type": details.get("dataType", "") or base.get("data_type", ""),
+                    "amount_g": float(base.get("amount_g", 0.0) or 0.0),
+                    "nutrients": normalize_nutrients(
+                        nutrients, details.get("dataType")
+                    ),
+                    "locked": bool(base.get("locked", False)),
+                }
+            )
+        return hydrated
+
+    def hydrate_items(
+        self,
+        items: List[Dict[str, Any]],
+        *,
+        on_progress: Callable[[int, int, int], None] | None = None,
+        on_details: Callable[[Dict[str, Any]], None] | None = None,
+        detail_format: str = "abridged",
+    ) -> tuple[List[Dict[str, Any]] | None, Dict[str, Any] | None]:
+        """Fetch USDA details for items to populate description/nutrients."""
+        hydrated: List[Dict[str, Any]] = []
+        total = len(items)
+        for index, item in enumerate(items):
+            fdc_id = item.get("fdc_id") or item.get("fdcId")
+            if fdc_id is None:
+                return None, {"code": "missing_fdc"}
+            try:
+                fdc_id_int = int(fdc_id)
+            except ValueError:
+                return None, {"code": "invalid_fdc", "fdc_id": fdc_id}
+
+            if on_progress:
+                on_progress(index, total, fdc_id_int)
+
+            try:
+                details = self._container.food_repository.get_by_id(
+                    fdc_id_int,
+                    detail_format=detail_format,
+                )
+            except Exception as exc:  # noqa: BLE001
+                return None, {"code": "fetch_error", "fdc_id": fdc_id_int, "error": str(exc)}
+
+            if on_details:
+                on_details(details)
+
+            hydrated.append(
+                {
+                    "fdc_id": fdc_id_int,
+                    "description": details.get("description", "")
+                    or item.get("description", ""),
+                    "brand": details.get("brandOwner", "") or item.get("brand", ""),
+                    "data_type": details.get("dataType", "") or item.get("data_type", ""),
+                    "amount_g": float(item.get("amount_g", 0.0) or 0.0),
+                    "nutrients": normalize_nutrients(
+                        details.get("foodNutrients", []) or [], details.get("dataType")
+                    ),
+                    "locked": bool(item.get("locked", False)),
+                }
+            )
+
+        return hydrated, None
 
     def resolve_legacy_export_flags(
         self,
@@ -318,3 +738,467 @@ class FormulationPresenter:
             name: Formulation name
         """
         self._formulation = FormulationMapper.ui_items_to_formulation(ui_items, name)
+
+    def normalize_export_flags(self, flags: Dict[str, bool]) -> Dict[str, bool]:
+        """Normalize export flag keys to stable lowercase strings."""
+        normalized: Dict[str, bool] = {}
+        for key, value in (flags or {}).items():
+            if key is None:
+                continue
+            key_text = str(key).strip().lower()
+            if not key_text:
+                continue
+            normalized[key_text] = bool(value)
+        return normalized
+
+    def normalize_items_nutrients(self, items: List[Dict[str, Any]] | None = None) -> None:
+        """Normalize nutrient lists in-place for UI items."""
+        items = items if items is not None else self.get_ui_items()
+        for item in items:
+            original = item.get("nutrients", []) or []
+            normalized = normalize_nutrients(original, item.get("data_type"))
+            if normalized != original:
+                item["nutrients"] = normalized
+
+    def split_header_unit(self, header: str) -> tuple[str, str]:
+        if header.endswith(")") and " (" in header:
+            name, unit = header.rsplit(" (", 1)
+            return name, unit[:-1]
+        return header, ""
+
+    def nutrients_by_header(
+        self,
+        nutrients: List[Dict[str, Any]],
+        header_by_key: Dict[str, str],
+        nutrient_ordering,
+    ) -> Dict[str, float]:
+        """Map nutrient amounts to the selected header list."""
+        out: Dict[str, float] = {}
+        best_priority: Dict[str, int] = {}
+        allowed_keys = set(header_by_key.keys())
+        alias_priority = {
+            "carbohydrate, by difference": 2,
+            "carbohydrate, by summation": 1,
+            "carbohydrate by summation": 1,
+            "sugars, total": 2,
+            "total sugars": 1,
+        }
+
+        for entry in nutrients:
+            amount = entry.get("amount")
+            if amount is None:
+                continue
+            nut = entry.get("nutrient") or {}
+            header_key, _, _ = nutrient_ordering.header_key(nut)
+            if not header_key or header_key not in allowed_keys:
+                continue
+            header = header_by_key[header_key]
+            priority = alias_priority.get((nut.get("name") or "").strip().lower(), 0)
+            current_best = best_priority.get(header, -1)
+            if priority < current_best:
+                continue
+
+            best_priority[header] = priority
+            out[header] = amount
+
+        return out
+
+    def collect_nutrient_columns(
+        self,
+        items: List[Dict[str, Any]],
+        nutrient_ordering,
+        export_flags: Dict[str, bool],
+    ) -> tuple[List[str], Dict[str, str], Dict[str, str]]:
+        """Collect ordered nutrient headers and their categories."""
+        candidates: Dict[str, Dict[str, Any]] = {}
+        categories_seen_order: Dict[str, int] = {}
+        preferred_order = [cat for cat, _ in nutrient_ordering.catalog]
+        preferred_count = len(preferred_order)
+
+        for item in items:
+            data_priority = DATA_TYPE_PRIORITY.get(
+                (item.get("data_type") or "").strip(), len(DATA_TYPE_PRIORITY)
+            )
+            for entry in nutrient_ordering.sort_nutrients_for_display(
+                item.get("nutrients", [])
+            ):
+                nut = entry.get("nutrient") or {}
+                amount = entry.get("amount")
+                if amount is None:
+                    continue
+                header_key, canonical_name, canonical_unit = nutrient_ordering.header_key(nut)
+                if header_key and not export_flags.get(header_key, True):
+                    continue
+
+                if not header_key or not canonical_name:
+                    continue
+
+                category = nutrient_ordering.category_for_nutrient(canonical_name, nut)
+                if category not in categories_seen_order:
+                    categories_seen_order[category] = len(categories_seen_order)
+
+                order = nutrient_ordering.order_for_name(canonical_name)
+                if order is None:
+                    order = nutrient_ordering.nutrient_order(nut, len(candidates))
+                unit_lower = (canonical_unit or "").strip().lower()
+                if canonical_name.strip().lower() == "energy":
+                    if unit_lower == "kcal":
+                        order = order - 0.1 if isinstance(order, (int, float)) else order
+                    elif unit_lower == "kj":
+                        order = order + 0.1 if isinstance(order, (int, float)) else order
+
+                header = (
+                    f"{canonical_name} ({canonical_unit})"
+                    if canonical_unit
+                    else canonical_name
+                )
+
+                existing = candidates.get(header_key)
+                if existing is None or (
+                    data_priority < existing["data_priority"]
+                    or (
+                        data_priority == existing["data_priority"]
+                        and order < existing["order"]
+                    )
+                    or (
+                        data_priority == existing["data_priority"]
+                        and order == existing["order"]
+                        and header < existing["header"]
+                    )
+                ):
+                    candidates[header_key] = {
+                        "header_key": header_key,
+                        "header": header,
+                        "category": category,
+                        "order": order,
+                        "data_priority": data_priority,
+                    }
+
+        def category_rank(cat: str) -> int:
+            if cat in preferred_order:
+                return preferred_order.index(cat)
+            return preferred_count + categories_seen_order.get(cat, preferred_count)
+
+        sorted_candidates = sorted(
+            candidates.values(),
+            key=lambda c: (
+                category_rank(c["category"]),
+                c["order"],
+                c["header"].lower(),
+            ),
+        )
+
+        ordered_headers: List[str] = [c["header"] for c in sorted_candidates]
+        categories: Dict[str, str] = {c["header"]: c["category"] for c in sorted_candidates}
+        header_key_map: Dict[str, str] = {c["header"]: c["header_key"] for c in sorted_candidates}
+
+        return ordered_headers, categories, header_key_map
+
+    def calculate_totals_with_fallback(self, nutrient_ordering) -> Dict[str, Dict[str, Any]]:
+        """Calculate totals, falling back to UI item nutrients if needed."""
+        logging.debug(
+            "calculate_totals_with_fallback start items=%s",
+            self.get_ingredient_count(),
+        )
+        try:
+            totals = self.calculate_totals()
+            totals = nutrient_ordering.normalize_totals_by_header_key(totals)
+            logging.debug(
+                "calculate_totals_with_fallback done (via presenter) nutrients=%s",
+                len(totals),
+            )
+            return totals
+        except Exception as exc:  # noqa: BLE001
+            logging.error("Error calculating totals via presenter: %s", exc)
+
+        self.normalize_items_nutrients()
+        totals: Dict[str, Dict[str, Any]] = {}
+        total_weight = self.get_total_weight()
+        for item in self.get_ui_items():
+            qty = item.get("amount_g", 0) or 0
+            for nutrient in nutrient_ordering.sort_nutrients_for_display(
+                item.get("nutrients", [])
+            ):
+                amount = nutrient.get("amount")
+                if amount is None:
+                    continue
+                nut = nutrient.get("nutrient") or {}
+                header_key, canonical_name, canonical_unit = nutrient_ordering.header_key(nut)
+                if not header_key:
+                    continue
+                entry = totals.setdefault(
+                    header_key,
+                    {
+                        "name": canonical_name or nut.get("name", ""),
+                        "unit": canonical_unit or "",
+                        "amount": 0.0,
+                        "order": nutrient_ordering.nutrient_order(
+                            nut, len(totals)
+                        ),
+                    },
+                )
+                if canonical_name and not entry["name"]:
+                    entry["name"] = canonical_name
+                if canonical_unit and not entry["unit"]:
+                    entry["unit"] = canonical_unit
+                inferred_unit = nutrient_ordering.infer_unit(nut)
+                if inferred_unit and not entry["unit"]:
+                    entry["unit"] = inferred_unit
+                entry["order"] = min(
+                    entry.get("order", float("inf")),
+                    nutrient_ordering.nutrient_order(nut, len(totals)),
+                )
+                entry["amount"] += amount * qty / 100.0
+
+        if total_weight > 0:
+            factor = 100.0 / total_weight
+            for entry in totals.values():
+                entry["amount"] *= factor
+        logging.debug(
+            "calculate_totals_with_fallback done (fallback) nutrients=%s total_weight=%s",
+            len(totals),
+            total_weight,
+        )
+        return totals
+
+    def build_totals_rows(
+        self,
+        totals: Dict[str, Dict[str, Any]],
+        nutrient_ordering,
+        export_flags: Dict[str, bool],
+    ) -> tuple[List[Dict[str, Any]], Dict[str, bool]]:
+        """Order totals for display and sync export flags."""
+        category_order = [cat for cat, _ in nutrient_ordering.catalog]
+
+        def _cat_rank(name: str) -> int:
+            cat = nutrient_ordering.category_for_nutrient(name)
+            if cat in category_order:
+                return category_order.index(cat)
+            return len(category_order) + 1
+
+        def _order_val(name: str) -> float:
+            order = nutrient_ordering.order_for_name(name)
+            return float(order if order is not None else float("inf"))
+
+        sorted_totals = sorted(
+            totals.items(),
+            key=lambda item: (
+                _cat_rank(item[1].get("name", "")),
+                _order_val(item[1].get("name", "")),
+                item[1].get("name", "").lower(),
+            ),
+        )
+
+        rows: List[Dict[str, Any]] = []
+        new_flags: Dict[str, bool] = {}
+        for nut_key, entry in sorted_totals:
+            current_checked = export_flags.get(nut_key, True)
+            new_flags[nut_key] = current_checked
+            rows.append(
+                {
+                    "key": nut_key,
+                    "name": entry.get("name", ""),
+                    "amount": float(entry.get("amount", 0.0) or 0.0),
+                    "unit": entry.get("unit", ""),
+                    "checked": current_checked,
+                }
+            )
+
+        return rows, new_flags
+
+    def normalize_quantity_mode(self, mode_raw: str) -> str:
+        mode_lower = str(mode_raw or "g").strip().lower()
+        if mode_lower in ("%", "percent", "percentage"):
+            return "%"
+        return normalize_mass_unit(mode_lower) or "g"
+
+    def is_percent_mode(self, quantity_mode: str) -> bool:
+        return quantity_mode == "%"
+
+    def current_mass_unit(self, quantity_mode: str) -> str:
+        if self.is_percent_mode(quantity_mode):
+            return "g"
+        return normalize_mass_unit(quantity_mode) or "g"
+
+    def quantity_mode_label(self, mode: str) -> str:
+        labels = {
+            "g": "gramos (g)",
+            "kg": "kilogramos (kg)",
+            "ton": "toneladas (ton)",
+            "lb": "libras (lb)",
+            "oz": "onzas (oz)",
+            "%": "porcentaje (%)",
+        }
+        return labels.get(mode, mode)
+
+    def mass_decimals(self, unit: str) -> int:
+        return {
+            "g": 1,
+            "kg": 3,
+            "ton": 6,
+            "lb": 3,
+            "oz": 3,
+        }.get(unit, 2)
+
+    def normalization_dialog_values(
+        self,
+        total_g: float,
+        unit: str,
+    ) -> tuple[float, float, float, int]:
+        """Return suggested bounds for the normalization dialog."""
+        unit = normalize_mass_unit(unit) or unit or "g"
+        start_value = convert_mass(total_g, "g", unit) or total_g
+        min_value = convert_mass(0.1, "g", unit) or 0.1
+        max_value = convert_mass(1_000_000.0, "g", unit) or 1_000_000.0
+        decimals = self.mass_decimals(unit)
+        return float(start_value), float(min_value), float(max_value), decimals
+
+    def convert_to_grams(self, value: float, unit: str) -> float | None:
+        unit = normalize_mass_unit(unit) or unit or "g"
+        converted = convert_mass(value, unit, "g")
+        return float(converted) if converted is not None else None
+
+    def display_amount_for_unit(self, amount_g: float, quantity_mode: str) -> float:
+        unit = self.current_mass_unit(quantity_mode)
+        converted = convert_mass(amount_g, "g", unit)
+        return float(converted) if converted is not None else amount_g
+
+    def format_mass_amount(self, amount_g: float, quantity_mode: str) -> str:
+        unit = self.current_mass_unit(quantity_mode)
+        converted = self.display_amount_for_unit(amount_g, quantity_mode)
+        decimals = self.mass_decimals(unit)
+        return f"{converted:.{decimals}f} {unit}"
+
+    def amount_to_percent(self, amount_g: float, total_weight: float) -> float:
+        if total_weight <= 0:
+            return 0.0
+        return (amount_g / total_weight) * 100.0
+
+    def format_amount_for_status(
+        self,
+        amount_g: float,
+        *,
+        quantity_mode: str,
+        total_weight: float,
+        include_new: bool = False,
+    ) -> str:
+        if not self.is_percent_mode(quantity_mode):
+            return self.format_mass_amount(amount_g, quantity_mode)
+        total = total_weight
+        if include_new:
+            total += amount_g
+        percent = self.amount_to_percent(amount_g, total)
+        return f"{percent:.2f} %"
+
+    def apply_percent_edit(self, target_idx: int, target_percent: float) -> tuple[bool, str | None]:
+        if target_percent < 0 or target_percent > 100:
+            return False, "percent_range"
+
+        count = self.get_ingredient_count()
+        if target_idx < 0 or target_idx >= count:
+            return False, "row_invalid"
+
+        total_weight = float(self._formulation.total_weight)
+        base_total = total_weight if total_weight > 0 else 100.0
+        if base_total <= 0:
+            return False, "no_total"
+
+        current_percents = [
+            float(ingredient.amount_g) * 100.0 / base_total
+            for ingredient in self._formulation.ingredients
+        ]
+
+        locked_sum = sum(
+            current_percents[idx]
+            for idx, ingredient in enumerate(self._formulation.ingredients)
+            if ingredient.locked and idx != target_idx
+        )
+        if locked_sum > 100.0:
+            return False, "locked_over"
+
+        remaining = 100.0 - locked_sum - target_percent
+        free_indices = [
+            idx
+            for idx, ingredient in enumerate(self._formulation.ingredients)
+            if not ingredient.locked and idx != target_idx
+        ]
+
+        if remaining < -0.0001:
+            return False, "insufficient_free"
+
+        if not free_indices and abs(remaining) > 0.0001:
+            return False, "need_free"
+
+        cur_free_sum = sum(current_percents[idx] for idx in free_indices)
+        new_percents = [0.0 for _ in range(count)]
+
+        for idx, ingredient in enumerate(self._formulation.ingredients):
+            if ingredient.locked and idx != target_idx:
+                new_percents[idx] = current_percents[idx]
+            elif idx == target_idx:
+                new_percents[idx] = target_percent
+            else:
+                if cur_free_sum > 0:
+                    new_percents[idx] = (
+                        current_percents[idx] * remaining / cur_free_sum
+                    )
+                elif free_indices:
+                    new_percents[idx] = remaining if idx == free_indices[0] else 0.0
+
+        if any(pct < -0.001 for pct in new_percents):
+            return False, "negative_percent"
+
+        for idx, pct in enumerate(new_percents):
+            safe_pct = max(pct, 0.0)
+            amount_g = safe_pct * base_total / 100.0
+            self.update_ingredient_amount(idx, amount_g)
+        return True, None
+
+    def build_export_payload(
+        self,
+        *,
+        formula_name: str,
+        quantity_mode: str,
+        export_flags: Dict[str, bool],
+        label_settings: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Assemble formulation + UI config into a JSON-friendly payload."""
+        items: list[Dict[str, Any]] = []
+        for item in self.get_ui_items():
+            fdc_raw = item.get("fdc_id")
+            try:
+                fdc_id = int(fdc_raw)
+            except Exception:
+                fdc_id = fdc_raw
+
+            amount_raw = item.get("amount_g", 0.0)
+            try:
+                amount_g = float(amount_raw) if amount_raw is not None else 0.0
+            except Exception:
+                amount_g = 0.0
+
+            items.append(
+                {
+                    "fdc_id": fdc_id,
+                    "description": item.get("description", "") or "",
+                    "brand": item.get("brand") or item.get("brand_owner") or "",
+                    "data_type": item.get("data_type", "") or "",
+                    "amount_g": amount_g,
+                    "locked": bool(item.get("locked", False)),
+                }
+            )
+
+        return {
+            "version": 3,
+            "formula_name": formula_name or "Current Formulation",
+            "quantity_mode": quantity_mode,
+            "items": items,
+            "nutrient_export_flags": self.normalize_export_flags(export_flags),
+            "label_settings": label_settings,
+        }
+
+    def safe_base_name(self, name: str, fallback: str = "formulacion") -> str:
+        """Return a filesystem-safe base name using provided text or fallback."""
+        raw = (name or "").strip()
+        clean = re.sub(r'[\\/:*?"<>|]+', "_", raw).strip(". ")
+        return clean or fallback

@@ -2,16 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-import re
-from decimal import Decimal
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, PatternFill
-from openpyxl.utils import get_column_letter
-
-from config.constants import DATA_TYPE_PRIORITY
 from PySide6.QtCore import QCoreApplication, QItemSelectionModel, QThread, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
@@ -35,11 +28,6 @@ from ui.tabs.table_utils import (
 
 from domain.exceptions import FormulationImportError
 from domain.services.nutrient_ordering import NutrientOrdering
-from domain.services.unit_normalizer import convert_mass, normalize_mass_unit
-from services.nutrient_normalizer import (
-    augment_fat_nutrients,
-    normalize_nutrients,
-)
 from ui.workers import AddWorker, ApiWorker, ImportWorker
 
 
@@ -250,21 +238,17 @@ class FormulationTabMixin:
             return
 
         desired_locked = item.checkState() == Qt.Checked
-        if desired_locked and self.formulation_presenter.get_locked_count(exclude_index=row) >= (
-            self.formulation_presenter.get_ingredient_count() - 1
-        ):
+        ok, error = self.formulation_presenter.set_lock_state(row, desired_locked)
+        if not ok:
             # Avoid all items locked: keep one free.
             table.blockSignals(True)
-            item.setCheckState(Qt.Unchecked)
+            item.setCheckState(Qt.Unchecked if desired_locked else Qt.Checked)
             table.blockSignals(False)
-            self.status_label.setText("Debe quedar al menos un ingrediente sin fijar.")
+            if error == "need_unlocked":
+                self.status_label.setText("Debe quedar al menos un ingrediente sin fijar.")
+            else:
+                logging.error("Error setting lock state via presenter: %s", error)
             return
-
-        # Toggle lock via presenter
-        try:
-            self.formulation_presenter.toggle_lock(row)
-        except Exception as e:
-            logging.error(f"Error toggling lock via presenter: {e}")
 
         self._refresh_formulation_views()
 
@@ -302,10 +286,9 @@ class FormulationTabMixin:
 
         unit = self._current_mass_unit()
         total_g = self._total_weight()
-        start_value = convert_mass(total_g, "g", unit) or total_g
-        decimals = self._mass_decimals(unit)
-        min_value = convert_mass(0.1, "g", unit) or 0.1
-        max_value = convert_mass(1_000_000.0, "g", unit) or 1_000_000.0
+        start_value, min_value, max_value, decimals = (
+            self.formulation_presenter.normalization_dialog_values(total_g, unit)
+        )
 
         target_value, ok = QInputDialog.getDouble(
             self,
@@ -319,7 +302,7 @@ class FormulationTabMixin:
         if not ok:
             return
 
-        target_g = convert_mass(target_value, unit, "g")
+        target_g = self.formulation_presenter.convert_to_grams(target_value, unit)
         if target_g is None or target_g <= 0:
             QMessageBox.warning(
                 self,
@@ -354,7 +337,9 @@ class FormulationTabMixin:
             )
             return
 
-        default_name = f"{self._safe_base_name()}.xlsx"
+        default_name = (
+            f"{self.formulation_presenter.safe_base_name(self.formula_name_input.text())}.xlsx"
+        )
         initial_path = (
             str(Path(self.last_path or "").with_name(default_name))
             if self.last_path
@@ -400,7 +385,9 @@ class FormulationTabMixin:
             )
             return
 
-        default_name = f"{self._safe_base_name()}.json"
+        default_name = (
+            f"{self.formulation_presenter.safe_base_name(self.formula_name_input.text())}.json"
+        )
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Exportar formulación",
@@ -418,7 +405,12 @@ class FormulationTabMixin:
             # Update formulation name from UI input and build JSON payload.
             formulation_name = self.formula_name_input.text() or "Current Formulation"
             self.formulation_presenter.formulation_name = formulation_name
-            data = self._build_formulation_export_payload()
+            data = self.formulation_presenter.build_export_payload(
+                formula_name=self.formula_name_input.text() or "Current Formulation",
+                quantity_mode=self.quantity_mode,
+                export_flags=self.nutrient_export_flags,
+                label_settings=self._snapshot_label_settings(),
+            )
             Path(path).write_text(
                 json.dumps(data, ensure_ascii=False, indent=2),
                 encoding="utf-8",
@@ -470,55 +462,6 @@ class FormulationTabMixin:
         self._start_import_hydration(base_items, meta)
 
 
-    def _build_formulation_export_payload(self) -> Dict[str, Any]:
-        """Assemble formulation + UI config into a JSON-friendly payload."""
-        items: list[Dict[str, Any]] = []
-        for item in self.formulation_presenter.get_ui_items():
-            fdc_raw = item.get("fdc_id")
-            try:
-                fdc_id = int(fdc_raw)
-            except Exception:
-                fdc_id = fdc_raw
-
-            amount_raw = item.get("amount_g", 0.0)
-            try:
-                amount_g = float(amount_raw) if amount_raw is not None else 0.0
-            except Exception:
-                amount_g = 0.0
-
-            items.append(
-                {
-                    "fdc_id": fdc_id,
-                    "description": item.get("description", "") or "",
-                    "brand": item.get("brand") or item.get("brand_owner") or "",
-                    "data_type": item.get("data_type", "") or "",
-                    "amount_g": amount_g,
-                    "locked": bool(item.get("locked", False)),
-                }
-            )
-
-        return {
-            "version": 3,
-            "formula_name": self.formula_name_input.text() or "Current Formulation",
-            "quantity_mode": self.quantity_mode,
-            "items": items,
-            "nutrient_export_flags": self._snapshot_export_flags(),
-            "label_settings": self._snapshot_label_settings(),
-        }
-
-
-    def _snapshot_export_flags(self) -> Dict[str, bool]:
-        """Return export flag map using stable header keys."""
-        flags: Dict[str, bool] = {}
-        for key, value in (self.nutrient_export_flags or {}).items():
-            if key is None:
-                continue
-            key_text = str(key).strip().lower()
-            if not key_text:
-                continue
-            flags[key_text] = bool(value)
-        return flags
-
 
     def _set_import_controls_enabled(self, enabled: bool) -> None:
         """Toggle formulation controls while import is running."""
@@ -552,24 +495,7 @@ class FormulationTabMixin:
         if label_settings:
             self._apply_label_settings(label_settings, defer_preview=True)
 
-        ui_items: list[Dict[str, Any]] = []
-        for item in base_items:
-            fdc_id = item.get("fdc_id")
-            description = (item.get("description") or "").strip()
-            if not description:
-                description = f"FDC {fdc_id}"
-            data_type = (item.get("data_type") or "").strip() or "Imported"
-            ui_items.append(
-                {
-                    "fdc_id": fdc_id,
-                    "description": description,
-                    "brand": item.get("brand", "") or "",
-                    "data_type": data_type,
-                    "amount_g": float(item.get("amount_g", 0.0) or 0.0),
-                    "locked": bool(item.get("locked", False)),
-                    "nutrients": [],
-                }
-            )
+        ui_items = self.formulation_presenter.build_import_preview_items(base_items)
 
         self.formulation_presenter.load_from_ui_items(
             ui_items,
@@ -650,31 +576,10 @@ class FormulationTabMixin:
             QTimer.singleShot(0, lambda p=payload, m=meta: self._on_import_finished(p))
             return
         self._reset_import_ui_state()
-        hydrated: list[Dict[str, Any]] = []
-        for entry in payload:
-            base = entry.get("base") or {}
-            details = entry.get("details") or {}
-            fdc_id = base.get("fdc_id") or details.get("fdcId")
-            try:
-                fdc_id_int = int(fdc_id) if fdc_id is not None else None
-            except Exception:
-                fdc_id_int = fdc_id
-
-            nutrients = augment_fat_nutrients(details.get("foodNutrients", []) or [])
-            self.nutrient_ordering.update_reference_from_details(details)
-            hydrated.append(
-                {
-                    "fdc_id": fdc_id_int,
-                    "description": details.get("description", "") or base.get("description", ""),
-                    "brand": details.get("brandOwner", "") or base.get("brand", ""),
-                    "data_type": details.get("dataType", "") or base.get("data_type", ""),
-                    "amount_g": float(base.get("amount_g", 0.0) or 0.0),
-                    "nutrients": normalize_nutrients(
-                        nutrients, details.get("dataType")
-                    ),
-                    "locked": bool(base.get("locked", False)),
-                }
-            )
+        hydrated = self.formulation_presenter.build_hydrated_items_from_payload(
+            payload,
+            on_details=self.nutrient_ordering.update_reference_from_details,
+        )
 
         self.formulation_presenter.load_from_ui_items(
             hydrated, self.formula_name_input.text() or "Imported"
@@ -723,30 +628,16 @@ class FormulationTabMixin:
         return self.formulation_presenter.get_total_weight()
 
     def _is_percent_mode(self) -> bool:
-        return self.quantity_mode == "%"
+        return self.formulation_presenter.is_percent_mode(self.quantity_mode)
 
     def _current_mass_unit(self) -> str:
-        if self._is_percent_mode():
-            return "g"
-        return normalize_mass_unit(self.quantity_mode) or "g"
+        return self.formulation_presenter.current_mass_unit(self.quantity_mode)
 
     def _quantity_mode_label(self, mode: str) -> str:
-        labels = {
-            "g": "gramos (g)",
-            "kg": "kilogramos (kg)",
-            "ton": "toneladas (ton)",
-            "lb": "libras (lb)",
-            "oz": "onzas (oz)",
-            "%": "porcentaje (%)",
-        }
-        return labels.get(mode, mode)
+        return self.formulation_presenter.quantity_mode_label(mode)
 
     def _set_quantity_mode(self, mode_raw: str) -> None:
-        mode_lower = str(mode_raw or "g").strip().lower()
-        if mode_lower in ("%", "percent", "percentage"):
-            mode = "%"
-        else:
-            mode = normalize_mass_unit(mode_lower) or "g"
+        mode = self.formulation_presenter.normalize_quantity_mode(mode_raw)
         self.quantity_mode = mode
         idx = next(
             (
@@ -759,31 +650,22 @@ class FormulationTabMixin:
         self.quantity_mode_selector.setCurrentIndex(idx)
 
     def _mass_decimals(self, unit: str) -> int:
-        return {
-            "g": 1,
-            "kg": 3,
-            "ton": 6,
-            "lb": 3,
-            "oz": 3,
-        }.get(unit, 2)
+        return self.formulation_presenter.mass_decimals(unit)
 
     def _display_amount_for_unit(self, amount_g: float) -> float:
-        unit = self._current_mass_unit()
-        converted = convert_mass(amount_g, "g", unit)
-        return float(converted) if converted is not None else amount_g
+        return self.formulation_presenter.display_amount_for_unit(
+            amount_g, self.quantity_mode
+        )
 
     def _format_mass_amount(self, amount_g: float) -> str:
-        unit = self._current_mass_unit()
-        converted = self._display_amount_for_unit(amount_g)
-        decimals = self._mass_decimals(unit)
-        return f"{converted:.{decimals}f} {unit}"
+        return self.formulation_presenter.format_mass_amount(
+            amount_g, self.quantity_mode
+        )
 
 
     def _amount_to_percent(self, amount_g: float, total: float | None = None) -> float:
         total_weight = self._total_weight() if total is None else total
-        if total_weight <= 0:
-            return 0.0
-        return (amount_g / total_weight) * 100.0
+        return self.formulation_presenter.amount_to_percent(amount_g, total_weight)
 
 
     def _update_quantity_headers(self) -> None:
@@ -838,211 +720,46 @@ class FormulationTabMixin:
         return column == self.percent_column_index
 
 
-    def _nutrients_by_header(
-        self, nutrients: List[Dict[str, Any]], header_by_key: Dict[str, str]
-    ) -> Dict[str, float]:
-        """
-        Build a mapping of template header -> nutrient amount (per 100 g),
-        aligned to a precomputed header key map to avoid duplicate columns.
-        """
-        out: Dict[str, float] = {}
-        best_priority: Dict[str, int] = {}
-        allowed_keys = set(header_by_key.keys())
-        alias_priority = {
-            "carbohydrate, by difference": 2,
-            "carbohydrate, by summation": 1,
-            "carbohydrate by summation": 1,
-            "sugars, total": 2,
-            "total sugars": 1,
-        }
-
-        for entry in nutrients:
-            amount = entry.get("amount")
-            if amount is None:
-                continue
-            nut = entry.get("nutrient") or {}
-            header_key, name, unit = self.nutrient_ordering.header_key(nut)
-            if not header_key or header_key not in allowed_keys:
-                continue
-            header = header_by_key[header_key]
-            priority = alias_priority.get((nut.get("name") or "").strip().lower(), 0)
-            current_best = best_priority.get(header, -1)
-            if priority < current_best:
-                continue
-
-            best_priority[header] = priority
-            out[header] = amount
-
-        return out
-
-
-    def _collect_nutrient_columns(self) -> tuple[list[str], Dict[str, str], Dict[str, str]]:
-        """
-        Collect ordered nutrient headers and their categories.
-        Uses the static catalog to force a default ordering/grouping and only keeps
-        nutrients that appear with a value in any ingredient.
-        """
-        candidates: Dict[str, Dict[str, Any]] = {}
-        categories_seen_order: Dict[str, int] = {}
-        preferred_order = [cat for cat, _ in self.nutrient_ordering.catalog]
-        preferred_count = len(preferred_order)
-
-        for item in self.formulation_presenter.get_ui_items():
-            data_priority = DATA_TYPE_PRIORITY.get(
-                (item.get("data_type") or "").strip(), len(DATA_TYPE_PRIORITY)
-            )
-            for entry in self.nutrient_ordering.sort_nutrients_for_display(
-                item.get("nutrients", [])
-            ):
-                nut = entry.get("nutrient") or {}
-                amount = entry.get("amount")
-                if amount is None:
-                    continue
-                header_key, canonical_name, canonical_unit = self.nutrient_ordering.header_key(nut)
-                if header_key and not self.nutrient_export_flags.get(header_key, True):
-                    continue
-
-                if not header_key or not canonical_name:
-                    continue
-
-                category = self.nutrient_ordering.category_for_nutrient(canonical_name, nut)
-                if category not in categories_seen_order:
-                    categories_seen_order[category] = len(categories_seen_order)
-
-                order = self.nutrient_ordering.order_for_name(canonical_name)
-                if order is None:
-                    order = self.nutrient_ordering.nutrient_order(nut, len(candidates))
-                # Keep kcal ahead of kJ when both present
-                unit_lower = (canonical_unit or "").strip().lower()
-                if canonical_name.strip().lower() == "energy":
-                    if unit_lower == "kcal":
-                        order = order - 0.1 if isinstance(order, (int, float)) else order
-                    elif unit_lower == "kj":
-                        order = order + 0.1 if isinstance(order, (int, float)) else order
-
-                header = (
-                    f"{canonical_name} ({canonical_unit})"
-                    if canonical_unit
-                    else canonical_name
-                )
-
-                existing = candidates.get(header_key)
-                if existing is None or (
-                    data_priority < existing["data_priority"]
-                    or (
-                        data_priority == existing["data_priority"]
-                        and order < existing["order"]
-                    )
-                    or (
-                        data_priority == existing["data_priority"]
-                        and order == existing["order"]
-                        and header < existing["header"]
-                    )
-                ):
-                    candidates[header_key] = {
-                        "header_key": header_key,
-                        "header": header,
-                        "category": category,
-                        "order": order,
-                        "data_priority": data_priority,
-                    }
-
-        def category_rank(cat: str) -> int:
-            if cat in preferred_order:
-                return preferred_order.index(cat)
-            return preferred_count + categories_seen_order.get(cat, preferred_count)
-
-        sorted_candidates = sorted(
-            candidates.values(),
-            key=lambda c: (
-                category_rank(c["category"]),
-                c["order"],
-                c["header"].lower(),
-            ),
-        )
-
-        ordered_headers: list[str] = [c["header"] for c in sorted_candidates]
-        categories: Dict[str, str] = {c["header"]: c["category"] for c in sorted_candidates}
-        header_key_map: Dict[str, str] = {c["header"]: c["header_key"] for c in sorted_candidates}
-
-        return ordered_headers, categories, header_key_map
-
-
-    def _ensure_normalized_items(self) -> None:
-        """Normalize all ingredients' nutrients in-place (fat + energy)."""
-        for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
-            original = item.get("nutrients", []) or []
-            normalized = normalize_nutrients(original, item.get("data_type"))
-            if normalized != original:
-                # preserve reference to allow downstream updates
-                item["nutrients"] = normalized
-
-
-    def _split_header_unit(self, header: str) -> tuple[str, str]:
-        if header.endswith(")") and " (" in header:
-            name, unit = header.rsplit(" (", 1)
-            return name, unit[:-1]
-        return header, ""
-
-
     def _hydrate_items(self, items: list[Dict[str, Any]]) -> list[Dict[str, Any]] | None:
         """Fetch USDA details for items to populate description/nutrients."""
-        hydrated: list[Dict[str, Any]] = []
-        total = len(items)
-        for item in items:
-            fdc_id = item.get("fdc_id") or item.get("fdcId")
-            if fdc_id is None:
+        def _on_progress(index: int, total: int, fdc_id_int: int) -> None:
+            self.status_label.setText(
+                f"Importando ingrediente {index + 1}/{total} (FDC {fdc_id_int})..."
+            )
+            QCoreApplication.processEvents()
+
+        def _on_details(details: Dict[str, Any]) -> None:
+            self.nutrient_ordering.update_reference_from_details(details)
+
+        hydrated, error = self.formulation_presenter.hydrate_items(
+            items,
+            on_progress=_on_progress,
+            on_details=_on_details,
+            detail_format="abridged",
+        )
+        if error:
+            code = error.get("code")
+            if code == "missing_fdc":
                 QMessageBox.warning(
                     self,
                     "FDC ID faltante",
                     "Uno de los ingredientes no tiene FDC ID.",
                 )
-                return None
-            try:
-                fdc_id_int = int(fdc_id)
-            except ValueError:
+            elif code == "invalid_fdc":
                 QMessageBox.warning(
                     self,
                     "FDC ID inválido",
-                    f"FDC ID no numérico: {fdc_id}",
+                    f"FDC ID no numérico: {error.get('fdc_id', '')}",
                 )
-                return None
-
-            self.status_label.setText(
-                f"Importando ingrediente {len(hydrated)+1}/{total} (FDC {fdc_id_int})..."
-            )
-            QCoreApplication.processEvents()
-            try:
-                details = self.food_repository.get_by_id(
-                    fdc_id_int,
-                    detail_format="abridged",
-                )
-            except Exception as exc:  # noqa: BLE001 - surface to user
+            elif code == "fetch_error":
                 QMessageBox.critical(
                     self,
                     "Error al cargar ingrediente",
-                    f"No se pudo cargar el FDC {fdc_id_int}:\n{exc}",
+                    f"No se pudo cargar el FDC {error.get('fdc_id', '')}:\n{error.get('error', '')}",
                 )
-                return None
-            self.nutrient_ordering.update_reference_from_details(details)
-
-            hydrated.append(
-                {
-                    "fdc_id": fdc_id_int,
-                    "description": details.get("description", "")
-                    or item.get("description", ""),
-                    "brand": details.get("brandOwner", "") or item.get("brand", ""),
-                    "data_type": details.get("dataType", "") or item.get("data_type", ""),
-                    "amount_g": float(item.get("amount_g", 0.0) or 0.0),
-                    "nutrients": normalize_nutrients(
-                        details.get("foodNutrients", []) or [], details.get("dataType")
-                    ),
-                    "locked": bool(item.get("locked", False)),
-                }
-            )
+            return None
 
         return hydrated
-
 
     def _populate_formulation_tables(self) -> None:
         """Refresh formulation tables with current items."""
@@ -1102,56 +819,46 @@ class FormulationTabMixin:
         logging.debug("_populate_totals_table start")
         totals = self._calculate_totals()
         self._last_totals = totals
-
-        category_order = [cat for cat, _ in self.nutrient_ordering.catalog]
-
-        def _cat_rank(name: str) -> int:
-            cat = self.nutrient_ordering.category_for_nutrient(name)
-            if cat in category_order:
-                return category_order.index(cat)
-            return len(category_order) + 1
-
-        def _order_val(name: str) -> float:
-            order = self.nutrient_ordering.order_for_name(name)
-            return float(order if order is not None else float("inf"))
-
-        sorted_totals = sorted(
-            totals.items(),
-            key=lambda item: (
-                _cat_rank(item[1].get("name", "")),
-                _order_val(item[1].get("name", "")),
-                item[1].get("name", "").lower(),
-            ),
+        rows, new_flags = self.formulation_presenter.build_totals_rows(
+            totals,
+            self.nutrient_ordering,
+            self.nutrient_export_flags,
         )
 
         self.totals_table.blockSignals(True)
-        self.totals_table.setRowCount(len(sorted_totals))
-        new_flags: Dict[str, bool] = {}
+        self.totals_table.setRowCount(len(rows))
 
-        for row_idx, (nut_key, entry) in enumerate(sorted_totals):
-            name_item = QTableWidgetItem(entry["name"])
-            name_item.setData(Qt.UserRole, nut_key)
+        for row_idx, row in enumerate(rows):
+            name_item = QTableWidgetItem(row["name"])
+            name_item.setData(Qt.UserRole, row["key"])
             self.totals_table.setItem(row_idx, 0, name_item)
 
             self.totals_table.setItem(
-                row_idx, 1, QTableWidgetItem(f"{entry['amount']:.2f}")
+                row_idx, 1, QTableWidgetItem(f"{row['amount']:.2f}")
             )
-            self.totals_table.setItem(row_idx, 2, QTableWidgetItem(entry["unit"]))
+            self.totals_table.setItem(row_idx, 2, QTableWidgetItem(row["unit"]))
 
             export_item = QTableWidgetItem("")
             export_item.setFlags(
                 Qt.ItemIsUserCheckable | Qt.ItemIsEnabled | Qt.ItemIsSelectable
             )
-            current_checked = self.nutrient_export_flags.get(nut_key, True)
-            export_item.setCheckState(Qt.Checked if current_checked else Qt.Unchecked)
-            export_item.setData(Qt.UserRole, nut_key)
+            export_item.setCheckState(
+                Qt.Checked if row["checked"] else Qt.Unchecked
+            )
+            export_item.setData(Qt.UserRole, row["key"])
             self.totals_table.setItem(row_idx, 3, export_item)
-            new_flags[nut_key] = current_checked
 
         self.nutrient_export_flags = new_flags
         self.totals_table.blockSignals(False)
         self._update_toggle_export_button()
         logging.debug("_populate_totals_table done")
+
+
+    def _calculate_totals(self) -> Dict[str, Dict[str, Any]]:
+        """Calculate nutrient totals via presenter."""
+        return self.formulation_presenter.calculate_totals_with_fallback(
+            self.nutrient_ordering
+        )
 
 
     def _update_toggle_export_button(self) -> None:
@@ -1187,7 +894,7 @@ class FormulationTabMixin:
         if QThread.currentThread() is not self.thread():
             QTimer.singleShot(0, self._refresh_formulation_views)
             return
-        self._ensure_normalized_items()
+        self.formulation_presenter.normalize_items_nutrients()
         self._populate_formulation_tables()
         self._populate_totals_table()
         self._update_label_preview(force_recalc_totals=True)
@@ -1213,7 +920,7 @@ class FormulationTabMixin:
         if not self.formulation_presenter.has_ingredients():
             self.details_table.setRowCount(0)
             return
-        self._ensure_normalized_items()
+        self.formulation_presenter.normalize_items_nutrients()
         sel_model = self.formulation_preview.selectionModel()
         has_sel = sel_model and sel_model.hasSelection()
         if not has_sel:
@@ -1243,246 +950,13 @@ class FormulationTabMixin:
         # Update formulation name from UI input
         formulation_name = self.formula_name_input.text() or "Current Formulation"
         self.formulation_presenter.formulation_name = formulation_name
-
-        try:
-            self.formulation_presenter.export_to_excel(
-                filepath,
-                export_flags=self.nutrient_export_flags,
-                mass_unit=self._current_mass_unit(),
-            )
-            return
-        except Exception as e:
-            logging.error(
-                f"Error exporting via presenter: {e}, falling back to old method"
-            )
-
-        # Fallback to old implementation
-        self._ensure_normalized_items()
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Ingredientes"
-        totals_sheet = wb.create_sheet("Totales")
-
-        mass_unit = self._current_mass_unit()
-        unit_decimals = self._mass_decimals(mass_unit)
-        unit_format = "0" if unit_decimals <= 0 else f"0.{'0' * unit_decimals}"
-
-        base_headers = [
-            "FDC ID",
-            "Ingrediente",
-            "Marca / Origen",
-            "Tipo de dato",
-            f"Cantidad ({mass_unit})",
-            "Cantidad (%)",
-        ]
-
-        nutrient_headers, header_categories, header_key_map = self._collect_nutrient_columns()
-        header_by_key = {v: k for k, v in header_key_map.items()}
-
-        header_fill = PatternFill("solid", fgColor="D9D9D9")
-        total_fill = PatternFill("solid", fgColor="FFF2CC")
-        category_fills = {
-            "Proximates": PatternFill("solid", fgColor="DAEEF3"),
-            "Carbohydrates": PatternFill("solid", fgColor="E6B8B7"),
-            "Minerals": PatternFill("solid", fgColor="C4D79B"),
-            "Vitamins and Other Components": PatternFill("solid", fgColor="FFF2CC"),
-            "Lipids": PatternFill("solid", fgColor="D9E1F2"),
-            "Amino acids": PatternFill("solid", fgColor="E4DFEC"),
-        }
-        center = Alignment(horizontal="center", vertical="center")
-
-        # Row 1: group titles (base + nutrient categories)
-        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(base_headers))
-        ws.cell(row=1, column=1, value="Detalles de formulación").alignment = center
-
-        if nutrient_headers:
-            start_col = len(base_headers) + 1
-            col = start_col
-            while col < start_col + len(nutrient_headers):
-                idx = col - start_col
-                category = header_categories.get(nutrient_headers[idx], "Nutrientes")
-                run_start = col
-                while (
-                    col < start_col + len(nutrient_headers)
-                    and header_categories.get(nutrient_headers[col - start_col], "Nutrientes")
-                    == category
-                ):
-                    col += 1
-                run_end = col - 1
-                ws.merge_cells(start_row=1, start_column=run_start, end_row=1, end_column=run_end)
-                cat_cell = ws.cell(row=1, column=run_start, value=category)
-                cat_cell.alignment = center
-                cat_cell.fill = category_fills.get(category, header_fill)
-
-        # Row 2: headers
-        headers = base_headers + nutrient_headers
-        for col_idx, name in enumerate(headers, start=1):
-            cell = ws.cell(row=2, column=col_idx, value=name)
-            cell.fill = category_fills.get(
-                header_categories.get(name, ""), header_fill
-            ) if col_idx > len(base_headers) else header_fill
-            cell.alignment = center
-
-        start_row = 3
-        grams_col = base_headers.index(f"Cantidad ({mass_unit})") + 1
-        percent_col = base_headers.index("Cantidad (%)") + 1
-        data_rows = self.formulation_presenter.get_ingredient_count()
-        end_row = start_row + data_rows - 1
-
-        # Write ingredient rows
-        for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
-            row = start_row + idx
-            amount_g = float(item.get("amount_g", 0.0) or 0.0)
-            amount_val = convert_mass(amount_g, "g", mass_unit)
-            amount_display = float(amount_val) if amount_val is not None else amount_g
-            values = [
-                item.get("fdc_id", ""),
-                item.get("description", ""),
-                item.get("brand", ""),
-                item.get("data_type", ""),
-                amount_display,
-                None,  # placeholder for percent formula
-            ]
-            for col_idx, val in enumerate(values, start=1):
-                ws.cell(row=row, column=col_idx, value=val)
-
-            gram_cell = f"{get_column_letter(grams_col)}{row}"
-            total_range = f"${get_column_letter(grams_col)}${start_row}:${get_column_letter(grams_col)}${end_row}"
-            ws.cell(
-                row=row,
-                column=percent_col,
-                value=f"={gram_cell}/SUM({total_range})",
-            ).number_format = "0.00%"
-
-            nut_map = self._nutrients_by_header(item.get("nutrients", []), header_by_key)
-            for offset, header in enumerate(nutrient_headers, start=len(base_headers) + 1):
-                if header in nut_map:
-                    ws.cell(row=row, column=offset, value=nut_map[header])
-
-        total_row = end_row + 1
-        ws.cell(row=total_row, column=1, value="Total")
-        ws.cell(row=total_row, column=2, value="Formulado")
-        ws.cell(row=total_row, column=3, value="Formulado")
-        ws.cell(row=total_row, column=4, value="Formulado")
-
-        gram_total_cell = ws.cell(
-            row=total_row,
-            column=grams_col,
-            value=f"=SUBTOTAL(9,{get_column_letter(grams_col)}{start_row}:{get_column_letter(grams_col)}{end_row})",
+        self.formulation_presenter.export_to_excel_safe(
+            filepath,
+            export_flags=self.nutrient_export_flags,
+            mass_unit=self._current_mass_unit(),
+            nutrient_ordering=self.nutrient_ordering,
         )
-        gram_total_cell.fill = total_fill
-        percent_total_cell = ws.cell(row=total_row, column=percent_col, value="100%")
-        percent_total_cell.number_format = "0.00%"
-        percent_total_cell.fill = total_fill
 
-        for offset, header in enumerate(nutrient_headers, start=len(base_headers) + 1):
-            col_letter = get_column_letter(offset)
-            formula = (
-                f"=SUMPRODUCT(${get_column_letter(percent_col)}${start_row}:${get_column_letter(percent_col)}${end_row},"
-                f"${col_letter}${start_row}:${col_letter}${end_row})"
-            )
-            cell = ws.cell(row=total_row, column=offset, value=formula)
-            cell.fill = total_fill
-
-        # Styles for data rows
-        for row in range(start_row, total_row + 1):
-            ws.cell(row=row, column=grams_col).number_format = unit_format
-
-        # Freeze panes to keep headers/base columns visible
-        freeze_col = len(base_headers) + 1 if nutrient_headers else 1
-        ws.freeze_panes = f"{get_column_letter(freeze_col)}3"
-
-        # Adjust widths
-        widths = {
-            "A": 12,
-            "B": 35,
-            "C": 18,
-            "D": 14,
-            "E": 12,
-            "F": 12,
-        }
-        for col_letter, width in widths.items():
-            ws.column_dimensions[col_letter].width = width
-
-        # Totales sheet: simple reference to totals row
-        totals_headers = ["Nutriente", "Total", "Unidad"]
-        for col_idx, name in enumerate(totals_headers, start=1):
-            cell = totals_sheet.cell(row=1, column=col_idx, value=name)
-            cell.fill = header_fill
-            cell.alignment = center
-
-        for idx, header in enumerate(nutrient_headers, start=1):
-            name_part, unit = self._split_header_unit(header)
-            totals_sheet.cell(row=idx + 1, column=1, value=name_part)
-            totals_sheet.cell(row=idx + 1, column=3, value=unit or "")
-            source_cell = f"Ingredientes!{get_column_letter(len(base_headers) + idx)}{total_row}"
-            totals_sheet.cell(row=idx + 1, column=2, value=f"={source_cell}")
-
-        wb.save(filepath)
-
-
-    def _calculate_totals(self) -> Dict[str, Dict[str, Any]]:
-        """Calculate nutrient totals via presenter."""
-        logging.debug(f"_calculate_totals start items={self.formulation_presenter.get_ingredient_count()}")
-
-        try:
-            # Calculate totals via presenter
-            totals = self.formulation_presenter.calculate_totals()
-            totals = self.nutrient_ordering.normalize_totals_by_header_key(totals)
-            logging.debug(f"_calculate_totals done (via presenter) nutrients={len(totals)}")
-            return totals
-
-        except Exception as e:
-            logging.error(f"Error calculating totals via presenter: {e}")
-            # Fallback to old implementation
-            self._ensure_normalized_items()
-            totals: Dict[str, Dict[str, Any]] = {}
-            total_weight = self._total_weight()
-            for item in self.formulation_presenter.get_ui_items():
-                qty = item.get("amount_g", 0) or 0
-                for nutrient in self.nutrient_ordering.sort_nutrients_for_display(
-                    item.get("nutrients", [])
-                ):
-                    amount = nutrient.get("amount")
-                    if amount is None:
-                        continue
-                    nut = nutrient.get("nutrient") or {}
-                    header_key, canonical_name, canonical_unit = self.nutrient_ordering.header_key(nut)
-                    if not header_key:
-                        continue
-                    entry = totals.setdefault(
-                        header_key,
-                        {
-                            "name": canonical_name or nut.get("name", ""),
-                            "unit": canonical_unit or "",
-                            "amount": 0.0,
-                            "order": self.nutrient_ordering.nutrient_order(
-                                nut, len(totals)
-                            ),
-                        },
-                    )
-                    if canonical_name and not entry["name"]:
-                        entry["name"] = canonical_name
-                    if canonical_unit and not entry["unit"]:
-                        entry["unit"] = canonical_unit
-                    inferred_unit = self.nutrient_ordering.infer_unit(nut)
-                    if inferred_unit and not entry["unit"]:
-                        entry["unit"] = inferred_unit
-                    entry["order"] = min(
-                        entry.get("order", float("inf")),
-                        self.nutrient_ordering.nutrient_order(nut, len(totals)),
-                    )
-                    entry["amount"] += amount * qty / 100.0
-
-            if total_weight > 0:
-                factor = 100.0 / total_weight
-                for entry in totals.values():
-                    entry["amount"] *= factor
-            logging.debug(f"_calculate_totals done (fallback) nutrients={len(totals)} total_weight={total_weight}")
-            return totals
-
-
-    # ---- Add/edit flows ----
     def _add_row_to_formulation(self, row: int | None = None) -> None:
         logging.debug(f"_add_row_to_formulation row={row}")
         if row is None:
@@ -1579,21 +1053,12 @@ class FormulationTabMixin:
 
     def _format_amount_for_status(self, amount_g: float, include_new: bool = False) -> str:
         """Return a user-facing label for a quantity using the active mode."""
-        if not self._is_percent_mode():
-            return self._format_mass_amount(amount_g)
-
-        total = self._total_weight()
-        if include_new:
-            total += amount_g
-        percent = 0.0 if total <= 0 else (amount_g / total) * 100.0
-        return f"{percent:.2f} %"
-
-
-    def _safe_base_name(self, fallback: str = "formulacion") -> str:
-        """Return a filesystem-safe base name using the formula input or fallback."""
-        name = (self.formula_name_input.text() or "").strip()
-        clean = re.sub(r'[\\/:*?"<>|]+', "_", name).strip(". ")
-        return clean or fallback
+        return self.formulation_presenter.format_amount_for_status(
+            amount_g,
+            quantity_mode=self.quantity_mode,
+            total_weight=self._total_weight(),
+            include_new=include_new,
+        )
 
 
     def _prompt_quantity(
@@ -1602,18 +1067,14 @@ class FormulationTabMixin:
         if not self._is_percent_mode():
             unit = self._current_mass_unit()
             start_amount_g = default_amount if default_amount is not None else 100.0
-            start_value = convert_mass(start_amount_g, "g", unit)
-            if start_value is None:
-                start_value = start_amount_g
+            start_value, min_value, max_value, decimals = (
+                self.formulation_presenter.normalization_dialog_values(
+                    start_amount_g,
+                    unit,
+                )
+            )
             title = "Cantidad"
             label = f"Cantidad del ingrediente ({unit}):"
-            min_value = convert_mass(0.1, "g", unit)
-            if min_value is None:
-                min_value = 0.1
-            max_value = convert_mass(1_000_000.0, "g", unit)
-            if max_value is None:
-                max_value = 1_000_000.0
-            decimals = self._mass_decimals(unit)
         else:
             start_value = (
                 self._amount_to_percent(default_amount or 0.0)
@@ -1640,7 +1101,7 @@ class FormulationTabMixin:
             return "percent", raw_value
 
         unit = self._current_mass_unit()
-        amount_g = convert_mass(raw_value, unit, "g")
+        amount_g = self.formulation_presenter.convert_to_grams(raw_value, unit)
         return "g", float(amount_g) if amount_g is not None else raw_value
 
 
@@ -1679,97 +1140,53 @@ class FormulationTabMixin:
 
     def _apply_percent_edit(self, target_idx: int, target_percent: float) -> bool:
         """Redistribute quantities so locked percentages stay fixed."""
-        if target_percent < 0 or target_percent > 100:
-            QMessageBox.warning(self, "Porcentaje inválido", "Ingresa un valor entre 0 y 100.")
-            return False
-
-        if target_idx < 0 or target_idx >= self.formulation_presenter.get_ingredient_count():
+        ok, error_code = self.formulation_presenter.apply_percent_edit(
+            target_idx, target_percent
+        )
+        if ok:
+            return True
+        if error_code == "row_invalid":
             self.status_label.setText("Fila seleccionada inválida.")
             return False
-
-        total_weight = self._total_weight()
-        base_total = total_weight if total_weight > 0 else 100.0
-        if base_total <= 0:
+        if error_code == "percent_range":
+            QMessageBox.warning(self, "Porcentaje inválido", "Ingresa un valor entre 0 y 100.")
+            return False
+        if error_code == "no_total":
             QMessageBox.warning(
                 self,
                 "Porcentaje inválido",
                 "No hay cantidad total para calcular porcentajes.",
             )
             return False
-
-        current_percents = [
-            (item.get("amount_g", 0.0) or 0.0) * 100.0 / base_total
-            for item in self.formulation_presenter.get_ui_items()
-        ]
-
-        locked_sum = sum(
-            current_percents[idx]
-            for idx, item in enumerate(self.formulation_presenter.get_ui_items())
-            if item.get("locked") and idx != target_idx
-        )
-        if locked_sum > 100.0:
+        if error_code == "locked_over":
             QMessageBox.warning(
                 self,
                 "Porcentaje inválido",
                 "Los ingredientes fijados ya superan el 100%. Libera uno para continuar.",
             )
             return False
-
-        remaining = 100.0 - locked_sum - target_percent
-        free_indices = [
-            idx
-            for idx, item in enumerate(self.formulation_presenter.get_ui_items())
-            if not item.get("locked") and idx != target_idx
-        ]
-
-        if remaining < -0.0001:
+        if error_code == "insufficient_free":
             QMessageBox.warning(
                 self,
                 "Sin grado de libertad",
                 "No hay porcentaje libre suficiente. Libera un ingrediente o reduce el valor.",
             )
             return False
-
-        if not free_indices and abs(remaining) > 0.0001:
+        if error_code == "need_free":
             QMessageBox.warning(
                 self,
                 "Sin grado de libertad",
                 "Debe quedar al menos un ingrediente sin fijar para ajustar porcentajes.",
             )
             return False
-
-        cur_free_sum = sum(current_percents[idx] for idx in free_indices)
-        new_percents = [0.0 for _ in range(self.formulation_presenter.get_ingredient_count())]
-
-        for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
-            if item.get("locked") and idx != target_idx:
-                new_percents[idx] = current_percents[idx]
-            elif idx == target_idx:
-                new_percents[idx] = target_percent
-            else:
-                if cur_free_sum > 0:
-                    new_percents[idx] = (
-                        current_percents[idx] * remaining / cur_free_sum
-                    )
-                elif free_indices:
-                    new_percents[idx] = remaining if idx == free_indices[0] else 0.0
-
-        if any(pct < -0.001 for pct in new_percents):
+        if error_code == "negative_percent":
             QMessageBox.warning(
                 self,
                 "Sin grado de libertad",
                 "No hay porcentaje libre suficiente. Ajusta los valores o libera un ingrediente.",
             )
             return False
-
-        for idx, pct in enumerate(new_percents):
-            safe_pct = max(pct, 0.0)
-            # Amount updated via presenter.update_ingredient_amount(idx, safe_pct * base_total / 100.0)
-
-            self.formulation_presenter.update_ingredient_amount(idx, safe_pct * base_total / 100.0)
-        return True
-
-
+        return False
     def _remove_selected_from_formulation(self, table: QTableWidget) -> None:
         indexes = table.selectionModel().selectedRows()
         if not indexes:
@@ -1781,16 +1198,11 @@ class FormulationTabMixin:
 
             removed = {"fdc_id": "", "description": "Removed"}
 
-            # Remove from presenter
-            try:
-                self.formulation_presenter.remove_ingredient(row)
-            except Exception as e:
-                logging.error(f"Error removing ingredient via presenter: {e}")
-
-            # If all remaining ingredients are locked, unlock the first one
-            if (self.formulation_presenter.has_ingredients() and
-                self.formulation_presenter.get_locked_count() == self.formulation_presenter.get_ingredient_count()):
-                self.formulation_presenter.toggle_lock(0)
+            ok, error = self.formulation_presenter.remove_ingredient_safe(row)
+            if not ok:
+                logging.error("Error removing ingredient via presenter: %s", error)
+                self.status_label.setText("Fila seleccionada inv lida.")
+                return
             self._refresh_formulation_views()
             self.status_label.setText(
                 f"Eliminado {removed.get('fdc_id', '')} - {removed.get('description', '')}"
@@ -1839,50 +1251,14 @@ class FormulationTabMixin:
         # Use details that AddWorker already fetched (avoid double API call)
         fdc_id = details.get("fdcId", "")
         amount_g = value if mode == "g" else 100.0
-
-        # Normalize nutrients from the details we already have
-        nutrients = normalize_nutrients(
-            details.get("foodNutrients", []) or [],
-            details.get("dataType")
+        nutrients = self.formulation_presenter.add_ingredient_from_details_safe(
+            details,
+            amount_g,
         )
+
         self.nutrient_ordering.update_reference_from_details(details)
 
         desc = details.get("description", "") or ""
-        brand = details.get("brandOwner", "") or ""
-        data_type = details.get("dataType", "") or ""
-
-        # Add ingredient directly to presenter using fetched data
-        # (avoiding duplicate API call since AddWorker already fetched details)
-        try:
-            from domain.models import Food, Ingredient, Nutrient
-            from decimal import Decimal
-
-            domain_nutrients = tuple(
-                Nutrient(
-                    name=n["nutrient"]["name"],
-                    unit=n["nutrient"].get("unitName", ""),
-                    amount=Decimal(str(n["amount"])) if n.get("amount") is not None else Decimal("0"),
-                    nutrient_id=n["nutrient"].get("id"),
-                    nutrient_number=n["nutrient"].get("number"),
-                )
-                for n in nutrients
-            )
-
-            food = Food(
-                fdc_id=fdc_id,
-                description=desc,
-                data_type=data_type,
-                brand_owner=brand,
-                nutrients=domain_nutrients,
-            )
-
-            ingredient = Ingredient(food=food, amount_g=Decimal(str(amount_g)))
-            self.formulation_presenter._formulation.add_ingredient(ingredient)
-
-        except Exception as e:
-            logging.error(f"Error adding ingredient to presenter: {e}")
-
-        self.nutrient_ordering.update_reference_from_details(details)
 
         if mode == "percent":
             success = self._apply_percent_edit(self.formulation_presenter.get_ingredient_count() - 1, value)

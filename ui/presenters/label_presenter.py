@@ -183,6 +183,99 @@ class LabelPresenter:
             ("Otro", None),
         ]
 
+    def build_no_significant_order(self) -> List[str]:
+        return [
+            "Energia",
+            "Carbohidratos",
+            "Proteinas",
+            "Grasas totales",
+            "Grasas saturadas",
+            "Grasas trans",
+            "Fibra alimentaria",
+            "Sodio",
+        ]
+
+    def build_nutrient_usda_map(self) -> Dict[str, str]:
+        return {
+            "Energia": "Energy (kcal)",
+            "Carbohidratos": "Carbohydrate, by difference (g)",
+            "Az£cares": "Sugars, Total (g)",
+            "Polialcoholes": "Sugar alcohol (g)",
+            "Almid¢n": "Starch (g)",
+            "Polidextrosas": "Polydextrose (g)",
+            "Proteinas": "Protein (g)",
+            "Grasas totales": "Total lipid (fat) (g)",
+            "Grasas saturadas": "Fatty acids, total saturated (g)",
+            "Grasas monoinsaturadas": "Fatty acids, total monounsaturated (g)",
+            "Grasas poliinsaturadas": "Fatty acids, total polyunsaturated (g)",
+            "Grasas trans": "Fatty acids, total trans (g)",
+            "Colesterol": "Cholesterol (mg)",
+            "Fibra alimentaria": "Fiber, total dietary (g)",
+            "Sodio": "Sodium, Na (mg)",
+            "Vitamina A": "Vitamin A, RAE (æg)",
+            "Vitamina D": "Vitamin D (D2 + D3) (æg)",
+            "Vitamina C": "Vitamin C, total ascorbic acid (mg)",
+            "Vitamina E": "Vitamin E (alpha-tocopherol) (mg)",
+            "Tiamina": "Thiamin (mg)",
+            "Riboflavina": "Riboflavin (mg)",
+            "Niacina": "Niacin (mg)",
+            "Vitamina B6": "Vitamin B-6 (mg)",
+            "Acido f¢lico": "Folate, DFE (æg)",
+            "Vitaminia B12": "Vitamin B-12 (æg)",
+            "Biotina": "Biotin (æg)",
+            "Acido pantot‚nico": "Pantothenic acid (mg)",
+            "Calcio": "Calcium, Ca (mg)",
+            "Hierro": "Iron, Fe (mg)",
+            "Magnesio": "Magnesium, Mg (mg)",
+            "Zinc": "Zinc, Zn (mg)",
+            "Yodo": "Iodine, I (æg)",
+            "Vitamina K": "Vitamin K (phylloquinone) (æg)",
+            "F¢sforo": "Phosphorus, P (mg)",
+            "Fl£or": "Fluoride, F (mg)",
+            "Cobre": "Copper, Cu (mg)",
+            "Selenio": "Selenium, Se (æg)",
+            "Molibdeno": "Molybdenum, Mo (æg)",
+            "Cromo": "Chromium, Cr (æg)",
+            "Manganeso": "Manganese, Mn (mg)",
+            "Colina": "Choline, total (mg)",
+        }
+
+    def build_no_significant_thresholds(self) -> Dict[str, Dict[str, Any]]:
+        return {
+            "Energia": {"unit": "kcal", "max": 4.0, "kj_max": 17.0},
+            "Carbohidratos": {"unit": "g", "max": 0.5},
+            "Proteinas": {"unit": "g", "max": 0.5},
+            "Grasas totales": {"unit": "g", "max": 0.5},
+            "Grasas saturadas": {"unit": "g", "max": 0.2},
+            "Grasas trans": {"unit": "g", "max": 0.2},
+            "Fibra alimentaria": {"unit": "g", "max": 0.5},
+            "Sodio": {"unit": "mg", "max": 5.0},
+        }
+
+    def build_no_significant_display_map(self) -> Dict[str, str]:
+        return {"Energia": "Valor energético"}
+
+    def filter_no_significant_for_fat(self, names: List[str]) -> List[str]:
+        fat_names = {
+            "Grasas totales",
+            "Grasas saturadas",
+            "Grasas trans",
+            "Grasas monoinsaturadas",
+            "Grasas poliinsaturadas",
+            "Colesterol",
+        }
+        return [name for name in names if name not in fat_names]
+
+    def filter_no_significant_for_carb(self, names: List[str]) -> List[str]:
+        carb_names = {
+            "Carbohidratos",
+            "Azúcares",
+            "Polialcoholes",
+            "Almidón",
+            "Polidextrosas",
+        }
+        return [name for name in names if name not in carb_names]
+
     def parse_label_mapping(
         self,
         nutrient_map: Dict[str, str],
@@ -271,6 +364,51 @@ class LabelPresenter:
         if percent <= 230:
             return "2"
         return self.format_fraction_amount(ratio)
+
+    def portion_factor(self, portion_value: float) -> float:
+        return float(portion_value or 0.0) / 100.0
+
+    def household_unit_label(self, unit_name: str, custom_text: str) -> str:
+        if unit_name == "Otro":
+            custom = custom_text.strip()
+            return custom or "Unidad"
+        return unit_name
+
+    def capacity_label(
+        self,
+        unit_name: str,
+        capacity: int | None,
+        custom_visible: bool,
+    ) -> str:
+        if unit_name == "Otro" and custom_visible:
+            return "Definir capacidad manualmente"
+        if capacity:
+            return f"{capacity} ml"
+        return "-"
+
+    def auto_household_amount(
+        self,
+        portion_unit: str,
+        portion_value: float,
+        capacity: int | None,
+    ) -> str:
+        if portion_unit != "ml" or not capacity:
+            return ""
+        if portion_value <= 0:
+            return ""
+        ratio = float(portion_value) / float(capacity)
+        return self.fraction_from_ratio(ratio)
+
+    def portion_description(
+        self,
+        portion_value: int | float,
+        portion_unit: str,
+        measure_amount: str,
+        measure_unit: str,
+    ) -> str:
+        measure_amount = measure_amount.strip()
+        measure_display = measure_unit if not measure_amount else f"{measure_amount} {measure_unit}"
+        return f"Porción {portion_value} {portion_unit} ({measure_display})"
 
     def format_number_for_unit(self, value: float, unit: str) -> str:
         if math.isclose(value, 0.0, abs_tol=1e-9):
