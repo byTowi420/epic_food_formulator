@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 from domain.services.unit_normalizer import canonical_unit
-from services.nutrient_normalizer import canonical_alias_name
+from domain.services.nutrient_normalizer import canonical_alias_name
 
 
 class NutrientOrdering:
@@ -19,6 +19,7 @@ class NutrientOrdering:
                 self._order_map[key] = idx * 1000 + offset
                 self._category_map[key] = self._catalog[idx][0]
         self._reference_order_map: Dict[str, Dict[str, Any]] = {}
+        self._unit_map = build_nutrient_unit_map()
 
     @property
     def catalog(self) -> List[Tuple[str, List[str]]]:
@@ -222,6 +223,18 @@ class NutrientOrdering:
             return "g"
 
         return ""
+
+    def unit_for_name(self, name: str) -> str:
+        """Return USDA-style unit for a nutrient name."""
+        lower = (name or "").strip().lower()
+        if not lower:
+            return ""
+        mapped = self._unit_map.get(lower)
+        if mapped:
+            return "µg" if mapped == "æg" else mapped
+        inferred = self.infer_unit({"name": name})
+        normalized = canonical_unit(inferred) or inferred
+        return "µg" if normalized == "æg" else normalized
 
     def nutrient_order(self, nutrient: Dict[str, Any], fallback: int) -> float:
         rank = nutrient.get("rank")
@@ -560,3 +573,135 @@ def build_nutrient_catalog() -> List[Tuple[str, List[str]]]:
         ("Oligosaccharides", ["Verbascose", "Raffinose", "Stachyose"]),
         ("Isoflavones", ["Daidzin", "Genistin", "Glycitin", "Daidzein", "Genistein"]),
     ]
+
+
+def build_nutrient_unit_map() -> Dict[str, str]:
+    """Return USDA-like units for known nutrients."""
+    unit_map: Dict[str, str] = {}
+
+    def _set(names: List[str], unit: str) -> None:
+        for name in names:
+            unit_map[name.strip().lower()] = unit
+
+    _set(
+        [
+            "Calcium, Ca",
+            "Iron, Fe",
+            "Magnesium, Mg",
+            "Phosphorus, P",
+            "Potassium, K",
+            "Sodium, Na",
+            "Zinc, Zn",
+            "Copper, Cu",
+            "Manganese, Mn",
+        ],
+        "mg",
+    )
+    _set(
+        [
+            "Iodine, I",
+            "Selenium, Se",
+            "Molybdenum, Mo",
+            "Fluoride, F",
+        ],
+        "µg",
+    )
+    _set(
+        [
+            "Thiamin",
+            "Riboflavin",
+            "Niacin",
+            "Vitamin B-6",
+            "Choline, total",
+            "Choline, free",
+            "Choline, from phosphocholine",
+            "Choline, from phosphatidyl choline",
+            "Choline, from glycerophosphocholine",
+            "Choline, from sphingomyelin",
+            "Betaine",
+            "Vitamin E (alpha-tocopherol)",
+            "Vitamin E, added",
+            "Tocopherol, beta",
+            "Tocopherol, gamma",
+            "Tocopherol, delta",
+            "Tocotrienol, alpha",
+            "Tocotrienol, beta",
+            "Tocotrienol, gamma",
+            "Tocotrienol, delta",
+            "Vitamin C, total ascorbic acid",
+            "Pantothenic acid",
+            "Caffeine",
+            "Theobromine",
+        ],
+        "mg",
+    )
+    _set(
+        [
+            "Folate, total",
+            "Folic acid",
+            "Folate, DFE",
+            "Vitamin B-12",
+            "Vitamin B-12, added",
+            "Vitamin A, RAE",
+            "Retinol",
+            "Carotene, beta",
+            "cis-beta-Carotene",
+            "trans-beta-Carotene",
+            "Carotene, alpha",
+            "Carotene, gamma",
+            "Cryptoxanthin, beta",
+            "Cryptoxanthin, alpha",
+            "Lycopene",
+            "cis-Lycopene",
+            "trans-Lycopene",
+            "Lutein + zeaxanthin",
+            "cis-Lutein/Zeaxanthin",
+            "Lutein",
+            "Zeaxanthin",
+            "Phytoene",
+            "Phytofluene",
+            "Vitamin D (D2 + D3)",
+            "Vitamin D2 (ergocalciferol)",
+            "Vitamin D3 (cholecalciferol)",
+            "25-hydroxycholecalciferol",
+            "Vitamin K (phylloquinone)",
+            "Vitamin K (Dihydrophylloquinone)",
+            "Vitamin K (Menaquinone-4)",
+            "Biotin",
+        ],
+        "µg",
+    )
+    _set(
+        [
+            "Vitamin A, IU",
+            "Vitamin D (D2 + D3), International Units",
+        ],
+        "iu",
+    )
+    _set(
+        [
+            "Cholesterol",
+            "Phytosterols",
+            "Beta-sitosterol",
+            "Brassicasterol",
+            "Campesterol",
+            "Campestanol",
+            "Delta-5-avenasterol",
+            "Phytosterols, other",
+            "Stigmasterol",
+            "Beta-sitostanol",
+        ],
+        "mg",
+    )
+    _set(
+        ["Citric acid", "Malic acid", "Oxalic acid", "Quinic acid"],
+        "mg",
+    )
+    _set(
+        ["Daidzin", "Genistin", "Glycitin", "Daidzein", "Genistein"],
+        "mg",
+    )
+    _set(["Verbascose", "Raffinose", "Stachyose"], "g")
+    _set(["Energy"], "kcal")
+
+    return unit_map

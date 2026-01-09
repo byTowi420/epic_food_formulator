@@ -100,6 +100,21 @@ def convert_mass(value: Decimal | float, from_unit: str, to_unit: str) -> Decima
     return _to_decimal(value) * _MASS_UNIT_TO_G[source] / _MASS_UNIT_TO_G[target]
 
 
+def mass_to_g(value: Decimal | float, unit: str) -> Decimal | None:
+    """Convert a mass value to grams (Decimal)."""
+    return convert_mass(value, unit, "g")
+
+
+def mass_from_g(value_g: Decimal | float, unit: str) -> Decimal | None:
+    """Convert a gram value to the requested unit (Decimal)."""
+    return convert_mass(value_g, "g", unit)
+
+
+def mass_to_kg(value: Decimal | float, unit: str) -> Decimal | None:
+    """Convert a mass value to kilograms (Decimal)."""
+    return convert_mass(value, unit, "kg")
+
+
 def convert_amount(value: Decimal | float, from_unit: str, to_unit: str) -> Decimal | None:
     """Convert between compatible units (mass or energy)."""
     source = canonical_unit(from_unit)

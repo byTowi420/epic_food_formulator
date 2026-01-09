@@ -16,7 +16,8 @@ from config.constants import DATA_TYPE_PRIORITY
 from domain.exceptions import ExportError
 from domain.models import Formulation, Ingredient
 from domain.services.unit_normalizer import canonical_unit, convert_mass, normalize_mass_unit
-from services.nutrient_normalizer import canonical_alias_name
+from domain.services import cost_service
+from domain.services.nutrient_normalizer import canonical_alias_name
 
 
 class ExcelExporter:
@@ -143,8 +144,11 @@ class ExcelExporter:
             for idx, ingredient in enumerate(formulation.ingredients):
                 row = start_row + idx
                 amount_val = convert_mass(ingredient.amount_g, "g", unit)
+                fdc_value = ingredient.food.fdc_id
+                if fdc_value <= 0 and ingredient.food.data_type.strip().lower() == "manual":
+                    fdc_value = "Manual"
                 values = [
-                    ingredient.food.fdc_id,
+                    fdc_value,
                     ingredient.food.description,
                     ingredient.food.brand_owner,
                     ingredient.food.data_type,
@@ -237,6 +241,211 @@ class ExcelExporter:
                 totals_sheet.cell(row=idx + 1, column=3, value=unit or "")
                 source_cell = f"Ingredientes!{get_column_letter(len(base_headers) + idx)}{total_row}"
                 totals_sheet.cell(row=idx + 1, column=2, value=f"={source_cell}")
+
+            # Costos sheet
+            costs_sheet = wb.create_sheet("Costos")
+            row = 1
+            costs_sheet.cell(row=row, column=1, value="Resumen de costos")
+            row += 1
+            batch_mass_g = formulation.total_weight
+            yield_percent = formulation.yield_percent
+            sellable_mass_g = batch_mass_g * yield_percent / Decimal("100")
+            ingredients_total, _ = cost_service.total_ingredients_cost_batch_mn(formulation)
+            processes_total, _ = cost_service.total_process_cost_batch_mn(formulation)
+            total_cost = ingredients_total + processes_total
+
+            summary_headers = [
+                ("Masa tirada (g)", float(batch_mass_g)),
+                ("Yield (%)", float(yield_percent)),
+                ("Masa vendible (g)", float(sellable_mass_g)),
+                ("Costo insumos (MN)", float(ingredients_total)),
+                ("Costo procesos (MN)", float(processes_total)),
+                ("Costo total (MN)", float(total_cost)),
+            ]
+            for col_idx, (label, value) in enumerate(summary_headers, start=1):
+                costs_sheet.cell(row=row, column=col_idx, value=label)
+                costs_sheet.cell(row=row + 1, column=col_idx, value=value)
+            row += 3
+
+            costs_sheet.cell(row=row, column=1, value="Cotizaciones")
+            row += 1
+            currency_headers = ["Moneda", "Simbolo", "Cotizacion a MN"]
+            for col_idx, header in enumerate(currency_headers, start=1):
+                costs_sheet.cell(row=row, column=col_idx, value=header)
+            row += 1
+
+            rate_map: Dict[str, Decimal] = {"$": Decimal("1")}
+            rate_name_map: Dict[str, str] = {"$": "Moneda Nacional"}
+            for rate in formulation.currency_rates:
+                symbol = str(rate.symbol or "").strip()
+                if not symbol:
+                    continue
+                rate_value = rate.rate_to_mn if rate.rate_to_mn is not None else Decimal("0")
+                if symbol == "$":
+                    rate_value = Decimal("1")
+                    rate_name = "Moneda Nacional"
+                else:
+                    rate_name = rate.name or symbol
+                rate_map[symbol] = rate_value
+                rate_name_map[symbol] = rate_name
+
+            for rate in formulation.currency_rates:
+                symbol = str(rate.symbol or "").strip()
+                if not symbol:
+                    continue
+                rate_value = rate_map.get(symbol, Decimal("0"))
+                rate_name = rate_name_map.get(symbol, rate.name or symbol)
+                row_values = [
+                    rate_name,
+                    symbol,
+                    float(rate_value),
+                ]
+                for col_idx, value in enumerate(row_values, start=1):
+                    costs_sheet.cell(row=row, column=col_idx, value=value)
+                row += 1
+
+            row += 1
+            costs_sheet.cell(row=row, column=1, value="Insumos / Ingredientes")
+            row += 1
+            ingredient_headers = [
+                "Ingrediente",
+                "Cantidad (g)",
+                "Presentacion",
+                "Unidad",
+                "Moneda",
+                "Simbolo",
+                "Costo",
+                "Cotizacion",
+                "Costo (MN)",
+                "Costo unitario (MN/g)",
+                "Costo tirada (MN)",
+                "% insumos",
+            ]
+            for col_idx, header in enumerate(ingredient_headers, start=1):
+                costs_sheet.cell(row=row, column=col_idx, value=header)
+            row += 1
+
+            ingredient_total = ingredients_total if ingredients_total > 0 else Decimal("0")
+            for ing in formulation.ingredients:
+                cost_service.update_ingredient_cost_fields(
+                    ing, formulation.currency_rates
+                )
+                cost_per_g = ing.cost_per_g_mn
+                cost_batch = cost_per_g * ing.amount_g if cost_per_g is not None else None
+                percent = (
+                    (cost_batch / ingredient_total * Decimal("100"))
+                    if cost_batch is not None and ingredient_total > 0
+                    else None
+                )
+                symbol = str(ing.cost_currency_symbol or "").strip() or "$"
+                rate = rate_map.get(symbol)
+                cost_value = ing.cost_value
+                cost_mn = cost_value * rate if cost_value is not None and rate is not None else None
+                row_values = [
+                    ing.description,
+                    float(ing.amount_g),
+                    float(ing.cost_pack_amount) if ing.cost_pack_amount is not None else None,
+                    ing.cost_pack_unit or "",
+                    rate_name_map.get(symbol, ""),
+                    symbol or "",
+                    float(cost_value) if cost_value is not None else None,
+                    float(rate) if rate is not None else None,
+                    float(cost_mn) if cost_mn is not None else None,
+                    float(cost_per_g) if cost_per_g is not None else None,
+                    float(cost_batch) if cost_batch is not None else None,
+                    float(percent) if percent is not None else None,
+                ]
+                for col_idx, value in enumerate(row_values, start=1):
+                    costs_sheet.cell(row=row, column=col_idx, value=value)
+                row += 1
+
+            row += 1
+            costs_sheet.cell(row=row, column=1, value="Procesos")
+            row += 1
+            process_headers = [
+                "Nombre",
+                "Tipo",
+                "Setup",
+                "U",
+                "Tiempo/kg",
+                "U",
+                "Tiempo total (h)",
+                "Costo/h (MN)",
+                "Costo total (MN)",
+                "Notas",
+            ]
+            for col_idx, header in enumerate(process_headers, start=1):
+                costs_sheet.cell(row=row, column=col_idx, value=header)
+            row += 1
+
+            batch_mass_kg = convert_mass(batch_mass_g, "g", "kg") or Decimal("0")
+
+            def _to_hours(value: Decimal | None, unit: str | None) -> Decimal | None:
+                if value is None:
+                    return None
+                if unit == "h":
+                    return value
+                if unit == "min":
+                    return value / Decimal("60")
+                return None
+
+            for process in formulation.process_costs:
+                scale_type = (process.scale_type or "").strip().upper()
+                total_cost = cost_service.process_total_cost_mn(process, batch_mass_kg)
+                time_total_h = None
+                if scale_type == "FIXED":
+                    time_total_h = _to_hours(process.time_value, process.time_unit)
+                elif scale_type == "VARIABLE_PER_KG":
+                    time_per_kg_h = _to_hours(process.time_per_kg_value, process.time_unit)
+                    if time_per_kg_h is not None:
+                        time_total_h = time_per_kg_h * batch_mass_kg
+                elif scale_type == "MIXED":
+                    setup_h = _to_hours(process.setup_time_value, process.setup_time_unit)
+                    time_per_kg_h = _to_hours(process.time_per_kg_value, process.time_unit)
+                    if setup_h is not None and time_per_kg_h is not None:
+                        time_total_h = setup_h + time_per_kg_h * batch_mass_kg
+                row_values = [
+                    process.name,
+                    scale_type,
+                    float(process.setup_time_value) if process.setup_time_value is not None else None,
+                    process.setup_time_unit or "",
+                    float(process.time_per_kg_value) if process.time_per_kg_value is not None else None,
+                    process.time_unit or "",
+                    float(time_total_h) if time_total_h is not None else None,
+                    float(process.cost_per_hour_mn) if process.cost_per_hour_mn is not None else None,
+                    float(total_cost) if total_cost is not None else None,
+                    process.notes or "",
+                ]
+                for col_idx, value in enumerate(row_values, start=1):
+                    costs_sheet.cell(row=row, column=col_idx, value=value)
+                row += 1
+
+            row += 1
+            costs_sheet.cell(row=row, column=1, value="Packaging")
+            row += 1
+            packaging_headers = [
+                "Nombre",
+                "Cantidad/pack",
+                "Costo unitario (MN)",
+                "Subtotal (MN)",
+                "Notas",
+            ]
+            for col_idx, header in enumerate(packaging_headers, start=1):
+                costs_sheet.cell(row=row, column=col_idx, value=header)
+            row += 1
+
+            for item in formulation.packaging_items:
+                subtotal = item.quantity_per_pack * item.unit_cost_mn
+                row_values = [
+                    item.name,
+                    float(item.quantity_per_pack),
+                    float(item.unit_cost_mn),
+                    float(subtotal),
+                    item.notes or "",
+                ]
+                for col_idx, value in enumerate(row_values, start=1):
+                    costs_sheet.cell(row=row, column=col_idx, value=value)
+                row += 1
 
             wb.save(output_path)
 

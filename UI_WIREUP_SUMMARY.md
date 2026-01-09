@@ -10,7 +10,7 @@ The UI is wired to presenters and use cases. USDA access is centralized in `infr
 - **Formulation**: Formulation tab -> `FormulationPresenter`
 - **Label**: Label tab -> `LabelPresenter`
 - **Persistence**: JSON + Excel via use cases
-- **Normalization**: `services/nutrient_normalizer.py` + `domain/services/unit_normalizer.py`
+- **Normalization**: `domain/services/nutrient_normalizer.py` + `domain/services/unit_normalizer.py`
 
 ## Notes
 

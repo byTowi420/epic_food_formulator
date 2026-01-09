@@ -9,7 +9,7 @@ This guide reflects the **current** UI architecture. The UI is already wired to 
 - **Label**: `LabelPresenter` drives label calculations and formatting
 
 Shared helpers:
-- `services/nutrient_normalizer.py` for USDA nutrient normalization
+- `domain/services/nutrient_normalizer.py` for USDA nutrient normalization
 - `domain/services/unit_normalizer.py` for unit conversions
 
 ## Rules for New UI Work

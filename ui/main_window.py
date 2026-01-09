@@ -9,9 +9,11 @@ from infrastructure.api.usda_repository import FoodRepository
 from ui.presenters.formulation_presenter import FormulationPresenter
 from ui.presenters.label_presenter import LabelPresenter
 from ui.presenters.search_presenter import SearchPresenter
+from ui.presenters.costs_presenter import CostsPresenter
 from ui.tabs.formulation_tab import FormulationTabMixin
 from ui.tabs.label_tab import LabelTabMixin
 from ui.tabs.search_tab import SearchTabMixin
+from ui.tabs.costs_tab import CostsTabMixin
 
 logging.basicConfig(
     filename="app_debug.log",
@@ -20,7 +22,7 @@ logging.basicConfig(
 )
 
 
-class MainWindow(SearchTabMixin, FormulationTabMixin, LabelTabMixin, QMainWindow):
+class MainWindow(SearchTabMixin, FormulationTabMixin, LabelTabMixin, CostsTabMixin, QMainWindow):
     """Top-level window orchestrating the three UI tabs."""
 
     def __init__(self) -> None:
@@ -31,6 +33,7 @@ class MainWindow(SearchTabMixin, FormulationTabMixin, LabelTabMixin, QMainWindow
         self.formulation_presenter = FormulationPresenter(container=self.container)
         self.search_presenter = SearchPresenter(container=self.container)
         self.label_presenter = LabelPresenter()
+        self.costs_presenter = CostsPresenter(self.formulation_presenter)
 
         # Window setup.
         self.base_window_title = "Food Formulator - Proto"
@@ -44,6 +47,7 @@ class MainWindow(SearchTabMixin, FormulationTabMixin, LabelTabMixin, QMainWindow
         self._init_search_state()
         self._init_formulation_state()
         self._init_label_state()
+        self._init_costs_state()
 
         self._build_ui()
 
@@ -65,15 +69,18 @@ class MainWindow(SearchTabMixin, FormulationTabMixin, LabelTabMixin, QMainWindow
         self.search_tab = QWidget()
         self.formulation_tab = QWidget()
         self.label_tab = QWidget()
+        self.costs_tab = QWidget()
         self.tabs.addTab(self.search_tab, "Búsqueda")
         self.tabs.addTab(self.formulation_tab, "Formulación")
         self.tabs.addTab(self.label_tab, "Etiqueta")
+        self.tabs.addTab(self.costs_tab, "Costos")
 
         main_layout.addWidget(self.tabs)
 
         self._build_search_tab_ui()
         self._build_formulation_tab_ui()
         self._build_label_tab_ui()
+        self._build_costs_tab_ui()
 
     @property
     def food_repository(self) -> FoodRepository:

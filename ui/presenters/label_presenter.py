@@ -8,7 +8,7 @@ from fractions import Fraction
 from typing import Any, Dict, List
 
 from domain.services.unit_normalizer import canonical_unit, convert_amount
-from services.nutrient_normalizer import canonical_alias_name
+from domain.services.nutrient_normalizer import canonical_alias_name
 
 
 class LabelPresenter:

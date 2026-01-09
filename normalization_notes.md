@@ -39,5 +39,5 @@ Unidades
 
 Implementacion
 -------------
-- Normalizacion USDA: `services/nutrient_normalizer.py`
+- Normalizacion USDA: `domain/services/nutrient_normalizer.py`
 - Conversiones: `domain/services/unit_normalizer.py`

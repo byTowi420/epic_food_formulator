@@ -19,10 +19,10 @@ from openpyxl.utils import get_column_letter
 
 from config.container import Container
 from config.constants import DATA_TYPE_PRIORITY
-from domain.models import Formulation, Food, Ingredient, Nutrient
+from domain.models import CurrencyRate, Formulation, Food, Ingredient, Nutrient, PackagingItem, ProcessCost
 from domain.exceptions import FormulationImportError
 from domain.services.unit_normalizer import convert_mass, normalize_mass_unit
-from services.nutrient_normalizer import augment_fat_nutrients, normalize_nutrients
+from domain.services.nutrient_normalizer import augment_fat_nutrients, normalize_nutrients
 from ui.adapters.formulation_mapper import FormulationMapper, NutrientDisplayMapper
 
 
@@ -41,6 +41,107 @@ class FormulationPresenter:
         """
         self._container = container if container is not None else Container()
         self._formulation: Formulation = Formulation(name="New Formulation")
+
+    @property
+    def formulation(self) -> Formulation:
+        """Expose the current formulation."""
+        return self._formulation
+
+    def set_yield_percent(self, value: Decimal) -> None:
+        self._formulation.yield_percent = value
+
+    def get_yield_percent(self) -> Decimal:
+        return self._formulation.yield_percent
+
+    def set_process_costs(self, processes: list[Any]) -> None:
+        self._formulation.process_costs = list(processes)
+
+    def set_packaging_items(self, items: list[Any]) -> None:
+        self._formulation.packaging_items = list(items)
+
+    def apply_cost_meta(self, meta: Dict[str, Any]) -> None:
+        def _to_decimal(value: Any) -> Decimal | None:
+            if value is None:
+                return None
+            if isinstance(value, Decimal):
+                return value
+            if isinstance(value, str):
+                cleaned = value.strip().replace(",", ".")
+                if cleaned == "":
+                    return None
+                return Decimal(cleaned)
+            return Decimal(str(value))
+
+        yield_raw = _to_decimal(meta.get("yield_percent"))
+        if yield_raw is not None and Decimal("0") < yield_raw <= Decimal("100"):
+            self._formulation.yield_percent = yield_raw
+
+        if "process_costs" in meta:
+            process_items = meta.get("process_costs") or []
+            processes: list[ProcessCost] = []
+            if isinstance(process_items, list):
+                for entry in process_items:
+                    if not isinstance(entry, dict):
+                        continue
+                    processes.append(
+                        ProcessCost(
+                            name=entry.get("name", "") or "",
+                            scale_type=entry.get("scale_type", "") or "",
+                            time_value=_to_decimal(entry.get("time_value")),
+                            time_unit=entry.get("time_unit"),
+                            cost_per_hour_mn=_to_decimal(entry.get("cost_per_hour_mn")),
+                            total_cost_mn=_to_decimal(entry.get("total_cost_mn")),
+                            setup_time_value=_to_decimal(entry.get("setup_time_value")),
+                            setup_time_unit=entry.get("setup_time_unit"),
+                            time_per_kg_value=_to_decimal(entry.get("time_per_kg_value")),
+                            notes=entry.get("notes"),
+                        )
+                    )
+            self._formulation.process_costs = processes
+
+        if "packaging_items" in meta:
+            packaging_items = meta.get("packaging_items") or []
+            packaging: list[PackagingItem] = []
+            if isinstance(packaging_items, list):
+                for entry in packaging_items:
+                    if not isinstance(entry, dict):
+                        continue
+                    qty = _to_decimal(entry.get("quantity_per_pack")) or Decimal("0")
+                    unit_cost = _to_decimal(entry.get("unit_cost_mn")) or Decimal("0")
+                    packaging.append(
+                        PackagingItem(
+                            name=entry.get("name", "") or "",
+                            quantity_per_pack=qty,
+                            unit_cost_mn=unit_cost,
+                            notes=entry.get("notes"),
+                        )
+                    )
+            self._formulation.packaging_items = packaging
+
+        if "currency_rates" in meta:
+            rate_items = meta.get("currency_rates") or []
+            rates: list[CurrencyRate] = []
+            if isinstance(rate_items, list):
+                for entry in rate_items:
+                    if not isinstance(entry, dict):
+                        continue
+                    symbol = str(entry.get("symbol", "") or "").strip()
+                    name = str(entry.get("name", "") or "").strip()
+                    rate_value = _to_decimal(entry.get("rate_to_mn"))
+                    if not symbol or rate_value is None:
+                        continue
+                    rates.append(
+                        CurrencyRate(
+                            name=name or symbol,
+                            symbol=symbol,
+                            rate_to_mn=rate_value,
+                        )
+                    )
+            if rates:
+                self._formulation.currency_rates = rates
+                ensure = getattr(self._formulation, "_ensure_currency_rates", None)
+                if callable(ensure):
+                    ensure()
 
     @property
     def formulation_name(self) -> str:
@@ -93,6 +194,37 @@ class FormulationPresenter:
         ingredient = Ingredient(food=food, amount_g=Decimal(str(amount_g)))
         self._formulation.add_ingredient(ingredient)
         return nutrients
+
+    def add_manual_ingredient(
+        self,
+        *,
+        description: str,
+        amount_g: float,
+        nutrients: List[Dict[str, Any]],
+        brand: str = "",
+    ) -> List[Dict[str, Any]]:
+        """Add a manual ingredient with user-provided nutrients."""
+        normalized = normalize_nutrients(nutrients or [], data_type="Manual")
+        domain_nutrients = tuple(
+            Nutrient(
+                name=n["nutrient"]["name"],
+                unit=n["nutrient"].get("unitName", ""),
+                amount=Decimal(str(n["amount"])) if n.get("amount") is not None else Decimal("0"),
+                nutrient_id=n["nutrient"].get("id"),
+                nutrient_number=n["nutrient"].get("number"),
+            )
+            for n in normalized
+        )
+        food = Food(
+            fdc_id=0,
+            description=description or "",
+            data_type="Manual",
+            brand_owner=brand or "",
+            nutrients=domain_nutrients,
+        )
+        ingredient = Ingredient(food=food, amount_g=Decimal(str(amount_g)))
+        self._formulation.add_ingredient(ingredient)
+        return normalized
 
     def add_ingredient_from_details_safe(
         self,
@@ -449,8 +581,10 @@ class FormulationPresenter:
             fdc_id = item.get("fdc_id")
             description = (item.get("description") or "").strip()
             if not description:
-                description = f"FDC {fdc_id}"
+                description = "Manual" if item.get("manual") else f"FDC {fdc_id}"
             data_type = (item.get("data_type") or "").strip() or "Imported"
+            if item.get("manual"):
+                data_type = "Manual"
             ui_items.append(
                 {
                     "fdc_id": fdc_id,
@@ -460,6 +594,11 @@ class FormulationPresenter:
                     "amount_g": float(item.get("amount_g", 0.0) or 0.0),
                     "locked": bool(item.get("locked", False)),
                     "nutrients": [],
+                    "cost_pack_amount": item.get("cost_pack_amount"),
+                    "cost_pack_unit": item.get("cost_pack_unit"),
+                    "cost_value": item.get("cost_value"),
+                    "cost_currency_symbol": item.get("cost_currency_symbol"),
+                    "cost_per_g_mn": item.get("cost_per_g_mn"),
                 }
             )
         return ui_items
@@ -497,6 +636,11 @@ class FormulationPresenter:
                         nutrients, details.get("dataType")
                     ),
                     "locked": bool(base.get("locked", False)),
+                    "cost_pack_amount": base.get("cost_pack_amount"),
+                    "cost_pack_unit": base.get("cost_pack_unit"),
+                    "cost_value": base.get("cost_value"),
+                    "cost_currency_symbol": base.get("cost_currency_symbol"),
+                    "cost_per_g_mn": base.get("cost_per_g_mn"),
                 }
             )
         return hydrated
@@ -1004,6 +1148,14 @@ class FormulationPresenter:
         label_settings: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Assemble formulation + UI config into a JSON-friendly payload."""
+        def _as_float(value: Any) -> float | None:
+            if value is None:
+                return None
+            try:
+                return float(value)
+            except Exception:
+                return None
+
         items: list[Dict[str, Any]] = []
         for item in self.get_ui_items():
             fdc_raw = item.get("fdc_id")
@@ -1018,21 +1170,76 @@ class FormulationPresenter:
             except Exception:
                 amount_g = 0.0
 
-            items.append(
-                {
-                    "fdc_id": fdc_id,
-                    "description": item.get("description", "") or "",
-                    "brand": item.get("brand") or item.get("brand_owner") or "",
-                    "data_type": item.get("data_type", "") or "",
-                    "amount_g": amount_g,
-                    "locked": bool(item.get("locked", False)),
-                }
-            )
+            data_type = item.get("data_type", "") or ""
+            nutrient_payload: list[Dict[str, Any]] = []
+            if data_type.strip().lower() == "manual":
+                for entry in item.get("nutrients", []) or []:
+                    nut = entry.get("nutrient") or {}
+                    nutrient_payload.append(
+                        {
+                            "name": nut.get("name", ""),
+                            "unit": nut.get("unitName", ""),
+                            "amount": entry.get("amount"),
+                            "nutrient_id": nut.get("id"),
+                            "nutrient_number": nut.get("number"),
+                        }
+                    )
+
+            payload_item = {
+                "fdc_id": fdc_id,
+                "description": item.get("description", "") or "",
+                "brand": item.get("brand") or item.get("brand_owner") or "",
+                "data_type": data_type,
+                "amount_g": amount_g,
+                "locked": bool(item.get("locked", False)),
+                "cost_pack_amount": _as_float(item.get("cost_pack_amount")),
+                "cost_pack_unit": item.get("cost_pack_unit"),
+                "cost_value": _as_float(item.get("cost_value")),
+                "cost_currency_symbol": item.get("cost_currency_symbol"),
+                "cost_per_g_mn": _as_float(item.get("cost_per_g_mn")),
+            }
+            if nutrient_payload:
+                payload_item["nutrients"] = nutrient_payload
+
+            items.append(payload_item)
 
         return {
             "version": 3,
             "formula_name": formula_name or "Current Formulation",
             "quantity_mode": quantity_mode,
+            "yield_percent": _as_float(self._formulation.yield_percent),
+            "process_costs": [
+                {
+                    "name": process.name,
+                    "scale_type": process.scale_type,
+                    "time_value": _as_float(process.time_value),
+                    "time_unit": process.time_unit,
+                    "cost_per_hour_mn": _as_float(process.cost_per_hour_mn),
+                    "total_cost_mn": _as_float(process.total_cost_mn),
+                    "setup_time_value": _as_float(process.setup_time_value),
+                    "setup_time_unit": process.setup_time_unit,
+                    "time_per_kg_value": _as_float(process.time_per_kg_value),
+                    "notes": process.notes,
+                }
+                for process in self._formulation.process_costs
+            ],
+            "packaging_items": [
+                {
+                    "name": item.name,
+                    "quantity_per_pack": _as_float(item.quantity_per_pack),
+                    "unit_cost_mn": _as_float(item.unit_cost_mn),
+                    "notes": item.notes,
+                }
+                for item in self._formulation.packaging_items
+            ],
+            "currency_rates": [
+                {
+                    "name": rate.name,
+                    "symbol": rate.symbol,
+                    "rate_to_mn": _as_float(rate.rate_to_mn),
+                }
+                for rate in self._formulation.currency_rates
+            ],
             "items": items,
             "nutrient_export_flags": self.normalize_export_flags(export_flags),
             "label_settings": label_settings,

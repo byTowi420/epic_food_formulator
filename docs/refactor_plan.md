@@ -6,7 +6,7 @@ and the prompt template to keep future work consistent across machines/sessions.
 ## Current Status
 
 - Phase 1 (API unification): **Completed** (USDA access goes through `infrastructure/api/usda_repository.py`).
-- Phase 2 (unit normalization): **Completed** (`domain/services/unit_normalizer.py` + `services/nutrient_normalizer.py`).
+- Phase 2 (unit normalization): **Completed** (`domain/services/unit_normalizer.py` + `domain/services/nutrient_normalizer.py`).
 - Phase 3 (UI logic extraction): **Completed** for Search/Formulation/Label via presenters.
 - Current focus: runtime audit + cleanup of unused code.
 
@@ -104,7 +104,7 @@ Goals:
 Constraints:
 - Use `infrastructure/api/usda_repository.py` for USDA access.
 - Use `domain/services/unit_normalizer.py` for conversions.
-- Use `services/nutrient_normalizer.py` for USDA nutrient normalization.
+- Use `domain/services/nutrient_normalizer.py` for USDA nutrient normalization.
 - Do not move logic into `ui/tabs`; use presenters + use cases.
 - Keep Search, Formulation, Label logic in separate presenters/files.
 

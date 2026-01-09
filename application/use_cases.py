@@ -12,7 +12,7 @@ from domain.models import Food, Formulation, Ingredient, Nutrient
 from domain.services.formulation_service import FormulationService
 from domain.services.nutrient_calculator import NutrientCalculator
 from infrastructure.api.usda_repository import FoodRepository
-from services.nutrient_normalizer import normalize_nutrients
+from domain.services.nutrient_normalizer import normalize_nutrients
 from infrastructure.persistence.excel_exporter import ExcelExporter
 from infrastructure.persistence.json_repository import JSONFormulationRepository
 

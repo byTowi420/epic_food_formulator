@@ -17,7 +17,7 @@ La fase 2 (CRUD + sincronización UI/Domain) está completada. Las operaciones c
 ## Notas
 
 - Se mantiene un estado dual temporal (lista UI + dominio) para evitar regresiones.
-- Normalización centralizada en `services/nutrient_normalizer.py` y conversiones en `domain/services/unit_normalizer.py`.
+- Normalización centralizada en `domain/services/nutrient_normalizer.py` y conversiones en `domain/services/unit_normalizer.py`.
 
 ## Pendientes (opcionales)
 

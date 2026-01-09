@@ -5,7 +5,7 @@
 - Clean Architecture layers are in place and used by the UI presenters.
 - USDA access is centralized in `infrastructure/api/usda_repository.py`.
 - Label calculations live in `ui/presenters/label_presenter.py` (no domain label_generator).
-- Unit normalization is centralized in `domain/services/unit_normalizer.py` and USDA nutrient normalization in `services/nutrient_normalizer.py`.
+- Unit normalization is centralized in `domain/services/unit_normalizer.py` and USDA nutrient normalization in `domain/services/nutrient_normalizer.py`.
 - `NutrientCalculator` now focuses on totals per 100 g.
 
 ## Initial Refactor Summary
@@ -46,7 +46,7 @@ infrastructure/persistence/
   excel_exporter.py
   formulation_importer.py
 
-services/nutrient_normalizer.py
+domain/services/nutrient_normalizer.py
 
 ui/presenters/
   search_presenter.py

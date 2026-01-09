@@ -41,10 +41,18 @@ class FormulationMapper:
         # Create Food
         # UI uses "brand" but domain uses "brand_owner", handle both
         brand = ui_item.get("brand_owner") or ui_item.get("brand", "")
+        fdc_raw = ui_item.get("fdc_id")
+        try:
+            fdc_id = int(fdc_raw) if fdc_raw is not None and str(fdc_raw).strip() else 0
+        except Exception:
+            fdc_id = 0
+        data_type = ui_item.get("data_type", "") or ""
+        if fdc_id <= 0 and not data_type:
+            data_type = "Manual"
         food = Food(
-            fdc_id=int(ui_item.get("fdc_id", 0)),
+            fdc_id=fdc_id,
             description=ui_item.get("description", ""),
-            data_type=ui_item.get("data_type", ""),
+            data_type=data_type,
             brand_owner=brand,
             nutrients=nutrients,
         )
@@ -58,10 +66,27 @@ class FormulationMapper:
         else:
             amount_g = Decimal(str(amount_g))
 
+        def _to_decimal(value: Any) -> Decimal | None:
+            if value is None:
+                return None
+            if isinstance(value, Decimal):
+                return value
+            if isinstance(value, str):
+                cleaned = value.strip().replace(",", ".")
+                if cleaned == "":
+                    return None
+                return Decimal(cleaned)
+            return Decimal(str(value))
+
         return Ingredient(
             food=food,
             amount_g=amount_g,
             locked=bool(ui_item.get("locked", False)),
+            cost_pack_amount=_to_decimal(ui_item.get("cost_pack_amount")),
+            cost_pack_unit=ui_item.get("cost_pack_unit"),
+            cost_value=_to_decimal(ui_item.get("cost_value")),
+            cost_currency_symbol=ui_item.get("cost_currency_symbol"),
+            cost_per_g_mn=_to_decimal(ui_item.get("cost_per_g_mn")),
         )
 
     @staticmethod
@@ -123,6 +148,17 @@ class FormulationMapper:
             "amount_g": float(ingredient.amount_g),
             "locked": ingredient.locked,
             "nutrients": nutrients,
+            "cost_pack_amount": float(ingredient.cost_pack_amount)
+            if ingredient.cost_pack_amount is not None
+            else None,
+            "cost_pack_unit": ingredient.cost_pack_unit,
+            "cost_value": float(ingredient.cost_value)
+            if ingredient.cost_value is not None
+            else None,
+            "cost_currency_symbol": ingredient.cost_currency_symbol,
+            "cost_per_g_mn": float(ingredient.cost_per_g_mn)
+            if ingredient.cost_per_g_mn is not None
+            else None,
         }
 
     @staticmethod

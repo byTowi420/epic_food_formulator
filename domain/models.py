@@ -57,7 +57,8 @@ class Food:
 
     def __post_init__(self) -> None:
         """Validate food data."""
-        if self.fdc_id <= 0:
+        data_type = (self.data_type or "").strip().lower()
+        if self.fdc_id <= 0 and data_type != "manual":
             raise ValueError(f"Invalid FDC ID: {self.fdc_id}")
         if not self.description:
             raise ValueError("Food description cannot be empty")
@@ -87,6 +88,11 @@ class Ingredient:
     food: Food
     amount_g: Decimal
     locked: bool = False
+    cost_pack_amount: Optional[Decimal] = None
+    cost_pack_unit: Optional[str] = None
+    cost_value: Optional[Decimal] = None
+    cost_currency_symbol: Optional[str] = None
+    cost_per_g_mn: Optional[Decimal] = None
 
     def __post_init__(self) -> None:
         """Validate ingredient data."""
@@ -124,6 +130,39 @@ class Ingredient:
 
 
 @dataclass
+class ProcessCost:
+    name: str
+    scale_type: str  # "FIXED", "VARIABLE_PER_KG", "MIXED"
+    time_value: Optional[Decimal] = None
+    time_unit: Optional[str] = None  # "min" or "h"
+    cost_per_hour_mn: Optional[Decimal] = None
+    total_cost_mn: Optional[Decimal] = None
+    setup_time_value: Optional[Decimal] = None
+    setup_time_unit: Optional[str] = None
+    time_per_kg_value: Optional[Decimal] = None
+    notes: Optional[str] = None
+
+
+@dataclass
+class PackagingItem:
+    name: str
+    quantity_per_pack: Decimal
+    unit_cost_mn: Decimal
+    notes: Optional[str] = None
+
+
+@dataclass
+class CurrencyRate:
+    name: str
+    symbol: str
+    rate_to_mn: Decimal
+
+
+def _default_currency_rates() -> list[CurrencyRate]:
+    return [CurrencyRate(name="Moneda Nacional", symbol="$", rate_to_mn=Decimal("1"))]
+
+
+@dataclass
 class Formulation:
     """A formulation containing multiple ingredients.
 
@@ -133,6 +172,10 @@ class Formulation:
     name: str
     ingredients: list[Ingredient] = field(default_factory=list)
     quantity_mode: str = "g"  # "g" or "%"
+    yield_percent: Decimal = Decimal("100")
+    process_costs: list[ProcessCost] = field(default_factory=list)
+    packaging_items: list[PackagingItem] = field(default_factory=list)
+    currency_rates: list[CurrencyRate] = field(default_factory=_default_currency_rates)
 
     def __post_init__(self) -> None:
         """Validate formulation data."""
@@ -140,6 +183,28 @@ class Formulation:
             raise ValueError("Formulation name cannot be empty")
         if self.quantity_mode not in ("g", "%"):
             raise ValueError(f"Invalid quantity mode: {self.quantity_mode}")
+        if self.yield_percent <= 0 or self.yield_percent > Decimal("100"):
+            self.yield_percent = Decimal("100")
+        self._ensure_currency_rates()
+
+    def _ensure_currency_rates(self) -> None:
+        seen: set[str] = set()
+        cleaned: list[CurrencyRate] = []
+        for rate in self.currency_rates:
+            symbol = (rate.symbol or "").strip()
+            if not symbol:
+                continue
+            if symbol == "$":
+                rate.name = "Moneda Nacional"
+                rate.symbol = "$"
+                rate.rate_to_mn = Decimal("1")
+            if symbol in seen:
+                continue
+            cleaned.append(rate)
+            seen.add(symbol)
+        if "$" not in seen:
+            cleaned.insert(0, CurrencyRate(name="Moneda Nacional", symbol="$", rate_to_mn=Decimal("1")))
+        self.currency_rates = cleaned
 
     @property
     def total_weight(self) -> Decimal:

@@ -9,8 +9,13 @@ from PySide6.QtCore import QItemSelectionModel, QThread, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
+    QFormLayout,
     QHBoxLayout,
+    QHeaderView,
     QInputDialog,
     QLabel,
     QLineEdit,
@@ -19,6 +24,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 from ui.tabs.table_utils import (
     apply_selection_bar,
@@ -121,10 +127,12 @@ class FormulationTabMixin:
         # Acciones sobre ingredientes.
         buttons_layout = QHBoxLayout()
         self.edit_quantity_button = QPushButton("Editar cantidad seleccionada")
+        self.add_manual_button = QPushButton("Agregar manual")
         self.remove_formulation_button = QPushButton(
             "Eliminar ingrediente seleccionado"
         )
         buttons_layout.addWidget(self.edit_quantity_button)
+        buttons_layout.addWidget(self.add_manual_button)
         buttons_layout.addWidget(self.remove_formulation_button)
         buttons_layout.addStretch()
         layout.addLayout(buttons_layout)
@@ -178,6 +186,7 @@ class FormulationTabMixin:
             self.on_formulation_cell_double_clicked
         )
         self.edit_quantity_button.clicked.connect(self.on_edit_quantity_clicked)
+        self.add_manual_button.clicked.connect(self.on_add_manual_clicked)
         self.formulation_table.itemChanged.connect(self.on_lock_toggled_from_table)
         self.totals_table.itemChanged.connect(self.on_totals_checkbox_changed)
         self.toggle_export_button.clicked.connect(self.on_toggle_export_clicked)
@@ -262,6 +271,53 @@ class FormulationTabMixin:
             self.status_label.setText("Selecciona un ingrediente para editar.")
             return
         self._edit_quantity_for_row(indexes[0].row())
+
+
+    def on_add_manual_clicked(self) -> None:
+        if self._is_importing():
+            self.status_label.setText("Importacion en curso. Espera para editar.")
+            return
+        details = self._prompt_manual_ingredient_details()
+        if not details:
+            return
+        mode, value = self._prompt_quantity()
+        if mode is None:
+            return
+
+        amount_g = value if mode == "g" else 100.0
+        nutrients = details["nutrients"]
+        desc = details["description"]
+        brand = details.get("brand", "")
+
+        normalized = self.formulation_presenter.add_manual_ingredient(
+            description=desc,
+            amount_g=amount_g,
+            nutrients=nutrients,
+            brand=brand,
+        )
+        self.nutrient_ordering.update_reference_from_details(
+            {"foodNutrients": normalized}
+        )
+
+        if mode == "percent":
+            success = self._apply_percent_edit(
+                self.formulation_presenter.get_ingredient_count() - 1, value
+            )
+            if not success:
+                self.formulation_presenter.remove_ingredient_safe(
+                    self.formulation_presenter.get_ingredient_count() - 1
+                )
+                return
+
+        self._populate_details_table(normalized)
+        self._refresh_formulation_views()
+        self._select_preview_row(self.formulation_presenter.get_ingredient_count() - 1)
+        msg_value = (
+            self._format_amount_for_status(amount_g)
+            if mode == "g"
+            else f"{value:.2f} %"
+        )
+        self.status_label.setText(f"Agregado manual - {desc} ({msg_value})")
 
 
     def on_quantity_mode_changed(self) -> None:
@@ -501,6 +557,7 @@ class FormulationTabMixin:
             ui_items,
             self.formula_name_input.text() or "Imported",
         )
+        self.formulation_presenter.apply_cost_meta(meta)
         self._last_totals = {}
         self.details_table.setRowCount(0)
         self.totals_table.setRowCount(0)
@@ -520,6 +577,21 @@ class FormulationTabMixin:
             )
             return
 
+        manual_payload: list[Dict[str, Any]] = []
+        hydration_items: list[Dict[str, Any]] = []
+        for item in base_items:
+            if item.get("manual"):
+                details = {
+                    "fdcId": item.get("fdc_id", 0),
+                    "description": item.get("description", "") or "",
+                    "brandOwner": item.get("brand", "") or "",
+                    "dataType": item.get("data_type", "Manual") or "Manual",
+                    "foodNutrients": item.get("nutrients", []) or [],
+                }
+                manual_payload.append({"base": item, "details": details})
+            else:
+                hydration_items.append(item)
+
         self.import_state_button.setEnabled(False)
         self.export_state_button.setEnabled(False)
         self._set_import_controls_enabled(False)
@@ -527,13 +599,18 @@ class FormulationTabMixin:
         self.status_label.setText("Importando ingredientes...")
         self._set_window_progress("Importando ingredientes")
 
+        meta["manual_payload"] = manual_payload
         self._pending_import_meta = meta
         self._prefill_import_state(base_items, meta)
+
+        if not hydration_items:
+            self._on_import_finished(manual_payload, meta=meta)
+            return
 
         thread = QThread(self)
         worker = ImportWorker(
             lambda: self.container.food_repository,
-            base_items,
+            hydration_items,
             max_attempts=self.import_max_attempts,
             read_timeout=self.import_read_timeout,
         )
@@ -578,6 +655,9 @@ class FormulationTabMixin:
         if meta is None:
             meta = getattr(self, "_pending_import_meta", {}) or {}
             self._pending_import_meta = {}
+        manual_payload = meta.get("manual_payload") or []
+        if manual_payload and payload is not manual_payload:
+            payload = list(manual_payload) + list(payload)
         if QThread.currentThread() is not self.thread():
             QTimer.singleShot(
                 0, lambda p=payload, w=warnings, m=meta: self._on_import_finished(p, w, m)
@@ -592,6 +672,7 @@ class FormulationTabMixin:
         self.formulation_presenter.load_from_ui_items(
             hydrated, self.formula_name_input.text() or "Imported"
         )
+        self.formulation_presenter.apply_cost_meta(meta)
         resolved_flags: Dict[str, bool] = {}
         resolved_flags.update(
             self.formulation_presenter.resolve_legacy_export_flags(
@@ -703,6 +784,14 @@ class FormulationTabMixin:
         return self.formulation_presenter.amount_to_percent(amount_g, total_weight)
 
 
+    def _display_fdc_id(self, item: Dict[str, Any]) -> str:
+        fdc_id = item.get("fdc_id")
+        data_type = (item.get("data_type") or "").strip().lower()
+        if data_type == "manual" or fdc_id in (None, "", 0, "0"):
+            return "Manual"
+        return str(fdc_id)
+
+
     def _update_quantity_headers(self) -> None:
         mass_unit = self._current_mass_unit()
         self.formulation_preview.setHorizontalHeaderLabels(
@@ -766,8 +855,9 @@ class FormulationTabMixin:
         self.formulation_preview.setRowCount(self.formulation_presenter.get_ingredient_count())
         for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
             # Locked default handled by domain model
+            fdc_display = self._display_fdc_id(item)
             self.formulation_preview.setItem(
-                idx, 0, QTableWidgetItem(str(item.get("fdc_id", "")))
+                idx, 0, QTableWidgetItem(fdc_display)
             )
             self.formulation_preview.setItem(
                 idx, 1, QTableWidgetItem(item.get("description", ""))
@@ -782,9 +872,10 @@ class FormulationTabMixin:
             percent = self._amount_to_percent(amount_g, total_weight)
             amount_display = self._display_amount_for_unit(amount_g)
             amount_decimals = self._mass_decimals(self._current_mass_unit())
+            fdc_display = self._display_fdc_id(item)
 
             cells: list[QTableWidgetItem] = [
-                QTableWidgetItem(str(item.get("fdc_id", ""))),
+                QTableWidgetItem(fdc_display),
                 QTableWidgetItem(item.get("description", "")),
                 QTableWidgetItem(f"{amount_display:.{amount_decimals}f}"),
                 QTableWidgetItem(f"{percent:.2f}"),
@@ -894,6 +985,9 @@ class FormulationTabMixin:
         self._update_label_preview(force_recalc_totals=True)
         logging.debug("_refresh_formulation_views done")
         self._ensure_preview_selection()
+        refresh_costs = getattr(self, "_refresh_costs_view", None)
+        if callable(refresh_costs):
+            refresh_costs()
 
 
     def _select_preview_row(self, row: int) -> None:
@@ -1053,6 +1147,209 @@ class FormulationTabMixin:
             total_weight=self._total_weight(),
             include_new=include_new,
         )
+
+    def _manual_nutrient_options(self) -> List[str]:
+        options: List[str] = []
+        seen: set[str] = set()
+        for _, names in self.nutrient_ordering.catalog:
+            for name in names:
+                cleaned = name.strip()
+                if not cleaned:
+                    continue
+                if cleaned.lower() == "energy":
+                    continue
+                key = cleaned.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                options.append(cleaned)
+        return options
+
+
+    def _prompt_manual_ingredient_details(self) -> Dict[str, Any] | None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Ingrediente manual")
+        layout = QVBoxLayout(dialog)
+
+        form_layout = QFormLayout()
+        name_input = QLineEdit(dialog)
+        brand_input = QLineEdit(dialog)
+        form_layout.addRow("Nombre:", name_input)
+        form_layout.addRow("Marca / Origen:", brand_input)
+        base_amount_input = QDoubleSpinBox(dialog)
+        base_amount_input.setMinimum(0.01)
+        base_amount_input.setMaximum(1_000_000.0)
+        base_amount_input.setValue(100.0)
+        base_unit_selector = QComboBox(dialog)
+        base_unit_selector.addItems(["g", "kg", "ton", "lb", "oz"])
+        base_row = QWidget(dialog)
+        base_row_layout = QHBoxLayout(base_row)
+        base_row_layout.setContentsMargins(0, 0, 0, 0)
+        base_row_layout.addWidget(base_amount_input)
+        base_row_layout.addWidget(base_unit_selector)
+        form_layout.addRow("Base de nutrientes:", base_row)
+        layout.addLayout(form_layout)
+
+        note = QLabel("")
+        note.setStyleSheet("color: gray;")
+        layout.addWidget(note)
+
+        table = QTableWidget(0, 3, dialog)
+        table.setHorizontalHeaderLabels(["Nutriente", "Cantidad", "Unidad"])
+        table.horizontalHeader().setStretchLastSection(True)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.setSelectionMode(QTableWidget.ExtendedSelection)
+        layout.addWidget(table)
+
+        buttons_row = QHBoxLayout()
+        add_row_button = QPushButton("Agregar nutriente")
+        remove_row_button = QPushButton("Eliminar fila")
+        buttons_row.addWidget(add_row_button)
+        buttons_row.addWidget(remove_row_button)
+        buttons_row.addStretch()
+        layout.addLayout(buttons_row)
+
+        nutrient_options = self._manual_nutrient_options()
+
+        def _format_base_label() -> str:
+            unit = base_unit_selector.currentText()
+            decimals = self.formulation_presenter.mass_decimals(unit)
+            value = base_amount_input.value()
+            return f"Nutrientes por {value:.{decimals}f} {unit} del ingrediente."
+
+        def _update_base_decimals() -> None:
+            unit = base_unit_selector.currentText()
+            decimals = self.formulation_presenter.mass_decimals(unit)
+            base_amount_input.setDecimals(decimals)
+            note.setText(_format_base_label())
+
+        def _set_unit_for_row(row: int, nutrient_name: str) -> None:
+            unit = self.nutrient_ordering.unit_for_name(nutrient_name)
+            unit_item = table.item(row, 2)
+            if unit_item is None:
+                unit_item = QTableWidgetItem(unit)
+                unit_item.setFlags(unit_item.flags() & ~Qt.ItemIsEditable)
+                table.setItem(row, 2, unit_item)
+            else:
+                unit_item.setText(unit)
+
+        def _update_unit_for_combo(combo: QComboBox) -> None:
+            row = table.indexAt(combo.pos()).row()
+            if row < 0:
+                return
+            _set_unit_for_row(row, combo.currentText())
+
+        def _add_row() -> None:
+            row = table.rowCount()
+            table.insertRow(row)
+            combo = QComboBox(table)
+            combo.addItems(nutrient_options)
+            combo.setEditable(False)
+            combo.currentTextChanged.connect(
+                lambda _text, combo=combo: _update_unit_for_combo(combo)
+            )
+            table.setCellWidget(row, 0, combo)
+            table.setItem(row, 1, QTableWidgetItem(""))
+            _set_unit_for_row(row, combo.currentText())
+            table.setCurrentCell(row, 0)
+
+        def _remove_selected() -> None:
+            rows = sorted({idx.row() for idx in table.selectedIndexes()}, reverse=True)
+            for row in rows:
+                table.removeRow(row)
+
+        add_row_button.clicked.connect(_add_row)
+        remove_row_button.clicked.connect(_remove_selected)
+        base_amount_input.valueChanged.connect(lambda _value: note.setText(_format_base_label()))
+        base_unit_selector.currentTextChanged.connect(lambda _text: _update_base_decimals())
+        _update_base_decimals()
+        _add_row()
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=dialog
+        )
+        layout.addWidget(buttons)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        while True:
+            if dialog.exec() != QDialog.Accepted:
+                return None
+            description = name_input.text().strip()
+            if not description:
+                QMessageBox.warning(
+                    self,
+                    "Dato incompleto",
+                    "Ingresa un nombre para el ingrediente manual.",
+                )
+                continue
+            base_unit = base_unit_selector.currentText()
+            base_amount_g = self.formulation_presenter.convert_to_grams(
+                base_amount_input.value(),
+                base_unit,
+            ) or 0.0
+            if base_amount_g <= 0:
+                QMessageBox.warning(
+                    self,
+                    "Dato incompleto",
+                    "La base de nutrientes debe ser mayor a 0.",
+                )
+                continue
+            nutrients = self._collect_manual_nutrients(table, base_amount_g)
+            if not nutrients:
+                QMessageBox.warning(
+                    self,
+                    "Dato incompleto",
+                    "Agrega al menos un nutriente valido.",
+                )
+                continue
+            return {
+                "description": description,
+                "brand": brand_input.text().strip(),
+                "nutrients": nutrients,
+            }
+
+
+    def _collect_manual_nutrients(
+        self, table: QTableWidget, base_amount_g: float
+    ) -> List[Dict[str, Any]]:
+        if base_amount_g <= 0:
+            return []
+        scale = 100.0 / base_amount_g
+        nutrients: Dict[tuple[str, str], float] = {}
+        for row in range(table.rowCount()):
+            combo = table.cellWidget(row, 0)
+            name_item = table.item(row, 0)
+            amount_item = table.item(row, 1)
+            if isinstance(combo, QComboBox):
+                name = combo.currentText().strip()
+            else:
+                name = name_item.text().strip() if name_item else ""
+            if not name or name.strip().lower() == "energy":
+                continue
+            unit = self.nutrient_ordering.unit_for_name(name)
+            amount_text = amount_item.text().strip() if amount_item else ""
+            if not unit:
+                continue
+            if not amount_text:
+                continue
+            amount_value = 0.0
+            try:
+                amount_value = float(amount_text.replace(",", "."))
+            except Exception:
+                amount_value = 0.0
+            if amount_value < 0:
+                continue
+            scaled_amount = amount_value * scale
+            key = (name, unit)
+            nutrients[key] = nutrients.get(key, 0.0) + scaled_amount
+        return [
+            {"nutrient": {"name": name, "unitName": unit}, "amount": amount}
+            for (name, unit), amount in nutrients.items()
+        ]
 
 
     def _prompt_quantity(

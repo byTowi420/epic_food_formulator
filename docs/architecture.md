@@ -21,7 +21,7 @@ Domain (domain/models.py, domain/services/*)
 Infrastructure (infrastructure/api, infrastructure/persistence)
 
 Shared utilities:
-- services/nutrient_normalizer.py (USDA nutrient normalization)
+- domain/services/nutrient_normalizer.py (USDA nutrient normalization)
 ```
 
 ## Dependency Rule
@@ -84,7 +84,7 @@ UI (Search tab) -> SearchPresenter.search()
   -> USDAFoodRepository.search()
 
 UI (Formulation tab) -> FormulationPresenter.add_ingredient_from_details()
-  -> normalize_nutrients() (services/nutrient_normalizer.py)
+  -> normalize_nutrients() (domain/services/nutrient_normalizer.py)
   -> domain models updated
   -> totals calculated via CalculateTotalsUseCase
 ```

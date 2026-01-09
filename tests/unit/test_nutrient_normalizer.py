@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from services.nutrient_normalizer import (
+from domain.services.nutrient_normalizer import (
     augment_fat_nutrients,
     canonical_alias_name,
     canonical_unit,

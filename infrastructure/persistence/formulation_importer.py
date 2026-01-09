@@ -140,9 +140,126 @@ class FormulationImportService:
             )
 
         base_items: list[Dict[str, Any]] = []
+        raw_rates = data.get("currency_rates") or []
+        currency_rates: list[Dict[str, Any]] = []
+        if isinstance(raw_rates, list):
+            for entry in raw_rates:
+                if not isinstance(entry, dict):
+                    continue
+                symbol = str(entry.get("symbol", "") or "").strip()
+                name = str(entry.get("name", "") or "").strip()
+                rate = entry.get("rate_to_mn")
+                if not symbol or rate is None:
+                    continue
+                currency_rates.append(
+                    {"name": name or symbol, "symbol": symbol, "rate_to_mn": rate}
+                )
+        has_base = any(rate.get("symbol") == "$" for rate in currency_rates)
+        if not has_base:
+            currency_rates.insert(
+                0, {"name": "Moneda Nacional", "symbol": "$", "rate_to_mn": 1}
+            )
         warnings: list[str] = []
         for item in items:
             if not isinstance(item, dict):
+                continue
+
+            data_type_raw = item.get("data_type") or item.get("dataType") or ""
+            source_raw = item.get("source") or ""
+            is_manual = str(data_type_raw).strip().lower() == "manual" or str(source_raw).strip().lower() == "manual"
+
+            if is_manual:
+                amount_raw = item.get("amount_g")
+                if amount_raw is None:
+                    amount_raw = item.get("amountG")
+                if amount_raw is None:
+                    amount_raw = item.get("amount")
+                try:
+                    amount_g = float(amount_raw) if amount_raw is not None else 0.0
+                except Exception:
+                    warnings.append("Cantidad invalida para ingrediente manual. Se usa 0.")
+                    amount_g = 0.0
+                if amount_g < 0:
+                    warnings.append(
+                        f"Ingrediente manual omitido: cantidad negativa ({amount_g})."
+                    )
+                    continue
+
+                raw_nutrients = item.get("nutrients") or []
+                manual_nutrients: list[Dict[str, Any]] = []
+                for entry in raw_nutrients:
+                    if not isinstance(entry, dict):
+                        continue
+                    if "nutrient" in entry:
+                        nut = entry.get("nutrient") or {}
+                        name = nut.get("name") or ""
+                        unit = nut.get("unitName") or nut.get("unit") or ""
+                        amount = entry.get("amount")
+                        nutrient_id = nut.get("id")
+                        nutrient_number = nut.get("number")
+                    else:
+                        name = entry.get("name") or ""
+                        unit = entry.get("unit") or ""
+                        amount = entry.get("amount")
+                        nutrient_id = entry.get("nutrient_id")
+                        nutrient_number = entry.get("nutrient_number")
+                    if not name or not unit:
+                        continue
+                    try:
+                        amount_val = float(amount) if amount is not None else 0.0
+                    except Exception:
+                        amount_val = 0.0
+                    manual_nutrients.append(
+                        {
+                            "nutrient": {
+                                "name": name,
+                                "unitName": unit,
+                                "id": nutrient_id,
+                                "number": nutrient_number,
+                            },
+                            "amount": amount_val,
+                        }
+                    )
+
+                if not manual_nutrients:
+                    warnings.append(
+                        "Ingrediente manual sin nutrientes. Se importo sin datos nutricionales."
+                    )
+
+                legacy_symbol = item.get("cost_currency_symbol")
+                legacy_type = item.get("cost_currency_type")
+                legacy_rate = item.get("cost_me_rate_to_mn")
+                if legacy_symbol and legacy_rate is not None:
+                    if not any(rate.get("symbol") == legacy_symbol for rate in currency_rates):
+                        currency_rates.append(
+                            {
+                                "name": str(legacy_symbol),
+                                "symbol": str(legacy_symbol),
+                                "rate_to_mn": legacy_rate,
+                            }
+                        )
+                elif legacy_type and str(legacy_type).strip().upper() == "MN":
+                    legacy_symbol = "$"
+                base_items.append(
+                    {
+                        "fdc_id": 0,
+                        "amount_g": amount_g,
+                        "locked": bool(item.get("locked", False)),
+                        "description": item.get("description") or item.get("name") or "Manual",
+                        "brand": item.get("brand")
+                        or item.get("brand_owner")
+                        or item.get("brandOwner")
+                        or "",
+                        "data_type": "Manual",
+                        "cost_pack_amount": item.get("cost_pack_amount"),
+                        "cost_pack_unit": item.get("cost_pack_unit"),
+                        "cost_value": item.get("cost_value"),
+                        "cost_currency_symbol": legacy_symbol or item.get("cost_currency_symbol"),
+                        "cost_per_g_mn": item.get("cost_per_g_mn"),
+                        "manual": True,
+                        "nutrients": manual_nutrients,
+                    }
+                )
                 continue
 
             fdc_raw = item.get("fdc_id") or item.get("fdcId") or item.get("fdcID")
@@ -172,6 +289,20 @@ class FormulationImportService:
                 )
                 continue
 
+            legacy_symbol = item.get("cost_currency_symbol")
+            legacy_type = item.get("cost_currency_type")
+            legacy_rate = item.get("cost_me_rate_to_mn")
+            if legacy_symbol and legacy_rate is not None:
+                if not any(rate.get("symbol") == legacy_symbol for rate in currency_rates):
+                    currency_rates.append(
+                        {
+                            "name": str(legacy_symbol),
+                            "symbol": str(legacy_symbol),
+                            "rate_to_mn": legacy_rate,
+                        }
+                    )
+            elif legacy_type and str(legacy_type).strip().upper() == "MN":
+                legacy_symbol = "$"
             base_items.append(
                 {
                     "fdc_id": fdc_int,
@@ -183,6 +314,11 @@ class FormulationImportService:
                     or item.get("brandOwner")
                     or "",
                     "data_type": item.get("data_type") or item.get("dataType") or "",
+                    "cost_pack_amount": item.get("cost_pack_amount"),
+                    "cost_pack_unit": item.get("cost_pack_unit"),
+                    "cost_value": item.get("cost_value"),
+                    "cost_currency_symbol": legacy_symbol or item.get("cost_currency_symbol"),
+                    "cost_per_g_mn": item.get("cost_per_g_mn"),
                 }
             )
 
@@ -217,6 +353,10 @@ class FormulationImportService:
             "quantity_mode": quantity_mode,
             "formula_name": formula_name,
             "label_settings": label_settings,
+            "yield_percent": data.get("yield_percent"),
+            "process_costs": data.get("process_costs") or [],
+            "packaging_items": data.get("packaging_items") or [],
+            "currency_rates": currency_rates,
             "path": path,
             "respect_existing_formula_name": False,
             "warnings": warnings,

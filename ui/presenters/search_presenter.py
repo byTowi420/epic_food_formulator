@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from config.constants import DATA_TYPE_PRIORITY
 from config.container import Container
 from domain.services.nutrient_ordering import NutrientOrdering
-from services.nutrient_normalizer import augment_fat_nutrients, normalize_nutrients
+from domain.services.nutrient_normalizer import augment_fat_nutrients, normalize_nutrients
 
 
 class SearchPresenter:

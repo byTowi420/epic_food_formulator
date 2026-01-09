@@ -9,6 +9,7 @@ Desktop app for building food formulations with nutrition analysis using the USD
 - Nutrient totals per 100 g and per ingredient
 - Nutrition label preview (vertical + linear) with manual overrides and PNG export
 - Excel export and JSON save/load
+- Costs tab with ingredients, processes, yield, packaging, and currency rates by symbol
 
 ## Architecture
 
@@ -18,7 +19,7 @@ The app follows a layered architecture with presenters:
 - **Application**: use cases (`application/use_cases.py`)
 - **Infrastructure**: USDA repository + cache and persistence (`infrastructure/*`)
 - **UI**: PySide6 tabs, presenters, adapters (`ui/*`)
-- **Shared normalization**: USDA nutrient normalization helpers (`services/nutrient_normalizer.py`)
+- **Shared normalization**: USDA nutrient normalization helpers (`domain/services/nutrient_normalizer.py`)
 
 See `docs/architecture.md` for details.
 
@@ -68,7 +69,14 @@ Typical workflow:
 2. Add ingredients + quantities
 3. Adjust formulation (locks/targets)
 4. Review totals + label
-5. Save or export
+5. Manage costs (currency rates, yield, processes, packaging)
+6. Save or export
+
+Notes:
+- Moneda Nacional usa simbolo "$" y es la base para todos los calculos (1 $ = 1 $).
+- Las otras monedas se definen por simbolo y cotizacion: 1 simbolo = X $.
+- Yield afecta la masa vendible y el costo por pack/unidad.
+- Costos de procesos se calculan por tipo (FIXED / VARIABLE_PER_KG / MIXED).
 
 ## Project Structure
 

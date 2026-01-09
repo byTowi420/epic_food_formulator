@@ -6,7 +6,7 @@
 - **Adapters**: `FormulationMapper`, `NutrientDisplayMapper`
 - **Use cases**: `SearchFoodsUseCase`, `AddIngredientUseCase`, `CalculateTotalsUseCase`, `SaveFormulationUseCase`, `LoadFormulationUseCase`, `ExportFormulationUseCase`, `AdjustFormulationUseCase`
 - **Repositories**: `USDAFoodRepository`, `JSONFormulationRepository`
-- **Normalization**: `services/nutrient_normalizer.py`
+- **Normalization**: `domain/services/nutrient_normalizer.py`
 - **Units**: `domain/services/unit_normalizer.py`
 
 ## Flow Snapshot

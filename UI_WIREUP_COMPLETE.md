@@ -18,7 +18,7 @@
 2. **Single USDA access point**
    - `USDAFoodRepository` is the only API entry point.
 3. **Normalization centralized**
-   - `services/nutrient_normalizer.py` for USDA data
+   - `domain/services/nutrient_normalizer.py` for USDA data
    - `domain/services/unit_normalizer.py` for conversions
 4. **Dual state (temporary)**
    - UI list + domain formulation are still kept in sync.
