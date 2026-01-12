@@ -256,7 +256,7 @@ class ExcelExporter:
 
             summary_headers = [
                 ("Masa tirada (g)", float(batch_mass_g)),
-                ("Yield (%)", float(yield_percent)),
+                ("Rendimiento (%)", float(yield_percent)),
                 ("Masa vendible (g)", float(sellable_mass_g)),
                 ("Costo insumos (MN)", float(ingredients_total)),
                 ("Costo procesos (MN)", float(processes_total)),
@@ -317,7 +317,7 @@ class ExcelExporter:
                 "Costo",
                 "Cotizacion",
                 "Costo (MN)",
-                "Costo unitario (MN/g)",
+                "Costo unitario (MN/kg)",
                 "Costo tirada (MN)",
                 "% insumos",
             ]
@@ -331,6 +331,7 @@ class ExcelExporter:
                     ing, formulation.currency_rates
                 )
                 cost_per_g = ing.cost_per_g_mn
+                cost_per_kg = cost_per_g * Decimal("1000") if cost_per_g is not None else None
                 cost_batch = cost_per_g * ing.amount_g if cost_per_g is not None else None
                 percent = (
                     (cost_batch / ingredient_total * Decimal("100"))
@@ -351,7 +352,7 @@ class ExcelExporter:
                     float(cost_value) if cost_value is not None else None,
                     float(rate) if rate is not None else None,
                     float(cost_mn) if cost_mn is not None else None,
-                    float(cost_per_g) if cost_per_g is not None else None,
+                    float(cost_per_kg) if cost_per_kg is not None else None,
                     float(cost_batch) if cost_batch is not None else None,
                     float(percent) if percent is not None else None,
                 ]

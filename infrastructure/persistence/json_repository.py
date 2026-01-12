@@ -112,6 +112,8 @@ class JSONFormulationRepository:
             "name": formulation.name,
             "quantity_mode": formulation.quantity_mode,
             "yield_percent": _as_str(formulation.yield_percent),
+            "cost_target_mass_value": _as_str(formulation.cost_target_mass_value),
+            "cost_target_mass_unit": formulation.cost_target_mass_unit,
             "currency_rates": [
                 {
                     "name": rate.name,
@@ -195,6 +197,13 @@ class JSONFormulationRepository:
             quantity_mode=data.get("quantity_mode", "g"),
             yield_percent=yield_raw,
         )
+
+        target_value = _to_decimal(data.get("cost_target_mass_value"))
+        if target_value is not None and target_value > 0:
+            formulation.cost_target_mass_value = target_value
+        target_unit = str(data.get("cost_target_mass_unit") or "").strip()
+        if target_unit in {"g", "kg", "lb", "oz", "ton"}:
+            formulation.cost_target_mass_unit = target_unit
 
         rates: list[CurrencyRate] = []
         for entry in data.get("currency_rates", []) or []:

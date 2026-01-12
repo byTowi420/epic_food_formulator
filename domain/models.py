@@ -176,6 +176,8 @@ class Formulation:
     process_costs: list[ProcessCost] = field(default_factory=list)
     packaging_items: list[PackagingItem] = field(default_factory=list)
     currency_rates: list[CurrencyRate] = field(default_factory=_default_currency_rates)
+    cost_target_mass_value: Decimal = Decimal("100")
+    cost_target_mass_unit: str = "g"
 
     def __post_init__(self) -> None:
         """Validate formulation data."""
@@ -185,6 +187,11 @@ class Formulation:
             raise ValueError(f"Invalid quantity mode: {self.quantity_mode}")
         if self.yield_percent <= 0 or self.yield_percent > Decimal("100"):
             self.yield_percent = Decimal("100")
+        if self.cost_target_mass_value is None or self.cost_target_mass_value <= 0:
+            self.cost_target_mass_value = Decimal("100")
+        allowed_units = {"g", "kg", "lb", "oz", "ton"}
+        if self.cost_target_mass_unit not in allowed_units:
+            self.cost_target_mass_unit = "g"
         self._ensure_currency_rates()
 
     def _ensure_currency_rates(self) -> None:

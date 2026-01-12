@@ -5,29 +5,106 @@ from decimal import Decimal
 from typing import List
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QKeySequence, QShortcut, QColor, QPainter
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QDoubleSpinBox,
+    QFormLayout,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QSplitter,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from domain.models import CurrencyRate
+from domain.models import CurrencyRate, ProcessCost
+from domain.services.number_parser import parse_user_number
 from domain.services.unit_normalizer import convert_mass, normalize_mass_unit
+from ui.actions.normalize_mass_action import NormalizeMassAction
+from ui.formatters import fmt_decimal, fmt_money_mn, fmt_percent, fmt_qty
 from ui.tabs.table_utils import apply_selection_bar, attach_copy_shortcut
+from ui.widgets.number_spinbox import UserNumberSpinBox
+
+
+class NoWheelComboBox(QComboBox):
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        event.ignore()
+
+
+class StackedBarWidget(QWidget):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._values = (Decimal("0"), Decimal("0"), Decimal("0"))
+        self._colors = (
+            QColor("#4caf50"),
+            QColor("#f4c542"),
+            QColor("#81c4f8"),
+        )
+
+    def set_values(self, ingredients: Decimal, processes: Decimal, packaging: Decimal) -> None:
+        self._values = (ingredients, processes, packaging)
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        rect = self.rect().adjusted(0, 0, -1, -1)
+        total = sum(self._values)
+        if total <= 0:
+            painter.fillRect(rect, QColor("#e0e0e0"))
+            painter.end()
+            return
+
+        x = rect.left()
+        for value, color in zip(self._values, self._colors):
+            if value <= 0:
+                continue
+            width = int(rect.width() * float(value / total))
+            if width <= 0:
+                continue
+            painter.fillRect(x, rect.top(), width, rect.height(), color)
+            x += width
+
+        # Fill any remaining pixels to the end.
+        if x < rect.right():
+            painter.fillRect(x, rect.top(), rect.right() - x + 1, rect.height(), self._colors[-1])
+        painter.end()
+
+
+class TotalBadgeWidget(QFrame):
+    def __init__(self, label_text: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("costs_total_badge")
+        self.setStyleSheet(
+            "QFrame#costs_total_badge { border: 1px solid #e0e0e0; border-radius: 8px; "
+            "padding: 6px 10px; background: #f7f7f7; }"
+        )
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(6, 2, 6, 2)
+        layout.setSpacing(6)
+        self._label = QLabel(label_text)
+        self._value = QLabel("$ 0.00")
+        font = self._value.font()
+        font.setBold(True)
+        self._value.setFont(font)
+        layout.addWidget(self._label)
+        layout.addWidget(self._value)
+
+    def set_value(self, text: str) -> None:
+        self._value.setText(text)
 
 
 class CostsTabMixin:
@@ -35,6 +112,7 @@ class CostsTabMixin:
 
     def _init_costs_state(self) -> None:
         self._costs_block_signals = False
+        self._costs_total_batch_mn = Decimal("0")
         self._ingredient_cost_columns = {
             "ingredient": 0,
             "amount": 1,
@@ -48,71 +126,192 @@ class CostsTabMixin:
         }
         self._process_columns = {
             "name": 0,
-            "scale": 1,
-            "setup_value": 2,
-            "setup_unit": 3,
-            "time_per_kg": 4,
-            "time_unit": 5,
-            "time_total": 6,
-            "time_total_unit": 7,
-            "cost_per_hour": 8,
-            "total_cost": 9,
-            "notes": 10,
+            "time_total": 1,
+            "total_cost": 2,
+            "delete": 3,
         }
         self._packaging_columns = {
             "name": 0,
             "qty": 1,
             "unit_cost": 2,
             "subtotal": 3,
-            "notes": 4,
+            "delete": 4,
         }
 
     def _build_costs_tab_ui(self) -> None:
         layout = QVBoxLayout(self.costs_tab)
+        layout.setSpacing(8)
 
-        # Zona 1: Resumen
-        summary_widget = QWidget(self.costs_tab)
-        summary_layout = QGridLayout(summary_widget)
-        summary_layout.setColumnStretch(1, 1)
-        summary_layout.setColumnStretch(3, 1)
-        summary_layout.setColumnStretch(5, 1)
-        summary_layout.setColumnStretch(7, 1)
+        def _card_title(text: str) -> QLabel:
+            label = QLabel(text)
+            font = label.font()
+            font.setBold(True)
+            label.setFont(font)
+            return label
 
+        def _build_card() -> QFrame:
+            frame = QFrame(self.costs_tab)
+            frame.setObjectName("costs_card")
+            frame.setStyleSheet(
+                "QFrame#costs_card { border: 1px solid #e0e0e0; border-radius: 10px; "
+                "padding: 6px; background: #ffffff; }"
+            )
+            return frame
+
+        def _build_panel() -> QFrame:
+            frame = QFrame(self.costs_tab)
+            frame.setObjectName("costs_panel")
+            frame.setStyleSheet(
+                "QFrame#costs_panel { border: 1px solid #e6e6e6; border-radius: 10px; "
+                "padding: 10px; background: #ffffff; }"
+            )
+            return frame
+
+        # Zona 1: KPIs / Cards
+        header_container = QWidget(self.costs_tab)
+        header_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        header_layout = QHBoxLayout(header_container)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(8)
+        self._costs_header_container = header_container
+
+        # Card 1: Tirada
+        tirada_card = _build_card()
+        tirada_layout = QGridLayout(tirada_card)
+        tirada_layout.setContentsMargins(0, 0, 0, 0)
+        tirada_layout.setVerticalSpacing(4)
+        tirada_layout.setHorizontalSpacing(6)
+        tirada_header = QHBoxLayout()
+        self.costs_normalize_action = NormalizeMassAction(
+            self,
+            get_current_unit=self._current_mass_unit,
+            get_total_mass_g=self._total_weight,
+            apply_normalization=self.formulation_presenter.normalize_to_target_weight,
+            set_unit=self._set_quantity_mode,
+            after_apply=self._after_normalize_from_costs,
+            decimals_for_unit=self.formulation_presenter.mass_decimals,
+            can_run=self._can_normalize_mass,
+            on_blocked=self._show_status_message,
+        )
+        self.costs_normalize_button = self.costs_normalize_action.create_button("Normalizar masa")
+        tirada_header.addWidget(_card_title("Tirada"))
+        tirada_header.addStretch()
+        tirada_header.addWidget(self.costs_normalize_button)
         self.costs_batch_mass_label = QLabel("-")
-        self.costs_yield_input = QDoubleSpinBox()
+        self.costs_yield_input = UserNumberSpinBox()
         self.costs_yield_input.setRange(0.01, 100.0)
         self.costs_yield_input.setDecimals(2)
         self.costs_sellable_mass_label = QLabel("-")
-        self.costs_ingredients_total_label = QLabel("$ 0.00")
-        self.costs_process_total_label = QLabel("$ 0.00")
-        self.costs_total_label = QLabel("$ 0.00")
-        self.costs_completeness_label = QLabel("-")
+        tirada_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        tirada_layout.addLayout(tirada_header, 0, 0, 1, 2)
+        tirada_layout.addWidget(QLabel("Masa tirada:"), 1, 0)
+        tirada_layout.addWidget(self.costs_batch_mass_label, 1, 1)
+        tirada_layout.addWidget(QLabel("Rendimiento (%):"), 2, 0)
+        tirada_layout.addWidget(self.costs_yield_input, 2, 1)
+        tirada_layout.addWidget(QLabel("Masa vendible:"), 3, 0)
+        tirada_layout.addWidget(self.costs_sellable_mass_label, 3, 1)
+
+        # Card 2: Totales
+        totals_card = _build_card()
+        totals_layout = QVBoxLayout(totals_card)
+        totals_layout.setContentsMargins(0, 0, 0, 0)
+        totals_layout.setSpacing(4)
+        totals_header = QHBoxLayout()
+        totals_header.addWidget(_card_title("Totales"))
+        totals_header.addStretch()
         self.costs_load_rates_button = QPushButton("Cargar cotizaciones")
+        totals_header.addWidget(self.costs_load_rates_button)
+        totals_layout.addLayout(totals_header)
+        totals_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-        summary_layout.addWidget(QLabel("Masa tirada:"), 0, 0)
-        summary_layout.addWidget(self.costs_batch_mass_label, 0, 1)
-        summary_layout.addWidget(QLabel("Yield (%):"), 0, 2)
-        summary_layout.addWidget(self.costs_yield_input, 0, 3)
-        summary_layout.addWidget(QLabel("Masa vendible:"), 0, 4)
-        summary_layout.addWidget(self.costs_sellable_mass_label, 0, 5)
-        summary_layout.addWidget(QLabel("Completitud:"), 0, 6)
-        summary_layout.addWidget(self.costs_completeness_label, 0, 7)
+        totals_grid = QGridLayout()
+        self.costs_total_label = QLabel("$ 0.00")
+        self.costs_total_packaged_label = QLabel("$ 0.00")
+        total_font = self.costs_total_label.font()
+        total_font.setBold(True)
+        self.costs_total_label.setFont(total_font)
+        packaged_font = self.costs_total_packaged_label.font()
+        packaged_font.setBold(True)
+        self.costs_total_packaged_label.setFont(packaged_font)
+        totals_grid.addWidget(QLabel("Costo total tirada:"), 0, 0)
+        totals_grid.addWidget(self.costs_total_label, 0, 1)
+        totals_grid.addWidget(QLabel("Costo total envasado:"), 1, 0)
+        totals_grid.addWidget(self.costs_total_packaged_label, 1, 1)
+        totals_layout.addLayout(totals_grid)
 
-        summary_layout.addWidget(QLabel("Costo insumos:"), 1, 0)
-        summary_layout.addWidget(self.costs_ingredients_total_label, 1, 1)
-        summary_layout.addWidget(QLabel("Costo procesos:"), 1, 2)
-        summary_layout.addWidget(self.costs_process_total_label, 1, 3)
-        summary_layout.addWidget(QLabel("Costo total tirada:"), 1, 4)
-        summary_layout.addWidget(self.costs_total_label, 1, 5)
-        summary_layout.addWidget(self.costs_load_rates_button, 1, 6, 1, 2)
+        # Card 3: Total por pack
+        pack_card = _build_card()
+        pack_card.setStyleSheet(
+            "QFrame#costs_card { border: 1px solid #d0d0d0; border-radius: 12px; "
+            "padding: 6px; background: #f7f7f7; }"
+        )
+        pack_layout = QVBoxLayout(pack_card)
+        pack_layout.setContentsMargins(0, 0, 0, 0)
+        pack_layout.setSpacing(6)
+        pack_header = QHBoxLayout()
+        pack_header.addWidget(_card_title("Total por pack"))
+        pack_header.addStretch()
+        pack_header.addWidget(QLabel("Masa objetivo:"))
+        self.costs_target_mass_input = UserNumberSpinBox()
+        self.costs_target_mass_input.setRange(0.01, 1_000_000.0)
+        self.costs_target_mass_input.setDecimals(3)
+        self.costs_target_mass_input.setValue(100.0)
+        self.costs_target_unit_selector = QComboBox()
+        self.costs_target_unit_selector.addItems(["g", "kg", "lb", "oz", "ton"])
+        pack_header.addWidget(self.costs_target_mass_input)
+        pack_header.addWidget(self.costs_target_unit_selector)
+        pack_layout.addLayout(pack_header)
+        pack_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-        layout.addWidget(summary_widget)
+        self.costs_pack_total_label = QLabel("$ 0.00")
+        pack_total_font = self.costs_pack_total_label.font()
+        pack_total_font.setPointSize(pack_total_font.pointSize() + 8)
+        pack_total_font.setBold(True)
+        self.costs_pack_total_label.setFont(pack_total_font)
+        self.costs_pack_total_label.setStyleSheet("color: #111111;")
+        pack_total_row = QHBoxLayout()
+        pack_total_row.addWidget(self.costs_pack_total_label)
+        pack_total_row.addStretch()
 
-        # Zona 2: tabla de ingredientes
-        ingredients_panel = QWidget(self.costs_tab)
+        self.costs_pack_bar = StackedBarWidget(pack_card)
+        self.costs_pack_bar.setFixedHeight(10)
+        self.costs_units_count_label = QLabel("Packs por tirada: -")
+        self.costs_pack_composition_label = QLabel("Ingredientes - | Procesos - | Packaging -")
+        self.costs_pack_composition_label.setWordWrap(True)
+        secondary_labels = [self.costs_units_count_label, self.costs_pack_composition_label]
+        for label in secondary_labels:
+            font = label.font()
+            font.setPointSize(max(font.pointSize() - 1, 8))
+            label.setFont(font)
+            label.setStyleSheet("color: #555555;")
+        pack_total_row.addWidget(self.costs_units_count_label)
+        pack_layout.addLayout(pack_total_row)
+        pack_layout.addWidget(self.costs_pack_bar)
+        pack_layout.addWidget(self.costs_pack_composition_label)
+
+        header_layout.addWidget(tirada_card, 2)
+        header_layout.addWidget(totals_card, 2)
+        header_layout.addWidget(pack_card, 3)
+        self._costs_kpi_cards = [tirada_card, totals_card, pack_card]
+        layout.addWidget(header_container)
+
+        # Zona 2: Body (ingredientes arriba, procesos/packaging abajo)
+        body_splitter = QSplitter(Qt.Vertical, self.costs_tab)
+        body_splitter.setChildrenCollapsible(False)
+        self._costs_body_splitter = body_splitter
+        layout.addWidget(body_splitter, 1)
+
+        # Insumos (ancho completo)
+        ingredients_panel = _build_panel()
         ingredients_layout = QVBoxLayout(ingredients_panel)
         ingredients_layout.setContentsMargins(0, 0, 0, 0)
-        ingredients_layout.addWidget(QLabel("Insumos / Ingredientes"))
+        ingredients_header = QHBoxLayout()
+        ingredients_header.addWidget(_card_title("Insumos / Ingredientes"))
+        self.costs_ingredients_completion_label = QLabel("Completo: -")
+        ingredients_header.addWidget(self.costs_ingredients_completion_label)
+        ingredients_header.addStretch()
+        ingredients_layout.addLayout(ingredients_header)
 
         self.costs_ingredients_table = QTableWidget(0, len(self._ingredient_cost_columns))
         self.costs_ingredients_table.setHorizontalHeaderLabels(
@@ -123,131 +322,176 @@ class CostsTabMixin:
                 "Unidad",
                 "Moneda",
                 "Costo",
-                "Costo unitario (MN/g)",
-                "Costo tirada (MN)",
+                "$/kg",
+                "$ tirada",
                 "% insumos",
             ]
         )
+        self.costs_ingredients_table.horizontalHeader().setSectionResizeMode(
+            self._ingredient_cost_columns["ingredient"], QHeaderView.Stretch
+        )
+        for col_key in (
+            "amount",
+            "pack_amount",
+            "pack_unit",
+            "currency",
+            "cost_value",
+            "unit_cost",
+            "batch_cost",
+            "percent",
+        ):
+            self.costs_ingredients_table.horizontalHeader().setSectionResizeMode(
+                self._ingredient_cost_columns[col_key], QHeaderView.ResizeToContents
+            )
         self.costs_ingredients_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.costs_ingredients_table.setSelectionMode(QTableWidget.ExtendedSelection)
         apply_selection_bar(self.costs_ingredients_table)
         ingredients_layout.addWidget(self.costs_ingredients_table)
+        self.costs_ingredients_total_badge = TotalBadgeWidget("Total insumos:")
+        ingredients_total_row = QHBoxLayout()
+        ingredients_total_row.addStretch()
+        ingredients_total_row.addWidget(self.costs_ingredients_total_badge)
+        ingredients_layout.addLayout(ingredients_total_row)
 
-        layout.addWidget(ingredients_panel)
+        body_splitter.addWidget(ingredients_panel)
 
-        # Zona 2: tabla de procesos
-        processes_panel = QWidget(self.costs_tab)
+        # Procesos + Packaging (en paralelo)
+        processes_packaging_container = QWidget(self.costs_tab)
+        processes_packaging_layout = QHBoxLayout(processes_packaging_container)
+        processes_packaging_layout.setContentsMargins(0, 0, 0, 0)
+        processes_packaging_layout.setSpacing(10)
+        self._costs_processes_packaging_container = processes_packaging_container
+        body_splitter.addWidget(processes_packaging_container)
+        body_splitter.setStretchFactor(0, 4)
+        body_splitter.setStretchFactor(1, 1)
+
+        # Panel Procesos
+        processes_panel = _build_panel()
         processes_layout = QVBoxLayout(processes_panel)
         processes_layout.setContentsMargins(0, 0, 0, 0)
-        processes_layout.addWidget(QLabel("Procesos"))
+        processes_header = QHBoxLayout()
+        processes_header.addWidget(_card_title("Procesos"))
+        processes_header.addStretch()
+        self.costs_add_process_button = QPushButton("+ Agregar proceso")
+        processes_header.addWidget(self.costs_add_process_button)
+        processes_layout.addLayout(processes_header)
 
+        self.costs_process_stack = QStackedWidget(processes_panel)
+
+        process_table_container = QWidget(processes_panel)
+        process_table_layout = QVBoxLayout(process_table_container)
+        process_table_layout.setContentsMargins(0, 0, 0, 0)
         self.costs_process_table = QTableWidget(0, len(self._process_columns))
         self.costs_process_table.setHorizontalHeaderLabels(
-            [
-                "Nombre",
-                "Tipo",
-                "Setup",
-                "U",
-                "Tiempo/kg",
-                "U",
-                "Tiempo total",
-                "U",
-                "Costo/h",
-                "Costo total (MN)",
-                "Notas",
-            ]
+            ["Nombre", "Tiempo total", "$ total", ""]
+        )
+        self.costs_process_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.Stretch
+        )
+        self.costs_process_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeToContents
+        )
+        self.costs_process_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeToContents
+        )
+        self.costs_process_table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeToContents
         )
         self.costs_process_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.costs_process_table.setSelectionMode(QTableWidget.ExtendedSelection)
+        self.costs_process_table.setEditTriggers(QTableWidget.NoEditTriggers)
         apply_selection_bar(self.costs_process_table)
-        processes_layout.addWidget(self.costs_process_table)
+        process_table_layout.addWidget(self.costs_process_table)
 
-        process_buttons = QHBoxLayout()
-        self.costs_add_process_button = QPushButton("Agregar proceso")
-        self.costs_remove_process_button = QPushButton("Eliminar proceso")
-        process_buttons.addWidget(self.costs_add_process_button)
-        process_buttons.addWidget(self.costs_remove_process_button)
-        process_buttons.addStretch()
-        processes_layout.addLayout(process_buttons)
 
-        layout.addWidget(processes_panel)
+        process_empty = QWidget(processes_panel)
+        process_empty_layout = QVBoxLayout(process_empty)
+        process_empty_layout.addStretch()
+        empty_label = QLabel("No hay procesos cargados.")
+        empty_label.setStyleSheet("color: gray;")
+        self.costs_add_process_button_empty = QPushButton("+ Agregar proceso")
+        process_empty_layout.addWidget(empty_label, alignment=Qt.AlignCenter)
+        process_empty_layout.addWidget(self.costs_add_process_button_empty, alignment=Qt.AlignCenter)
+        process_empty_layout.addStretch()
 
-        # Zona 3: Packaging + resultados
-        bottom_splitter = QSplitter(Qt.Horizontal, self.costs_tab)
-        packaging_panel = QWidget(self.costs_tab)
+        self.costs_process_stack.addWidget(process_table_container)
+        self.costs_process_stack.addWidget(process_empty)
+        processes_layout.addWidget(self.costs_process_stack)
+        self.costs_process_total_badge = TotalBadgeWidget("Total procesos:")
+        processes_total_row = QHBoxLayout()
+        processes_total_row.addStretch()
+        processes_total_row.addWidget(self.costs_process_total_badge)
+        processes_layout.addLayout(processes_total_row)
+        processes_packaging_layout.addWidget(processes_panel, 1)
+
+        # Panel Packaging
+        packaging_panel = _build_panel()
         packaging_layout = QVBoxLayout(packaging_panel)
         packaging_layout.setContentsMargins(0, 0, 0, 0)
-        packaging_layout.addWidget(QLabel("Packaging"))
+        packaging_header = QHBoxLayout()
+        packaging_header.addWidget(_card_title("Packaging"))
+        packaging_header.addStretch()
+        self.costs_add_packaging_button = QPushButton("+ Agregar packaging")
+        packaging_header.addWidget(self.costs_add_packaging_button)
+        packaging_layout.addLayout(packaging_header)
 
+        self.costs_packaging_stack = QStackedWidget(packaging_panel)
+
+        packaging_table_container = QWidget(packaging_panel)
+        packaging_table_layout = QVBoxLayout(packaging_table_container)
+        packaging_table_layout.setContentsMargins(0, 0, 0, 0)
         self.costs_packaging_table = QTableWidget(0, len(self._packaging_columns))
         self.costs_packaging_table.setHorizontalHeaderLabels(
             [
                 "Nombre",
                 "Cantidad/pack",
-                "Costo unitario (MN)",
+                "$ unit",
                 "Subtotal",
-                "Notas",
+                "",
             ]
+        )
+        self.costs_packaging_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.Stretch
+        )
+        self.costs_packaging_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeToContents
+        )
+        self.costs_packaging_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeToContents
+        )
+        self.costs_packaging_table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeToContents
+        )
+        self.costs_packaging_table.horizontalHeader().setSectionResizeMode(
+            4, QHeaderView.ResizeToContents
         )
         self.costs_packaging_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.costs_packaging_table.setSelectionMode(QTableWidget.ExtendedSelection)
         apply_selection_bar(self.costs_packaging_table)
-        packaging_layout.addWidget(self.costs_packaging_table)
+        packaging_table_layout.addWidget(self.costs_packaging_table)
 
-        packaging_buttons = QHBoxLayout()
-        self.costs_add_packaging_button = QPushButton("Agregar item")
-        self.costs_remove_packaging_button = QPushButton("Eliminar item")
-        packaging_buttons.addWidget(self.costs_add_packaging_button)
-        packaging_buttons.addWidget(self.costs_remove_packaging_button)
-        packaging_buttons.addStretch()
-        packaging_layout.addLayout(packaging_buttons)
 
-        calc_widget = QWidget(self.costs_tab)
-        calc_layout = QGridLayout(calc_widget)
-        calc_layout.setColumnStretch(1, 1)
+        packaging_empty = QWidget(packaging_panel)
+        packaging_empty_layout = QVBoxLayout(packaging_empty)
+        packaging_empty_layout.addStretch()
+        packaging_label = QLabel("No hay items de packaging.")
+        packaging_label.setStyleSheet("color: gray;")
+        self.costs_add_packaging_button_empty = QPushButton("+ Agregar packaging")
+        packaging_empty_layout.addWidget(packaging_label, alignment=Qt.AlignCenter)
+        packaging_empty_layout.addWidget(
+            self.costs_add_packaging_button_empty, alignment=Qt.AlignCenter
+        )
+        packaging_empty_layout.addStretch()
 
-        self.costs_target_mass_input = QDoubleSpinBox()
-        self.costs_target_mass_input.setRange(0.01, 1_000_000.0)
-        self.costs_target_mass_input.setDecimals(3)
-        self.costs_target_mass_input.setValue(100.0)
-        self.costs_target_unit_selector = QComboBox()
-        self.costs_target_unit_selector.addItems(["g", "kg", "lb", "oz", "ton"])
-
-        self.costs_target_ingredients_label = QLabel("$ 0.00")
-        self.costs_target_process_label = QLabel("$ 0.00")
-        self.costs_target_total_label = QLabel("$ 0.00")
-        self.costs_packaging_total_label = QLabel("$ 0.00")
-        self.costs_target_total_pack_label = QLabel("$ 0.00")
-        self.costs_units_count_label = QLabel("-")
-
-        calc_layout.addWidget(QLabel("Masa objetivo:"), 0, 0)
-        calc_layout.addWidget(self.costs_target_mass_input, 0, 1)
-        calc_layout.addWidget(self.costs_target_unit_selector, 0, 2)
-
-        calc_layout.addWidget(QLabel("Costo insumos (unidad):"), 1, 0)
-        calc_layout.addWidget(self.costs_target_ingredients_label, 1, 1)
-        calc_layout.addWidget(QLabel("Costo procesos (unidad):"), 2, 0)
-        calc_layout.addWidget(self.costs_target_process_label, 2, 1)
-        calc_layout.addWidget(QLabel("Costo total (sin packaging):"), 3, 0)
-        calc_layout.addWidget(self.costs_target_total_label, 3, 1)
-        calc_layout.addWidget(QLabel("Packaging por pack:"), 4, 0)
-        calc_layout.addWidget(self.costs_packaging_total_label, 4, 1)
-        calc_layout.addWidget(QLabel("Total por pack:"), 5, 0)
-        calc_layout.addWidget(self.costs_target_total_pack_label, 5, 1)
-        calc_layout.addWidget(QLabel("Packs por tirada:"), 6, 0)
-        calc_layout.addWidget(self.costs_units_count_label, 6, 1)
-
-        bottom_splitter.addWidget(packaging_panel)
-
-        results_panel = QWidget(self.costs_tab)
-        results_layout = QVBoxLayout(results_panel)
-        results_layout.setContentsMargins(0, 0, 0, 0)
-        results_layout.addWidget(QLabel("Resultados costos"))
-        results_layout.addWidget(calc_widget)
-        bottom_splitter.addWidget(results_panel)
-        bottom_splitter.setStretchFactor(0, 3)
-        bottom_splitter.setStretchFactor(1, 2)
-        layout.addWidget(bottom_splitter)
+        self.costs_packaging_stack.addWidget(packaging_table_container)
+        self.costs_packaging_stack.addWidget(packaging_empty)
+        packaging_layout.addWidget(self.costs_packaging_stack)
+        self.costs_packaging_total_badge = TotalBadgeWidget("Total Packaging:")
+        packaging_total_row = QHBoxLayout()
+        packaging_total_row.addStretch()
+        packaging_total_row.addWidget(self.costs_packaging_total_badge)
+        packaging_layout.addLayout(packaging_total_row)
+        processes_packaging_layout.addWidget(packaging_panel, 1)
 
         # Conexiones
         self.costs_load_rates_button.clicked.connect(self._on_load_rates_clicked)
@@ -257,13 +501,13 @@ class CostsTabMixin:
             lambda _text: self._update_costs_calculator()
         )
         self.costs_add_process_button.clicked.connect(self._on_add_process_clicked)
-        self.costs_remove_process_button.clicked.connect(self._on_remove_process_clicked)
+        self.costs_add_process_button_empty.clicked.connect(self._on_add_process_clicked)
+        self.costs_process_table.itemDoubleClicked.connect(self._on_process_double_clicked)
         self.costs_add_packaging_button.clicked.connect(self._on_add_packaging_clicked)
-        self.costs_remove_packaging_button.clicked.connect(self._on_remove_packaging_clicked)
+        self.costs_add_packaging_button_empty.clicked.connect(self._on_add_packaging_clicked)
         self.costs_ingredients_table.itemChanged.connect(
             self._on_ingredient_cost_item_changed
         )
-        self.costs_process_table.itemChanged.connect(self._on_process_item_changed)
         self.costs_packaging_table.itemChanged.connect(self._on_packaging_item_changed)
 
         attach_copy_shortcut(self.costs_ingredients_table)
@@ -276,65 +520,122 @@ class CostsTabMixin:
 
         self._apply_costs_column_widths()
         self._refresh_costs_view()
+        self._apply_costs_layout_sizing()
 
     def _apply_costs_column_widths(self) -> None:
         table = self.costs_ingredients_table
         table.setColumnWidth(self._ingredient_cost_columns["ingredient"], 200)
         table.setColumnWidth(self._ingredient_cost_columns["amount"], 90)
-        table.setColumnWidth(self._ingredient_cost_columns["pack_amount"], 80)
+        table.setColumnWidth(self._ingredient_cost_columns["pack_amount"], 90)
         table.setColumnWidth(self._ingredient_cost_columns["pack_unit"], 60)
         table.setColumnWidth(self._ingredient_cost_columns["currency"], 70)
         table.setColumnWidth(self._ingredient_cost_columns["cost_value"], 80)
-        table.setColumnWidth(self._ingredient_cost_columns["unit_cost"], 110)
-        table.setColumnWidth(self._ingredient_cost_columns["batch_cost"], 110)
-        table.setColumnWidth(self._ingredient_cost_columns["percent"], 80)
+        table.setColumnWidth(self._ingredient_cost_columns["unit_cost"], 90)
+        table.setColumnWidth(self._ingredient_cost_columns["batch_cost"], 100)
+        table.setColumnWidth(self._ingredient_cost_columns["percent"], 70)
 
         process_table = self.costs_process_table
         process_table.setColumnWidth(self._process_columns["name"], 140)
-        process_table.setColumnWidth(self._process_columns["scale"], 100)
-        process_table.setColumnWidth(self._process_columns["setup_value"], 70)
-        process_table.setColumnWidth(self._process_columns["setup_unit"], 40)
-        process_table.setColumnWidth(self._process_columns["time_per_kg"], 70)
-        process_table.setColumnWidth(self._process_columns["time_unit"], 40)
-        process_table.setColumnWidth(self._process_columns["time_total"], 80)
-        process_table.setColumnWidth(self._process_columns["time_total_unit"], 40)
-        process_table.setColumnWidth(self._process_columns["cost_per_hour"], 80)
-        process_table.setColumnWidth(self._process_columns["total_cost"], 100)
-        process_table.setColumnWidth(self._process_columns["notes"], 120)
+        process_table.setColumnWidth(self._process_columns["time_total"], 90)
+        process_table.setColumnWidth(self._process_columns["total_cost"], 90)
+        process_table.setColumnWidth(self._process_columns["delete"], 30)
 
         packaging_table = self.costs_packaging_table
         packaging_table.setColumnWidth(self._packaging_columns["name"], 150)
         packaging_table.setColumnWidth(self._packaging_columns["qty"], 90)
         packaging_table.setColumnWidth(self._packaging_columns["unit_cost"], 90)
         packaging_table.setColumnWidth(self._packaging_columns["subtotal"], 90)
-        packaging_table.setColumnWidth(self._packaging_columns["notes"], 140)
+        packaging_table.setColumnWidth(self._packaging_columns["delete"], 30)
+
+    def _apply_costs_layout_sizing(self) -> None:
+        self._sync_costs_card_heights()
+
+        self._set_table_min_rows(self.costs_process_table, 3)
+        self._set_table_min_rows(self.costs_packaging_table, 3)
+
+        splitter = getattr(self, "_costs_body_splitter", None)
+        container = getattr(self, "_costs_processes_packaging_container", None)
+        if splitter is not None and container is not None:
+            bottom_size = container.sizeHint().height()
+            top_hint = self.costs_ingredients_table.sizeHint().height()
+            top_size = max(top_hint, bottom_size * 3)
+            splitter.setSizes([top_size, bottom_size])
+
+    def _set_table_min_rows(self, table: QTableWidget, rows: int) -> None:
+        header_height = table.horizontalHeader().sizeHint().height()
+        row_height = table.verticalHeader().defaultSectionSize()
+        frame = table.frameWidth() * 2
+        target = header_height + (row_height * rows) + frame
+        table.setMinimumHeight(target)
+
+    def _sync_costs_card_heights(self) -> None:
+        cards = getattr(self, "_costs_kpi_cards", None)
+        if not cards:
+            return
+        max_height = max(card.sizeHint().height() for card in cards)
+        for card in cards:
+            card.setMinimumHeight(max_height)
+            card.setMaximumHeight(max_height)
+
+        header_container = getattr(self, "_costs_header_container", None)
+        if header_container is not None:
+            header_container.setMinimumHeight(max_height)
+            header_container.setMaximumHeight(max_height)
 
     def _format_mass(self, value_g: Decimal, unit: str) -> str:
         unit_norm = normalize_mass_unit(unit) or unit
         converted = convert_mass(value_g, "g", unit_norm) or value_g
         decimals = self.formulation_presenter.mass_decimals(unit_norm)
-        return f"{float(converted):.{decimals}f} {unit_norm}"
+        return fmt_qty(converted, unit_norm, decimals=decimals)
 
     def _format_money(self, value: Decimal | None) -> str:
-        if value is None:
-            return "-"
-        return f"$ {float(value):.2f}"
+        return fmt_money_mn(value, decimals=2, thousands=True)
 
     def _format_percent(self, value: Decimal | None) -> str:
-        if value is None:
+        return fmt_percent(value, decimals=1)
+
+    def _format_time_total(self, value_h: Decimal | None) -> str:
+        if value_h is None:
             return "-"
-        return f"{float(value):.1f}%"
+        try:
+            value = Decimal(str(value_h))
+        except Exception:
+            return "-"
+        if value <= 0:
+            return "-"
+        if value >= 1:
+            return f"{fmt_decimal(value, decimals=2)} h"
+        minutes = value * Decimal("60")
+        return f"{fmt_decimal(minutes, decimals=0)} min"
 
     def _make_readonly_item(self, text: str) -> QTableWidgetItem:
         item = QTableWidgetItem(text)
         item.setFlags(item.flags() & ~Qt.ItemIsEditable)
         return item
 
+    def _make_numeric_item(self, text: str, readonly: bool = True) -> QTableWidgetItem:
+        item = QTableWidgetItem(text)
+        item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        if readonly:
+            item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+        return item
+
+    def _make_delete_button(self) -> QPushButton:
+        button = QPushButton("✖")
+        button.setFixedWidth(22)
+        button.setFlat(True)
+        button.setStyleSheet(
+            "QPushButton { color: #c62828; font-weight: bold; border: none; }"
+            "QPushButton:hover { color: #8e0000; }"
+        )
+        return button
+
     def _refresh_costs_view(self) -> None:
         if self._costs_block_signals:
             return
         self._costs_block_signals = True
         try:
+            self._sync_target_mass_inputs()
             self._update_costs_summary()
             self._populate_ingredients_costs_table()
             self._populate_processes_table()
@@ -342,6 +643,13 @@ class CostsTabMixin:
             self._update_costs_calculator()
         finally:
             self._costs_block_signals = False
+
+    def _after_normalize_from_costs(self, value: Decimal, unit: str) -> None:
+        self._refresh_formulation_views()
+        self._refresh_costs_view()
+        decimals = self.formulation_presenter.mass_decimals(unit)
+        message = f"Formulacion normalizada a {fmt_decimal(value, decimals=decimals)} {unit}."
+        self._show_status_message(message)
 
     def _update_costs_summary(self) -> None:
         summary = self.costs_presenter.summary()
@@ -356,24 +664,24 @@ class CostsTabMixin:
         self.costs_yield_input.setValue(float(summary["yield_percent"]))
         self.costs_yield_input.blockSignals(False)
 
-        self.costs_ingredients_total_label.setText(
+        self.costs_ingredients_total_badge.set_value(
             self._format_money(summary["ingredients_total_mn"])
         )
-        self.costs_process_total_label.setText(
+        self.costs_process_total_badge.set_value(
             self._format_money(summary["process_total_mn"])
         )
         self.costs_total_label.setText(self._format_money(summary["total_cost_mn"]))
+        self._costs_total_batch_mn = summary["total_cost_mn"]
 
         ingredients_pct = summary["ingredients_percent"]
-        process_pct = summary["process_percent"]
-        completeness_text = (
-            f"Insumos {float(ingredients_pct):.0f}% | Procesos {float(process_pct):.0f}%"
-        )
-        self.costs_completeness_label.setText(completeness_text)
-        if summary["missing_ingredients_count"] > 0 or summary["missing_process_count"] > 0:
-            self.costs_completeness_label.setStyleSheet("color: #a66b00;")
+        completeness_text = f"Completo: {fmt_decimal(ingredients_pct, decimals=0)}%"
+        self.costs_ingredients_completion_label.setText(completeness_text)
+        if ingredients_pct >= 100:
+            self.costs_ingredients_completion_label.setStyleSheet("color: #2e7d32;")
+        elif ingredients_pct >= 50:
+            self.costs_ingredients_completion_label.setStyleSheet("color: #f9a825;")
         else:
-            self.costs_completeness_label.setStyleSheet("")
+            self.costs_ingredients_completion_label.setStyleSheet("color: #c62828;")
 
     def _on_load_rates_clicked(self) -> None:
         rates = self._prompt_currency_rates()
@@ -474,15 +782,7 @@ class CostsTabMixin:
         remove_button.clicked.connect(_remove_selected_rows)
 
         def _to_decimal(value: str) -> Decimal | None:
-            if value is None:
-                return None
-            cleaned = str(value).strip().replace(",", ".")
-            if cleaned == "":
-                return None
-            try:
-                return Decimal(cleaned)
-            except Exception:
-                return None
+            return parse_user_number(value)
 
         def _collect_rates() -> List[CurrencyRate] | None:
             symbols: set[str] = set()
@@ -543,6 +843,208 @@ class CostsTabMixin:
             if rates is not None:
                 return rates
 
+    def _prompt_process_dialog(self, process: ProcessCost | None = None) -> ProcessCost | None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Proceso")
+        layout = QVBoxLayout(dialog)
+
+        form = QFormLayout()
+        name_input = QLineEdit(dialog)
+        type_combo = QComboBox(dialog)
+        type_combo.addItems(["Tiempo fijo", "Tiempo variable", "Hibrido"])
+        cost_input = UserNumberSpinBox(dialog)
+        cost_input.setDecimals(3)
+        cost_input.setRange(0.0, 1_000_000.0)
+
+        notes_input = QPlainTextEdit(dialog)
+        notes_input.setPlaceholderText("Notas (opcional)")
+        notes_input.setFixedHeight(60)
+
+        form.addRow("Nombre:", name_input)
+        form.addRow("Tipo:", type_combo)
+        form.addRow("Costo/h:", cost_input)
+        layout.addLayout(form)
+
+        fixed_time_value = UserNumberSpinBox(dialog)
+        fixed_time_value.setDecimals(3)
+        fixed_time_value.setRange(0.0, 1_000_000.0)
+        fixed_time_unit = QComboBox(dialog)
+        fixed_time_unit.addItems(["min", "h"])
+
+        setup_time_value = UserNumberSpinBox(dialog)
+        setup_time_value.setDecimals(3)
+        setup_time_value.setRange(0.0, 1_000_000.0)
+        setup_time_unit = QComboBox(dialog)
+        setup_time_unit.addItems(["min", "h"])
+
+        time_per_kg_value = UserNumberSpinBox(dialog)
+        time_per_kg_value.setDecimals(3)
+        time_per_kg_value.setRange(0.0, 1_000_000.0)
+        time_per_kg_unit = QComboBox(dialog)
+        time_per_kg_unit.addItems(["min", "h"])
+
+        def _time_row(
+            value_widget: UserNumberSpinBox, unit_widget: QComboBox, suffix: str = ""
+        ) -> QWidget:
+            row_widget = QWidget(dialog)
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.addWidget(value_widget)
+            row_layout.addWidget(unit_widget)
+            if suffix:
+                row_layout.addWidget(QLabel(suffix))
+            row_layout.addStretch()
+            return row_widget
+
+        fixed_row = _time_row(fixed_time_value, fixed_time_unit)
+        setup_row = _time_row(setup_time_value, setup_time_unit)
+        per_kg_row = _time_row(time_per_kg_value, time_per_kg_unit, "/kg")
+
+        fixed_label = QLabel("Tiempo:")
+        setup_label = QLabel("Tiempo fijo:")
+        per_kg_label = QLabel("Tiempo/kg:")
+        form.addRow(fixed_label, fixed_row)
+        form.addRow(setup_label, setup_row)
+        form.addRow(per_kg_label, per_kg_row)
+
+        layout.addWidget(notes_input)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=dialog
+        )
+        layout.addWidget(buttons)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        type_map = {
+            "Tiempo fijo": "FIXED",
+            "Tiempo variable": "VARIABLE_PER_KG",
+            "Hibrido": "MIXED",
+        }
+
+        if process is not None:
+            name_input.setText(process.name or "")
+            scale_type = (process.scale_type or "FIXED").strip().upper()
+            if scale_type == "VARIABLE_PER_KG":
+                type_combo.setCurrentText("Tiempo variable")
+            elif scale_type == "MIXED":
+                type_combo.setCurrentText("Hibrido")
+            else:
+                type_combo.setCurrentText("Tiempo fijo")
+
+            if process.cost_per_hour_mn is not None:
+                cost_input.setValue(float(process.cost_per_hour_mn))
+            if process.time_value is not None:
+                fixed_time_value.setValue(float(process.time_value))
+            if process.time_unit:
+                fixed_time_unit.setCurrentText(process.time_unit)
+                time_per_kg_unit.setCurrentText(process.time_unit)
+            if process.setup_time_value is not None:
+                setup_time_value.setValue(float(process.setup_time_value))
+            if process.setup_time_unit:
+                setup_time_unit.setCurrentText(process.setup_time_unit)
+            if process.time_per_kg_value is not None:
+                time_per_kg_value.setValue(float(process.time_per_kg_value))
+            if process.notes:
+                notes_input.setPlainText(process.notes)
+
+        def _toggle_fields() -> None:
+            selected = type_combo.currentText()
+            show_fixed = selected == "Tiempo fijo"
+            show_setup = selected == "Hibrido"
+            show_per_kg = selected in {"Tiempo variable", "Hibrido"}
+            fixed_row.setVisible(show_fixed)
+            fixed_label.setVisible(show_fixed)
+            setup_row.setVisible(show_setup)
+            setup_label.setVisible(show_setup)
+            per_kg_row.setVisible(show_per_kg)
+            per_kg_label.setVisible(show_per_kg)
+
+        type_combo.currentTextChanged.connect(lambda _text: _toggle_fields())
+        _toggle_fields()
+
+        def _to_hours(value: Decimal, unit: str) -> Decimal | None:
+            if value <= 0:
+                return None
+            if unit == "h":
+                return value
+            if unit == "min":
+                return value / Decimal("60")
+            return None
+
+        while True:
+            if dialog.exec() != QDialog.Accepted:
+                return None
+            name = name_input.text().strip()
+            if not name:
+                QMessageBox.warning(self, "Proceso", "Ingresa un nombre.")
+                continue
+
+            cost_h = Decimal(str(cost_input.value()))
+            if cost_h <= 0:
+                QMessageBox.warning(self, "Proceso", "El costo por hora debe ser mayor a 0.")
+                continue
+
+            scale_key = type_map.get(type_combo.currentText(), "FIXED")
+
+            time_value = None
+            time_unit = None
+            setup_value = None
+            setup_unit = None
+            time_per_kg = None
+
+            if scale_key == "FIXED":
+                time_value = Decimal(str(fixed_time_value.value()))
+                time_unit = fixed_time_unit.currentText()
+                if time_value <= 0:
+                    QMessageBox.warning(self, "Proceso", "El tiempo debe ser mayor a 0.")
+                    continue
+            elif scale_key == "VARIABLE_PER_KG":
+                time_per_kg = Decimal(str(time_per_kg_value.value()))
+                time_unit = time_per_kg_unit.currentText()
+                if time_per_kg <= 0:
+                    QMessageBox.warning(self, "Proceso", "El tiempo por kg debe ser mayor a 0.")
+                    continue
+            elif scale_key == "MIXED":
+                setup_value = Decimal(str(setup_time_value.value()))
+                setup_unit = setup_time_unit.currentText()
+                time_per_kg = Decimal(str(time_per_kg_value.value()))
+                time_unit = time_per_kg_unit.currentText()
+                if time_per_kg <= 0:
+                    QMessageBox.warning(self, "Proceso", "El tiempo por kg debe ser mayor a 0.")
+                    continue
+
+            batch_mass_kg = self.costs_presenter.formulation.total_weight / Decimal("1000")
+            time_total_h = None
+            if scale_key == "FIXED" and time_value is not None and time_unit is not None:
+                time_total_h = _to_hours(time_value, time_unit)
+            elif scale_key == "VARIABLE_PER_KG" and time_per_kg is not None and time_unit is not None:
+                per_kg_h = _to_hours(time_per_kg, time_unit)
+                if per_kg_h is not None:
+                    time_total_h = per_kg_h * batch_mass_kg
+            elif scale_key == "MIXED" and time_per_kg is not None and time_unit is not None:
+                setup_h = Decimal("0")
+                if setup_value is not None and setup_value > 0:
+                    setup_h = _to_hours(setup_value, setup_unit or "min") or Decimal("0")
+                per_kg_h = _to_hours(time_per_kg, time_unit)
+                if per_kg_h is not None:
+                    time_total_h = setup_h + (per_kg_h * batch_mass_kg)
+
+            total_cost = time_total_h * cost_h if time_total_h is not None else None
+
+            return ProcessCost(
+                name=name,
+                scale_type=scale_key,
+                time_value=time_value,
+                time_unit=time_unit,
+                setup_time_value=setup_value,
+                setup_time_unit=setup_unit,
+                time_per_kg_value=time_per_kg,
+                cost_per_hour_mn=cost_h,
+                total_cost_mn=total_cost,
+                notes=notes_input.toPlainText().strip() or None,
+            )
+
     def _populate_ingredients_costs_table(self) -> None:
         rows = self.costs_presenter.build_ingredient_rows(self.quantity_mode)
         table = self.costs_ingredients_table
@@ -550,37 +1052,73 @@ class CostsTabMixin:
         table.blockSignals(True)
         table.setRowCount(len(rows))
         for row_idx, row in enumerate(rows):
-            table.setItem(row_idx, self._ingredient_cost_columns["ingredient"], self._make_readonly_item(row["description"]))
+            table.setItem(
+                row_idx,
+                self._ingredient_cost_columns["ingredient"],
+                self._make_readonly_item(row["description"]),
+            )
             amount_text = self._format_mass(row["amount_g"], row["unit"])
-            table.setItem(row_idx, self._ingredient_cost_columns["amount"], self._make_readonly_item(amount_text))
+            table.setItem(
+                row_idx,
+                self._ingredient_cost_columns["amount"],
+                self._make_numeric_item(amount_text),
+            )
 
-            pack_amount = "" if row["cost_pack_amount"] is None else f"{float(row['cost_pack_amount']):.3f}"
-            table.setItem(row_idx, self._ingredient_cost_columns["pack_amount"], QTableWidgetItem(pack_amount))
+            pack_amount = "" if row["cost_pack_amount"] is None else fmt_decimal(row["cost_pack_amount"], decimals=3)
+            table.setItem(
+                row_idx,
+                self._ingredient_cost_columns["pack_amount"],
+                self._make_numeric_item(pack_amount, readonly=False),
+            )
 
-            unit_combo = QComboBox(table)
+            unit_combo = NoWheelComboBox(table)
             unit_combo.addItems(["g", "kg", "lb", "oz", "ton"])
             unit_combo.setCurrentText(row["cost_pack_unit"] or "g")
             unit_combo.setProperty("row", row_idx)
             unit_combo.currentTextChanged.connect(self._on_ingredient_unit_changed)
             table.setCellWidget(row_idx, self._ingredient_cost_columns["pack_unit"], unit_combo)
 
-            currency_combo = QComboBox(table)
+            currency_combo = NoWheelComboBox(table)
             currency_combo.addItems(symbols)
             currency_combo.setCurrentText(row["cost_currency_symbol"] or "$")
             currency_combo.setProperty("row", row_idx)
             currency_combo.currentTextChanged.connect(self._on_ingredient_currency_changed)
             table.setCellWidget(row_idx, self._ingredient_cost_columns["currency"], currency_combo)
 
-            cost_value = "" if row["cost_value"] is None else f"{float(row['cost_value']):.3f}"
-            table.setItem(row_idx, self._ingredient_cost_columns["cost_value"], QTableWidgetItem(cost_value))
-
-            unit_cost_text = (
-                f"{float(row['cost_per_g_mn']):.6f}" if row["cost_per_g_mn"] is not None else "-"
+            cost_value = "" if row["cost_value"] is None else fmt_decimal(row["cost_value"], decimals=3)
+            table.setItem(
+                row_idx,
+                self._ingredient_cost_columns["cost_value"],
+                self._make_numeric_item(cost_value, readonly=False),
             )
-            table.setItem(row_idx, self._ingredient_cost_columns["unit_cost"], self._make_readonly_item(unit_cost_text))
-            batch_cost_text = self._format_money(row["cost_batch_mn"]) if row["cost_batch_mn"] is not None else "-"
-            table.setItem(row_idx, self._ingredient_cost_columns["batch_cost"], self._make_readonly_item(batch_cost_text))
-            table.setItem(row_idx, self._ingredient_cost_columns["percent"], self._make_readonly_item(self._format_percent(row["percent_of_ingredients"])))
+
+            unit_cost_text = "-"
+            unit_cost_tooltip = ""
+            if row["cost_per_g_mn"] is not None:
+                per_kg = row["cost_per_g_mn"] * Decimal("1000")
+                unit_cost_text = fmt_decimal(per_kg, decimals=4)
+                unit_cost_tooltip = fmt_decimal(per_kg, decimals=8)
+            unit_cost_item = self._make_numeric_item(unit_cost_text)
+            if unit_cost_tooltip:
+                unit_cost_item.setToolTip(unit_cost_tooltip)
+            table.setItem(
+                row_idx,
+                self._ingredient_cost_columns["unit_cost"],
+                unit_cost_item,
+            )
+            batch_cost_text = (
+                self._format_money(row["cost_batch_mn"]) if row["cost_batch_mn"] is not None else "-"
+            )
+            table.setItem(
+                row_idx,
+                self._ingredient_cost_columns["batch_cost"],
+                self._make_numeric_item(batch_cost_text),
+            )
+            table.setItem(
+                row_idx,
+                self._ingredient_cost_columns["percent"],
+                self._make_numeric_item(self._format_percent(row["percent_of_ingredients"])),
+            )
 
             if row["cost_per_g_mn"] is None:
                 for col in (
@@ -639,197 +1177,80 @@ class CostsTabMixin:
             cost_currency_symbol=currency,
         )
         self._refresh_costs_view()
+
     def _populate_processes_table(self) -> None:
         rows = self.costs_presenter.build_process_rows()
         table = self.costs_process_table
         table.blockSignals(True)
         table.setRowCount(len(rows))
         for row_idx, row in enumerate(rows):
-            table.setItem(row_idx, self._process_columns["name"], QTableWidgetItem(row["name"] or ""))
-
-            scale_combo = QComboBox(table)
-            scale_combo.addItems(["FIXED", "VARIABLE_PER_KG", "MIXED"])
-            scale_combo.setCurrentText(row["scale_type"] or "FIXED")
-            scale_combo.setProperty("row", row_idx)
-            scale_combo.currentTextChanged.connect(self._on_process_scale_changed)
-            table.setCellWidget(row_idx, self._process_columns["scale"], scale_combo)
-
-            setup_value = "" if row["setup_time_value"] is None else f"{float(row['setup_time_value']):.3f}"
-            table.setItem(row_idx, self._process_columns["setup_value"], QTableWidgetItem(setup_value))
-            setup_unit_combo = QComboBox(table)
-            setup_unit_combo.addItems(["min", "h"])
-            setup_unit_combo.setCurrentText(row["setup_time_unit"] or "min")
-            setup_unit_combo.setProperty("row", row_idx)
-            setup_unit_combo.currentTextChanged.connect(self._on_process_setup_unit_changed)
-            table.setCellWidget(row_idx, self._process_columns["setup_unit"], setup_unit_combo)
-
-            time_per_kg = "" if row["time_per_kg_value"] is None else f"{float(row['time_per_kg_value']):.3f}"
-            table.setItem(row_idx, self._process_columns["time_per_kg"], QTableWidgetItem(time_per_kg))
-            time_unit_combo = QComboBox(table)
-            time_unit_combo.addItems(["min", "h"])
-            time_unit_combo.setCurrentText(row["time_unit"] or "min")
-            time_unit_combo.setProperty("row", row_idx)
-            time_unit_combo.currentTextChanged.connect(self._on_process_time_unit_changed)
-            table.setCellWidget(row_idx, self._process_columns["time_unit"], time_unit_combo)
-
-            time_total_value = ""
-            if row["time_total_h"] is not None:
-                time_total_value = f"{float(row['time_total_h']):.3f}"
-            table.setItem(row_idx, self._process_columns["time_total"], QTableWidgetItem(time_total_value))
-            unit_text = row["time_unit"] if (row["scale_type"] or "").strip().upper() == "FIXED" else "h"
             table.setItem(
                 row_idx,
-                self._process_columns["time_total_unit"],
-                self._make_readonly_item(unit_text or "h"),
+                self._process_columns["name"],
+                self._make_readonly_item(row["name"] or ""),
             )
-
-            cost_per_hour = "" if row["cost_per_hour_mn"] is None else f"{float(row['cost_per_hour_mn']):.3f}"
-            table.setItem(row_idx, self._process_columns["cost_per_hour"], QTableWidgetItem(cost_per_hour))
-            scale_type = (row["scale_type"] or "").strip().upper()
-            if scale_type == "FIXED":
-                total_cost_text = (
-                    f"{float(row['total_cost_mn']):.3f}"
-                    if row["total_cost_mn"] is not None
-                    else ""
-                )
-            else:
-                total_cost_text = (
-                    self._format_money(row["total_cost_mn"])
-                    if row["total_cost_mn"] is not None
-                    else "-"
-                )
+            time_text = self._format_time_total(row["time_total_h"])
+            table.setItem(
+                row_idx,
+                self._process_columns["time_total"],
+                self._make_numeric_item(time_text),
+            )
+            total_text = (
+                self._format_money(row["total_cost_mn"])
+                if row["total_cost_mn"] is not None
+                else "-"
+            )
             table.setItem(
                 row_idx,
                 self._process_columns["total_cost"],
-                QTableWidgetItem(total_cost_text),
+                self._make_numeric_item(total_text),
             )
-
-            table.setItem(row_idx, self._process_columns["notes"], QTableWidgetItem(row["notes"] or ""))
-
-            self._apply_process_row_state(row_idx, row["scale_type"])
-
-            if row["total_cost_mn"] is None:
-                for col in (self._process_columns["cost_per_hour"], self._process_columns["time_total"]):
-                    item = table.item(row_idx, col)
-                    if item:
-                        item.setBackground(Qt.yellow)
+            delete_button = self._make_delete_button()
+            delete_button.clicked.connect(
+                lambda _checked=False, row=row_idx: self._remove_process_at(row)
+            )
+            table.setCellWidget(row_idx, self._process_columns["delete"], delete_button)
 
         table.blockSignals(False)
+        if rows:
+            self.costs_process_stack.setCurrentIndex(0)
+        else:
+            self.costs_process_stack.setCurrentIndex(1)
 
-    def _apply_process_row_state(self, row: int, scale_type: str) -> None:
-        scale = str(scale_type or "").strip().upper()
-        table = self.costs_process_table
-
-        def _set_col_enabled(col: int, enabled: bool) -> None:
-            item = table.item(row, col)
-            if item:
-                flags = item.flags()
-                if enabled:
-                    flags |= Qt.ItemIsEditable
-                else:
-                    flags &= ~Qt.ItemIsEditable
-                item.setFlags(flags)
-
-        _set_col_enabled(self._process_columns["time_total"], scale == "FIXED")
-        _set_col_enabled(self._process_columns["cost_per_hour"], True)
-        _set_col_enabled(self._process_columns["total_cost"], scale == "FIXED")
-
-        if scale == "FIXED":
-            _set_col_enabled(self._process_columns["setup_value"], False)
-            _set_col_enabled(self._process_columns["time_per_kg"], False)
-            _set_col_enabled(self._process_columns["time_total"], True)
-        elif scale == "VARIABLE_PER_KG":
-            _set_col_enabled(self._process_columns["setup_value"], False)
-            _set_col_enabled(self._process_columns["time_per_kg"], True)
-            _set_col_enabled(self._process_columns["time_total"], False)
-        elif scale == "MIXED":
-            _set_col_enabled(self._process_columns["setup_value"], True)
-            _set_col_enabled(self._process_columns["time_per_kg"], True)
-            _set_col_enabled(self._process_columns["time_total"], False)
-
-    def _on_process_scale_changed(self, _text: str) -> None:
-        if self._costs_block_signals:
+    def _on_add_process_clicked(self) -> None:
+        process = self._prompt_process_dialog()
+        if process is None:
             return
-        combo = self.sender()
-        if isinstance(combo, QComboBox):
-            row = combo.property("row")
-            if row is not None:
-                self._update_process_from_row(int(row))
+        self.costs_presenter.formulation.process_costs.append(process)
+        self._refresh_costs_view()
 
-    def _on_process_setup_unit_changed(self, _text: str) -> None:
-        if self._costs_block_signals:
+    def _on_process_double_clicked(self, item: QTableWidgetItem) -> None:
+        self._edit_process_row(item.row())
+
+    def _edit_process_row(self, row: int) -> None:
+        if row < 0 or row >= len(self.costs_presenter.formulation.process_costs):
             return
-        combo = self.sender()
-        if isinstance(combo, QComboBox):
-            row = combo.property("row")
-            if row is not None:
-                self._update_process_from_row(int(row))
-
-    def _on_process_time_unit_changed(self, _text: str) -> None:
-        if self._costs_block_signals:
+        current = self.costs_presenter.formulation.process_costs[row]
+        updated = self._prompt_process_dialog(current)
+        if updated is None:
             return
-        combo = self.sender()
-        if isinstance(combo, QComboBox):
-            row = combo.property("row")
-            if row is not None:
-                self._update_process_from_row(int(row))
-
-    def _on_process_item_changed(self, item: QTableWidgetItem) -> None:
-        if self._costs_block_signals:
-            return
-        if item.column() in (
-            self._process_columns["name"],
-            self._process_columns["setup_value"],
-            self._process_columns["time_per_kg"],
-            self._process_columns["time_total"],
-            self._process_columns["cost_per_hour"],
-            self._process_columns["total_cost"],
-            self._process_columns["notes"],
-        ):
-            self._update_process_from_row(item.row())
-
-    def _update_process_from_row(self, row: int) -> None:
-        table = self.costs_process_table
-        name_item = table.item(row, self._process_columns["name"])
-        setup_value_item = table.item(row, self._process_columns["setup_value"])
-        time_per_kg_item = table.item(row, self._process_columns["time_per_kg"])
-        time_total_item = table.item(row, self._process_columns["time_total"])
-        cost_per_hour_item = table.item(row, self._process_columns["cost_per_hour"])
-        total_cost_item = table.item(row, self._process_columns["total_cost"])
-        notes_item = table.item(row, self._process_columns["notes"])
-        scale_combo = table.cellWidget(row, self._process_columns["scale"])
-        setup_unit_combo = table.cellWidget(row, self._process_columns["setup_unit"])
-        time_unit_combo = table.cellWidget(row, self._process_columns["time_unit"])
-
-        scale_type = scale_combo.currentText() if isinstance(scale_combo, QComboBox) else "FIXED"
-        setup_unit = setup_unit_combo.currentText() if isinstance(setup_unit_combo, QComboBox) else "min"
-        time_unit = time_unit_combo.currentText() if isinstance(time_unit_combo, QComboBox) else "min"
-
         self.costs_presenter.update_process(
             row,
-            name=name_item.text() if name_item else "",
-            scale_type=scale_type,
-            setup_time_value=setup_value_item.text() if setup_value_item else None,
-            setup_time_unit=setup_unit,
-            time_per_kg_value=time_per_kg_item.text() if time_per_kg_item else None,
-            time_unit=time_unit,
-            time_value=time_total_item.text() if time_total_item else None,
-            cost_per_hour_mn=cost_per_hour_item.text() if cost_per_hour_item else None,
-            total_cost_mn=total_cost_item.text() if total_cost_item else None,
-            notes=notes_item.text() if notes_item else None,
+            name=updated.name,
+            scale_type=updated.scale_type,
+            setup_time_value=updated.setup_time_value,
+            setup_time_unit=updated.setup_time_unit,
+            time_per_kg_value=updated.time_per_kg_value,
+            time_unit=updated.time_unit,
+            time_value=updated.time_value,
+            cost_per_hour_mn=updated.cost_per_hour_mn,
+            total_cost_mn=updated.total_cost_mn,
+            notes=updated.notes,
         )
         self._refresh_costs_view()
 
-    def _on_add_process_clicked(self) -> None:
-        self.costs_presenter.add_process()
-        self._refresh_costs_view()
-
-    def _on_remove_process_clicked(self) -> None:
-        rows = self.costs_process_table.selectionModel().selectedRows()
-        if not rows:
-            return
-        for row in sorted((r.row() for r in rows), reverse=True):
-            self.costs_presenter.remove_process(row)
+    def _remove_process_at(self, row: int) -> None:
+        self.costs_presenter.remove_process(row)
         self._refresh_costs_view()
 
     def _populate_packaging_table(self) -> None:
@@ -838,15 +1259,47 @@ class CostsTabMixin:
         table.blockSignals(True)
         table.setRowCount(len(rows))
         for row_idx, row in enumerate(rows):
-            table.setItem(row_idx, self._packaging_columns["name"], QTableWidgetItem(row["name"] or ""))
-            qty = f"{float(row['quantity_per_pack']):.3f}" if row["quantity_per_pack"] is not None else ""
-            table.setItem(row_idx, self._packaging_columns["qty"], QTableWidgetItem(qty))
-            unit_cost = f"{float(row['unit_cost_mn']):.3f}" if row["unit_cost_mn"] is not None else ""
-            table.setItem(row_idx, self._packaging_columns["unit_cost"], QTableWidgetItem(unit_cost))
+            table.setItem(
+                row_idx,
+                self._packaging_columns["name"],
+                QTableWidgetItem(row["name"] or ""),
+            )
+            qty = (
+                fmt_decimal(row["quantity_per_pack"], decimals=3)
+                if row["quantity_per_pack"] is not None
+                else ""
+            )
+            table.setItem(
+                row_idx,
+                self._packaging_columns["qty"],
+                self._make_numeric_item(qty, readonly=False),
+            )
+            unit_cost = (
+                fmt_decimal(row["unit_cost_mn"], decimals=3)
+                if row["unit_cost_mn"] is not None
+                else ""
+            )
+            table.setItem(
+                row_idx,
+                self._packaging_columns["unit_cost"],
+                self._make_numeric_item(unit_cost, readonly=False),
+            )
             subtotal = self._format_money(row["subtotal_mn"]) if row["subtotal_mn"] is not None else "-"
-            table.setItem(row_idx, self._packaging_columns["subtotal"], self._make_readonly_item(subtotal))
-            table.setItem(row_idx, self._packaging_columns["notes"], QTableWidgetItem(row["notes"] or ""))
+            table.setItem(
+                row_idx,
+                self._packaging_columns["subtotal"],
+                self._make_numeric_item(subtotal),
+            )
+            delete_button = self._make_delete_button()
+            delete_button.clicked.connect(
+                lambda _checked=False, row=row_idx: self._remove_packaging_at(row)
+            )
+            table.setCellWidget(row_idx, self._packaging_columns["delete"], delete_button)
         table.blockSignals(False)
+        if rows:
+            self.costs_packaging_stack.setCurrentIndex(0)
+        else:
+            self.costs_packaging_stack.setCurrentIndex(1)
 
     def _on_packaging_item_changed(self, item: QTableWidgetItem) -> None:
         if self._costs_block_signals:
@@ -855,7 +1308,6 @@ class CostsTabMixin:
             self._packaging_columns["name"],
             self._packaging_columns["qty"],
             self._packaging_columns["unit_cost"],
-            self._packaging_columns["notes"],
         ):
             self._update_packaging_from_row(item.row())
 
@@ -864,26 +1316,20 @@ class CostsTabMixin:
         name_item = table.item(row, self._packaging_columns["name"])
         qty_item = table.item(row, self._packaging_columns["qty"])
         unit_cost_item = table.item(row, self._packaging_columns["unit_cost"])
-        notes_item = table.item(row, self._packaging_columns["notes"])
         self.costs_presenter.update_packaging_item(
             row,
             name=name_item.text() if name_item else "",
             quantity_per_pack=qty_item.text() if qty_item else None,
             unit_cost_mn=unit_cost_item.text() if unit_cost_item else None,
-            notes=notes_item.text() if notes_item else None,
         )
+        self._refresh_costs_view()
+
+    def _remove_packaging_at(self, row: int) -> None:
+        self.costs_presenter.remove_packaging_item(row)
         self._refresh_costs_view()
 
     def _on_add_packaging_clicked(self) -> None:
         self.costs_presenter.add_packaging_item()
-        self._refresh_costs_view()
-
-    def _on_remove_packaging_clicked(self) -> None:
-        rows = self.costs_packaging_table.selectionModel().selectedRows()
-        if not rows:
-            return
-        for row in sorted((r.row() for r in rows), reverse=True):
-            self.costs_presenter.remove_packaging_item(row)
         self._refresh_costs_view()
 
     def _on_yield_changed(self, value: float) -> None:
@@ -893,26 +1339,68 @@ class CostsTabMixin:
         self._refresh_costs_view()
 
     def _update_costs_calculator(self) -> None:
+        if not self._costs_block_signals:
+            self._sync_target_mass_to_formulation()
         target_value = self.costs_target_mass_input.value()
         target_unit = self.costs_target_unit_selector.currentText()
         data = self.costs_presenter.unit_costs_for_target_mass(target_value, target_unit)
-        self.costs_target_ingredients_label.setText(
-            self._format_money(data["ingredients_cost_per_target_mn"])
-        )
-        self.costs_target_process_label.setText(
-            self._format_money(data["process_cost_per_target_mn"])
-        )
-        self.costs_target_total_label.setText(
-            self._format_money(data["total_cost_per_target_mn"])
-        )
-        self.costs_packaging_total_label.setText(
-            self._format_money(data["packaging_cost_per_pack_mn"])
-        )
-        self.costs_target_total_pack_label.setText(
-            self._format_money(data["total_pack_cost_mn"])
-        )
+        ingredients_pack = data["ingredients_cost_per_target_mn"]
+        process_pack = data["process_cost_per_target_mn"]
+        packaging_pack = data["packaging_cost_per_pack_mn"]
+        total_pack = data["total_pack_cost_mn"]
+
+        self.costs_pack_total_label.setText(self._format_money(total_pack))
         units = data["units_count"]
-        self.costs_units_count_label.setText(f"{float(units):.2f}" if units else "-")
+        self.costs_units_count_label.setText(
+            f"Packs por tirada: {fmt_decimal(units, decimals=2)}"
+            if units
+            else "Packs por tirada: -"
+        )
+        packaging_batch = packaging_pack * units if units and units > 0 else Decimal("0")
+        total_packaged = self._costs_total_batch_mn + packaging_batch
+        self.costs_total_packaged_label.setText(self._format_money(total_packaged))
+
+        if total_pack and total_pack > 0:
+            pct_ing = (ingredients_pack / total_pack) * Decimal("100")
+            pct_proc = (process_pack / total_pack) * Decimal("100")
+            pct_pack = (packaging_pack / total_pack) * Decimal("100")
+            composition = (
+                f"Ingredientes {fmt_decimal(pct_ing, decimals=0)}% "
+                f"({self._format_money(ingredients_pack)}) | "
+                f"Procesos {fmt_decimal(pct_proc, decimals=0)}% "
+                f"({self._format_money(process_pack)}) | "
+                f"Packaging {fmt_decimal(pct_pack, decimals=0)}% "
+                f"({self._format_money(packaging_pack)})"
+            )
+        else:
+            composition = "Ingredientes - | Procesos - | Packaging -"
+        self.costs_pack_composition_label.setText(composition)
+        self.costs_pack_bar.set_values(ingredients_pack, process_pack, packaging_pack)
+        packaging_badge_value = (
+            f"Unidad: {self._format_money(packaging_pack)} | "
+            f"Tirada: {self._format_money(packaging_batch)}"
+        )
+        self.costs_packaging_total_badge.set_value(packaging_badge_value)
+
+    def _sync_target_mass_inputs(self) -> None:
+        formulation = self.costs_presenter.formulation
+        value = formulation.cost_target_mass_value or Decimal("100")
+        unit = formulation.cost_target_mass_unit or "g"
+        if unit not in {"g", "kg", "lb", "oz", "ton"}:
+            unit = "g"
+        self.costs_target_mass_input.blockSignals(True)
+        self.costs_target_mass_input.setValue(float(value))
+        self.costs_target_mass_input.blockSignals(False)
+        self.costs_target_unit_selector.blockSignals(True)
+        self.costs_target_unit_selector.setCurrentText(unit)
+        self.costs_target_unit_selector.blockSignals(False)
+
+    def _sync_target_mass_to_formulation(self) -> None:
+        formulation = self.costs_presenter.formulation
+        value = Decimal(str(self.costs_target_mass_input.value()))
+        unit = self.costs_target_unit_selector.currentText()
+        formulation.cost_target_mass_value = value
+        formulation.cost_target_mass_unit = unit
 
     def _paste_ingredients_table(self) -> None:
         table = self.costs_ingredients_table

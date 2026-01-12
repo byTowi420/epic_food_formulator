@@ -38,7 +38,7 @@ class MainWindow(SearchTabMixin, FormulationTabMixin, LabelTabMixin, CostsTabMix
         # Window setup.
         self.base_window_title = "Food Formulator - Proto"
         self.setWindowTitle(self.base_window_title)
-        self.resize(900, 600)
+        self.resize(1200, 600)
 
         # Shared UI state.
         self.last_path = self._load_last_path()

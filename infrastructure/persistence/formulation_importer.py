@@ -354,6 +354,8 @@ class FormulationImportService:
             "formula_name": formula_name,
             "label_settings": label_settings,
             "yield_percent": data.get("yield_percent"),
+            "cost_target_mass_value": data.get("cost_target_mass_value"),
+            "cost_target_mass_unit": data.get("cost_target_mass_unit"),
             "process_costs": data.get("process_costs") or [],
             "packaging_items": data.get("packaging_items") or [],
             "currency_rates": currency_rates,

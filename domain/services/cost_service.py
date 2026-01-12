@@ -1,26 +1,15 @@
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any, Dict, Optional
 
 from domain.models import Formulation, Ingredient, ProcessCost
+from domain.services.number_parser import parse_user_number
 from domain.services.unit_normalizer import mass_to_g, mass_to_kg, normalize_mass_unit
 
 
 def _to_decimal(value: Any) -> Optional[Decimal]:
-    if value is None:
-        return None
-    if isinstance(value, Decimal):
-        return value
-    try:
-        if isinstance(value, str):
-            cleaned = value.strip().replace(",", ".")
-            if cleaned == "":
-                return None
-            return Decimal(cleaned)
-        return Decimal(str(value))
-    except (InvalidOperation, ValueError, TypeError):
-        return None
+    return parse_user_number(value)
 
 
 def _time_to_hours(value: Any, unit: Any) -> Optional[Decimal]:

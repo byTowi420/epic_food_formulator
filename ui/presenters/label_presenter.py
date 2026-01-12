@@ -7,8 +7,10 @@ import re
 from fractions import Fraction
 from typing import Any, Dict, List
 
+from domain.services.number_parser import parse_user_number
 from domain.services.unit_normalizer import canonical_unit, convert_amount
 from domain.services.nutrient_normalizer import canonical_alias_name
+from ui.formatters import fmt_decimal
 
 
 class LabelPresenter:
@@ -383,7 +385,7 @@ class LabelPresenter:
         if unit_name == "Otro" and custom_visible:
             return "Definir capacidad manualmente"
         if capacity:
-            return f"{capacity} ml"
+            return f"{fmt_decimal(capacity, decimals=0)} ml"
         return "-"
 
     def auto_household_amount(
@@ -408,22 +410,24 @@ class LabelPresenter:
     ) -> str:
         measure_amount = measure_amount.strip()
         measure_display = measure_unit if not measure_amount else f"{measure_amount} {measure_unit}"
-        return f"Porción {portion_value} {portion_unit} ({measure_display})"
+        decimals = 0 if float(portion_value).is_integer() else 1
+        portion_text = fmt_decimal(portion_value, decimals=decimals)
+        return f"Porción {portion_text} {portion_unit} ({measure_display})"
 
     def format_number_for_unit(self, value: float, unit: str) -> str:
         if math.isclose(value, 0.0, abs_tol=1e-9):
             return f"0 {unit}".strip()
         if unit == "mg":
-            return f"{value:.0f} mg"
+            return f"{fmt_decimal(value, decimals=0)} mg"
         if unit == "g":
             if abs(value) < 10:
-                return f"{value:.1f} g"
-            return f"{value:.0f} g"
+                return f"{fmt_decimal(value, decimals=1)} g"
+            return f"{fmt_decimal(value, decimals=0)} g"
         if value >= 10:
-            return f"{value:.0f} {unit}"
+            return f"{fmt_decimal(value, decimals=0)} {unit}"
         if value >= 1:
-            return f"{value:.1f} {unit}"
-        return f"{value:.2f} {unit}"
+            return f"{fmt_decimal(value, decimals=1)} {unit}"
+        return f"{fmt_decimal(value, decimals=2)} {unit}"
 
     def format_additional_amount(self, value: float, unit: str) -> str:
         unit = unit.lower()
@@ -431,22 +435,22 @@ class LabelPresenter:
             if math.isclose(value, 0.0, abs_tol=1e-9):
                 return "0 mg"
             if value < 10:
-                return f"{value:.1f} mg"
-            return f"{value:.0f} mg"
+                return f"{fmt_decimal(value, decimals=1)} mg"
+            return f"{fmt_decimal(value, decimals=0)} mg"
         if unit in ("μg", "ug"):
             if math.isclose(value, 0.0, abs_tol=1e-9):
                 return "0 μg"
             if value < 10:
-                return f"{value:.1f} μg"
-            return f"{value:.0f} μg"
+                return f"{fmt_decimal(value, decimals=1)} μg"
+            return f"{fmt_decimal(value, decimals=0)} μg"
         return self.format_number_for_unit(value, unit)
 
     def format_nutrient_amount(self, nutrient: Dict[str, Any], factor: float) -> str:
         if nutrient.get("type") == "energy":
             kcal_val = nutrient.get("kcal", 0.0) * factor
             kj_val = nutrient.get("kj", 0.0) * factor
-            kcal_text = f"{kcal_val:.0f}"
-            kj_text = f"{kj_val:.0f}"
+            kcal_text = fmt_decimal(kcal_val, decimals=0)
+            kj_text = fmt_decimal(kj_val, decimals=0)
             return f"{kcal_text} kcal = {kj_text} kJ"
         amount = nutrient.get("amount", 0.0) * factor
         unit = nutrient.get("unit", "")
@@ -476,15 +480,15 @@ class LabelPresenter:
             vd_val = vd_percent * (portion_amount / base_amount)
         else:
             return "-"
-        return f"{vd_val:.0f}%"
+        return f"{fmt_decimal(vd_val, decimals=0)}%"
 
     def format_manual_amount(self, nutrient: Dict[str, Any], manual_amount: float) -> str:
         if nutrient.get("type") == "energy":
             kcal_val = manual_amount
             kj_conv = convert_amount(manual_amount, "kcal", "kJ")
             kj_val = float(kj_conv) if kj_conv is not None else manual_amount * 4.184
-            kcal_text = f"{kcal_val:.0f}"
-            kj_text = f"{kj_val:.0f}"
+            kcal_text = fmt_decimal(kcal_val, decimals=0)
+            kj_text = fmt_decimal(kj_val, decimals=0)
             return f"{kcal_text} kcal = {kj_text} kJ"
         unit = nutrient.get("unit", "")
         return self.format_number_for_unit(manual_amount, unit)
@@ -505,16 +509,11 @@ class LabelPresenter:
             if not base_amount:
                 return "-"
             vd_val = vd_ref * (manual_amount / base_amount)
-        return f"{vd_val:.0f}%"
+        return f"{fmt_decimal(vd_val, decimals=0)}%"
 
     def parse_user_float(self, text: str) -> float | None:
-        clean = text.strip().replace(",", ".")
-        if not clean:
-            return None
-        try:
-            return float(clean)
-        except ValueError:
-            return None
+        parsed = parse_user_number(text)
+        return float(parsed) if parsed is not None else None
 
     def active_label_nutrients(
         self,

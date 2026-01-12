@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPlainTextEdit,
     QPushButton,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -32,6 +31,8 @@ from PySide6.QtWidgets import (
 
 from ui.delegates.label_table_delegate import LabelTableDelegate
 from ui.tabs.table_utils import attach_copy_shortcut
+from ui.widgets.number_spinbox import UserIntSpinBox
+from domain.services.number_parser import parse_user_number
 
 
 class LabelTabMixin:
@@ -92,7 +93,7 @@ class LabelTabMixin:
     
         # Tamano de porcion y unidad.
         left_form.addWidget(QLabel("Tamaño Porción:"), 0, 0)
-        self.portion_size_input = QSpinBox()
+        self.portion_size_input = UserIntSpinBox()
         self.portion_size_input.setRange(1, 100000)
         self.portion_size_input.setValue(100)
         self.portion_unit_combo = QComboBox()
@@ -430,10 +431,10 @@ class LabelTabMixin:
         parsed_manual: dict[str, float] = {}
         if isinstance(manual_overrides, dict):
             for name, value in manual_overrides.items():
-                try:
-                    parsed_manual[str(name)] = float(value)
-                except (TypeError, ValueError):
+                parsed_value = parse_user_number(value)
+                if parsed_value is None:
                     continue
+                parsed_manual[str(name)] = float(parsed_value)
         self.label_manual_overrides = parsed_manual
 
         no_sig = settings.get("no_significant") or settings.get("label_no_significant") or []
@@ -602,7 +603,7 @@ class LabelTabMixin:
             return
         value = self._parse_user_float(text)
         if value is None:
-            QMessageBox.warning(self, "Valor inválido", "Ingresa un número válido (ej.: 12.5).")
+            QMessageBox.warning(self, "Valor inválido", "Ingresa un número válido (ej.: 12,5).")
             return
         self.label_manual_overrides[name] = value
         self._update_label_preview()
@@ -1040,9 +1041,12 @@ class LabelTabMixin:
 
         delegate = table.itemDelegate()
         previous_hover = None
+        previous_manual = None
         if isinstance(delegate, LabelTableDelegate):
             previous_hover = delegate.suppress_hover
             delegate.suppress_hover = True
+            previous_manual = delegate.suppress_manual
+            delegate.suppress_manual = with_background
 
         cleared_backgrounds: list[tuple[int, int, QBrush]] = []
         for r in range(table.rowCount()):
@@ -1131,6 +1135,8 @@ class LabelTabMixin:
             table.viewport().setAttribute(Qt.WA_TranslucentBackground, original_viewport_attr)
             if previous_hover is not None and isinstance(delegate, LabelTableDelegate):
                 delegate.suppress_hover = previous_hover
+                if previous_manual is not None:
+                    delegate.suppress_manual = previous_manual
             for r, c, bg in cleared_backgrounds:
                 item = table.item(r, c)
                 if item:

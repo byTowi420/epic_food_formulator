@@ -4,6 +4,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List
+from decimal import Decimal
 
 from PySide6.QtCore import QItemSelectionModel, QThread, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
@@ -11,12 +12,10 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -33,7 +32,12 @@ from ui.tabs.table_utils import (
 )
 
 from domain.exceptions import FormulationImportError
+from domain.services.number_parser import parse_user_number
 from domain.services.nutrient_ordering import NutrientOrdering
+from ui.actions.normalize_mass_action import NormalizeMassAction
+from ui.dialogs.number_input_dialog import NumberInputDialog
+from ui.formatters import fmt_decimal
+from ui.widgets.number_spinbox import UserNumberSpinBox
 from ui.workers import AddWorker, ApiWorker, ImportWorker
 
 
@@ -100,7 +104,18 @@ class FormulationTabMixin:
             [label for _, label in self.quantity_mode_options]
         )
         header_layout.addWidget(self.quantity_mode_selector)
-        self.normalize_total_button = QPushButton("Normalizar masa")
+        self.normalize_total_action = NormalizeMassAction(
+            self,
+            get_current_unit=self._current_mass_unit,
+            get_total_mass_g=self._total_weight,
+            apply_normalization=self.formulation_presenter.normalize_to_target_weight,
+            set_unit=self._set_quantity_mode,
+            after_apply=self._after_normalize_from_formulation,
+            decimals_for_unit=self.formulation_presenter.mass_decimals,
+            can_run=self._can_normalize_mass,
+            on_blocked=self._show_status_message,
+        )
+        self.normalize_total_button = self.normalize_total_action.create_button("Normalizar masa")
         header_layout.addWidget(self.normalize_total_button)
         layout.addLayout(header_layout)
     
@@ -179,9 +194,6 @@ class FormulationTabMixin:
         self.quantity_mode_selector.currentIndexChanged.connect(
             self.on_quantity_mode_changed
         )
-        self.normalize_total_button.clicked.connect(
-            self.on_normalize_total_clicked
-        )
         self.formulation_table.cellDoubleClicked.connect(
             self.on_formulation_cell_double_clicked
         )
@@ -211,6 +223,23 @@ class FormulationTabMixin:
     def _is_importing(self) -> bool:
         """Return True if an import hydration worker is running."""
         return self._current_import_worker is not None
+
+    def _show_status_message(self, message: str) -> None:
+        if hasattr(self, "status_label"):
+            self.status_label.setText(message)
+
+    def _can_normalize_mass(self) -> tuple[bool, str | None]:
+        if self._is_importing():
+            return False, "Importacion en curso. Espera para editar."
+        if not self.formulation_presenter.has_ingredients():
+            return False, "No hay ingredientes para normalizar."
+        return True, None
+
+    def _after_normalize_from_formulation(self, value: Decimal, unit: str) -> None:
+        self._refresh_formulation_views()
+        decimals = self.formulation_presenter.mass_decimals(unit)
+        message = f"Formulacion normalizada a {fmt_decimal(value, decimals=decimals)} {unit}."
+        self._show_status_message(message)
 
 
     # ---- Formulation actions ----
@@ -315,7 +344,7 @@ class FormulationTabMixin:
         msg_value = (
             self._format_amount_for_status(amount_g)
             if mode == "g"
-            else f"{value:.2f} %"
+            else f"{fmt_decimal(value, decimals=2)} %"
         )
         self.status_label.setText(f"Agregado manual - {desc} ({msg_value})")
 
@@ -330,57 +359,6 @@ class FormulationTabMixin:
         self._refresh_formulation_views()
         mode_text = self._quantity_mode_label(self.quantity_mode)
         self.status_label.setText(f"Modo de cantidad cambiado a {mode_text}.")
-
-    def on_normalize_total_clicked(self) -> None:
-        """Scale formulation to a target total mass."""
-        if self._is_importing():
-            self.status_label.setText("Importacion en curso. Espera para editar.")
-            return
-        if not self.formulation_presenter.has_ingredients():
-            self.status_label.setText("No hay ingredientes para normalizar.")
-            return
-
-        unit = self._current_mass_unit()
-        total_g = self._total_weight()
-        start_value, min_value, max_value, decimals = (
-            self.formulation_presenter.normalization_dialog_values(total_g, unit)
-        )
-
-        target_value, ok = QInputDialog.getDouble(
-            self,
-            "Normalizar masa",
-            f"Masa total objetivo ({unit}):",
-            float(start_value),
-            float(min_value),
-            float(max_value),
-            decimals,
-        )
-        if not ok:
-            return
-
-        target_g = self.formulation_presenter.convert_to_grams(target_value, unit)
-        if target_g is None or target_g <= 0:
-            QMessageBox.warning(
-                self,
-                "Valor invalido",
-                "Ingresa una masa total valida.",
-            )
-            return
-
-        try:
-            self.formulation_presenter.normalize_to_target_weight(float(target_g))
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(
-                self,
-                "Error al normalizar",
-                f"No se pudo normalizar la formulacion:\n{exc}",
-            )
-            return
-
-        self._refresh_formulation_views()
-        self.status_label.setText(
-            f"Formulacion normalizada a {target_value:.{decimals}f} {unit}."
-        )
 
 
     def on_export_to_excel_clicked(self) -> None:
@@ -877,8 +855,8 @@ class FormulationTabMixin:
             cells: list[QTableWidgetItem] = [
                 QTableWidgetItem(fdc_display),
                 QTableWidgetItem(item.get("description", "")),
-                QTableWidgetItem(f"{amount_display:.{amount_decimals}f}"),
-                QTableWidgetItem(f"{percent:.2f}"),
+                QTableWidgetItem(fmt_decimal(amount_display, decimals=amount_decimals)),
+                QTableWidgetItem(fmt_decimal(percent, decimals=2)),
             ]
 
             lock_item = QTableWidgetItem("")
@@ -919,7 +897,7 @@ class FormulationTabMixin:
             self.totals_table.setItem(row_idx, 0, name_item)
 
             self.totals_table.setItem(
-                row_idx, 1, QTableWidgetItem(f"{row['amount']:.2f}")
+                row_idx, 1, QTableWidgetItem(fmt_decimal(row["amount"], decimals=2))
             )
             self.totals_table.setItem(row_idx, 2, QTableWidgetItem(row["unit"]))
 
@@ -1070,7 +1048,7 @@ class FormulationTabMixin:
         display_amount = (
             self._format_amount_for_status(value, include_new=True)
             if mode == "g"
-            else f"{value:.2f} %"
+            else f"{fmt_decimal(value, decimals=2)} %"
         )
         self.status_label.setText(
             f"Agregando {fdc_id_text} ({display_amount})..."
@@ -1176,7 +1154,7 @@ class FormulationTabMixin:
         brand_input = QLineEdit(dialog)
         form_layout.addRow("Nombre:", name_input)
         form_layout.addRow("Marca / Origen:", brand_input)
-        base_amount_input = QDoubleSpinBox(dialog)
+        base_amount_input = UserNumberSpinBox(dialog)
         base_amount_input.setMinimum(0.01)
         base_amount_input.setMaximum(1_000_000.0)
         base_amount_input.setValue(100.0)
@@ -1336,11 +1314,8 @@ class FormulationTabMixin:
                 continue
             if not amount_text:
                 continue
-            amount_value = 0.0
-            try:
-                amount_value = float(amount_text.replace(",", "."))
-            except Exception:
-                amount_value = 0.0
+            parsed_amount = parse_user_number(amount_text)
+            amount_value = float(parsed_amount) if parsed_amount is not None else 0.0
             if amount_value < 0:
                 continue
             scaled_amount = amount_value * scale
@@ -1376,17 +1351,21 @@ class FormulationTabMixin:
             label = "Porcentaje del ingrediente sobre la formulación (%):"
             min_value, max_value, decimals = 0.01, 100.0, 2
 
-        raw_value, ok = QInputDialog.getDouble(
+        dialog = NumberInputDialog(
             self,
-            title,
-            label,
-            start_value,
-            min_value,
-            max_value,
-            decimals,
+            title=title,
+            label=label,
+            value=float(start_value),
+            min_value=float(min_value),
+            max_value=float(max_value),
+            decimals=decimals,
         )
-        if not ok:
+        if dialog.exec() != QDialog.Accepted:
             return None, 0.0
+        raw_value_dec = dialog.result_value()
+        if raw_value_dec is None:
+            return None, 0.0
+        raw_value = float(raw_value_dec)
 
         if self._is_percent_mode():
             return "percent", raw_value
@@ -1423,7 +1402,7 @@ class FormulationTabMixin:
         if mode == "g":
             msg_value = self._format_amount_for_status(value)
         else:
-            msg_value = f"{value:.2f} %"
+            msg_value = f"{fmt_decimal(value, decimals=2)} %"
         self.status_label.setText(
             f"Actualizado {item.get('fdc_id', '')} a {msg_value}"
         )
@@ -1567,7 +1546,7 @@ class FormulationTabMixin:
         msg_value = (
             self._format_amount_for_status(amount_g)
             if mode == "g"
-            else f"{value:.2f} %"
+            else f"{fmt_decimal(value, decimals=2)} %"
         )
         self.status_label.setText(
             f"Agregado {fdc_id} - {desc} ({msg_value})"

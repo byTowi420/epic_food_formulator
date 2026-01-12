@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from domain.models import CurrencyRate, PackagingItem, ProcessCost
+from domain.models import CurrencyRate, PackagingItem
+from domain.services.number_parser import parse_user_number
 from domain.services import cost_service
 from domain.services.unit_normalizer import convert_mass, mass_to_kg, normalize_mass_unit
 from ui.presenters.formulation_presenter import FormulationPresenter
@@ -51,19 +52,7 @@ class CostsPresenter:
         return symbols
 
     def _to_decimal(self, value: Any) -> Optional[Decimal]:
-        if value is None:
-            return None
-        if isinstance(value, Decimal):
-            return value
-        try:
-            if isinstance(value, str):
-                cleaned = value.strip().replace(",", ".")
-                if cleaned == "":
-                    return None
-                return Decimal(cleaned)
-            return Decimal(str(value))
-        except (InvalidOperation, ValueError, TypeError):
-            return None
+        return parse_user_number(value)
 
     def build_ingredient_rows(self, quantity_mode: str) -> List[Dict[str, Any]]:
         total_cost, _ = cost_service.total_ingredients_cost_batch_mn(self.formulation)
@@ -192,11 +181,6 @@ class CostsPresenter:
                 }
             )
         return rows
-
-    def add_process(self) -> None:
-        self.formulation.process_costs.append(
-            ProcessCost(name="", scale_type="FIXED", time_unit="min", setup_time_unit="min")
-        )
 
     def remove_process(self, index: int) -> None:
         if 0 <= index < len(self.formulation.process_costs):

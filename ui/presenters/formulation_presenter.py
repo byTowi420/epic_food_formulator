@@ -22,8 +22,10 @@ from config.constants import DATA_TYPE_PRIORITY
 from domain.models import CurrencyRate, Formulation, Food, Ingredient, Nutrient, PackagingItem, ProcessCost
 from domain.exceptions import FormulationImportError
 from domain.services.unit_normalizer import convert_mass, normalize_mass_unit
+from domain.services.number_parser import parse_user_number
 from domain.services.nutrient_normalizer import augment_fat_nutrients, normalize_nutrients
 from ui.adapters.formulation_mapper import FormulationMapper, NutrientDisplayMapper
+from ui.formatters import fmt_decimal
 
 
 class FormulationPresenter:
@@ -61,20 +63,18 @@ class FormulationPresenter:
 
     def apply_cost_meta(self, meta: Dict[str, Any]) -> None:
         def _to_decimal(value: Any) -> Decimal | None:
-            if value is None:
-                return None
-            if isinstance(value, Decimal):
-                return value
-            if isinstance(value, str):
-                cleaned = value.strip().replace(",", ".")
-                if cleaned == "":
-                    return None
-                return Decimal(cleaned)
-            return Decimal(str(value))
+            return parse_user_number(value)
 
         yield_raw = _to_decimal(meta.get("yield_percent"))
         if yield_raw is not None and Decimal("0") < yield_raw <= Decimal("100"):
             self._formulation.yield_percent = yield_raw
+
+        target_value = _to_decimal(meta.get("cost_target_mass_value"))
+        if target_value is not None and target_value > 0:
+            self._formulation.cost_target_mass_value = target_value
+        target_unit = str(meta.get("cost_target_mass_unit") or "").strip()
+        if target_unit in {"g", "kg", "lb", "oz", "ton"}:
+            self._formulation.cost_target_mass_unit = target_unit
 
         if "process_costs" in meta:
             process_items = meta.get("process_costs") or []
@@ -1052,7 +1052,7 @@ class FormulationPresenter:
         unit = self.current_mass_unit(quantity_mode)
         converted = self.display_amount_for_unit(amount_g, quantity_mode)
         decimals = self.mass_decimals(unit)
-        return f"{converted:.{decimals}f} {unit}"
+        return f"{fmt_decimal(converted, decimals=decimals)} {unit}"
 
     def amount_to_percent(self, amount_g: float, total_weight: float) -> float:
         if total_weight <= 0:
@@ -1073,7 +1073,7 @@ class FormulationPresenter:
         if include_new:
             total += amount_g
         percent = self.amount_to_percent(amount_g, total)
-        return f"{percent:.2f} %"
+        return f"{fmt_decimal(percent, decimals=2)} %"
 
     def apply_percent_edit(self, target_idx: int, target_percent: float) -> tuple[bool, str | None]:
         if target_percent < 0 or target_percent > 100:
@@ -1208,6 +1208,8 @@ class FormulationPresenter:
             "formula_name": formula_name or "Current Formulation",
             "quantity_mode": quantity_mode,
             "yield_percent": _as_float(self._formulation.yield_percent),
+            "cost_target_mass_value": _as_float(self._formulation.cost_target_mass_value),
+            "cost_target_mass_unit": self._formulation.cost_target_mass_unit,
             "process_costs": [
                 {
                     "name": process.name,

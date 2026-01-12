@@ -9,6 +9,7 @@ from decimal import Decimal
 from typing import Any, Dict, List
 
 from domain.models import Food, Formulation, Ingredient, Nutrient
+from domain.services.number_parser import parse_user_number
 from domain.services.unit_normalizer import canonical_unit
 
 
@@ -67,16 +68,7 @@ class FormulationMapper:
             amount_g = Decimal(str(amount_g))
 
         def _to_decimal(value: Any) -> Decimal | None:
-            if value is None:
-                return None
-            if isinstance(value, Decimal):
-                return value
-            if isinstance(value, str):
-                cleaned = value.strip().replace(",", ".")
-                if cleaned == "":
-                    return None
-                return Decimal(cleaned)
-            return Decimal(str(value))
+            return parse_user_number(value)
 
         return Ingredient(
             food=food,

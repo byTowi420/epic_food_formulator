@@ -6,6 +6,7 @@ from config.constants import DATA_TYPE_PRIORITY
 from config.container import Container
 from domain.services.nutrient_ordering import NutrientOrdering
 from domain.services.nutrient_normalizer import augment_fat_nutrients, normalize_nutrients
+from ui.formatters import fmt_decimal
 
 
 class SearchPresenter:
@@ -156,7 +157,7 @@ class SearchPresenter:
             name = nut.get("name", "") or ""
             unit = nut.get("unitName", "") or ""
             amount = nutrient.get("amount")
-            amount_text = "" if amount is None else str(amount)
+            amount_text = "" if amount is None else fmt_decimal(amount, decimals=3)
             rows.append({"name": name, "amount": amount_text, "unit": unit})
         return rows
 
@@ -181,12 +182,16 @@ class SearchPresenter:
 
     def build_search_status(self, total_count: int, page: int, page_size: int) -> str:
         total_pages = self.get_total_pages(page_size)
-        return f"Se encontraron {total_count} resultados (pagina {page}/{total_pages})."
+        total_text = fmt_decimal(total_count, decimals=0)
+        page_text = fmt_decimal(page, decimals=0)
+        pages_text = fmt_decimal(total_pages, decimals=0)
+        return f"Se encontraron {total_text} resultados (pagina {page_text}/{pages_text})."
 
     def build_details_status(self, details: Dict[str, Any], nutrient_count: int) -> str:
         desc = details.get("description", "") or ""
         fdc_id = details.get("fdcId", "")
-        return f"Detalles de {fdc_id} - {desc} ({nutrient_count} nutrientes)"
+        count_text = fmt_decimal(nutrient_count, decimals=0)
+        return f"Detalles de {fdc_id} - {desc} ({count_text} nutrientes)"
 
     def build_paging_state(
         self,

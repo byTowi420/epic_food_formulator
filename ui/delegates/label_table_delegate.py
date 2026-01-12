@@ -34,6 +34,7 @@ class LabelTableDelegate(QStyledItemDelegate):
         self.handle_color = QColor("#1f6fbd")
         self.grid_color = QColor("#c0c0c0")
         self.suppress_hover = False
+        self.suppress_manual = False
         self._table = parent if isinstance(parent, QTableWidget) else None
 
     def _resolve_table(self, widget: QWidget | None) -> QTableWidget | None:
@@ -57,7 +58,7 @@ class LabelTableDelegate(QStyledItemDelegate):
         is_active = bool(state & QStyle.State_Active)
 
         # Base fill for manual values (under the text/content).
-        if is_manual:
+        if is_manual and not self.suppress_manual:
             painter.save()
             painter.fillRect(option.rect, self.manual_color)
             if is_selected:
