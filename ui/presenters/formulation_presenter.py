@@ -107,12 +107,22 @@ class FormulationPresenter:
                     if not isinstance(entry, dict):
                         continue
                     qty = _to_decimal(entry.get("quantity_per_pack")) or Decimal("0")
-                    unit_cost = _to_decimal(entry.get("unit_cost_mn")) or Decimal("0")
+                    unit_cost_mn = _to_decimal(entry.get("unit_cost_mn"))
+                    unit_cost_value = _to_decimal(entry.get("unit_cost_value"))
+                    unit_cost_symbol = str(
+                        entry.get("unit_cost_currency_symbol") or ""
+                    ).strip() or "$"
+                    if unit_cost_value is None:
+                        unit_cost_value = unit_cost_mn
+                    if unit_cost_mn is None:
+                        unit_cost_mn = unit_cost_value or Decimal("0")
                     packaging.append(
                         PackagingItem(
                             name=entry.get("name", "") or "",
                             quantity_per_pack=qty,
-                            unit_cost_mn=unit_cost,
+                            unit_cost_mn=unit_cost_mn,
+                            unit_cost_value=unit_cost_value,
+                            unit_cost_currency_symbol=unit_cost_symbol,
                             notes=entry.get("notes"),
                         )
                     )
@@ -1230,6 +1240,8 @@ class FormulationPresenter:
                     "name": item.name,
                     "quantity_per_pack": _as_float(item.quantity_per_pack),
                     "unit_cost_mn": _as_float(item.unit_cost_mn),
+                    "unit_cost_value": _as_float(item.unit_cost_value),
+                    "unit_cost_currency_symbol": item.unit_cost_currency_symbol,
                     "notes": item.notes,
                 }
                 for item in self._formulation.packaging_items

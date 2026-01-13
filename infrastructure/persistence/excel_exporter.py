@@ -436,11 +436,16 @@ class ExcelExporter:
             row += 1
 
             for item in formulation.packaging_items:
-                subtotal = item.quantity_per_pack * item.unit_cost_mn
+                unit_cost_mn = cost_service.packaging_unit_cost_mn(
+                    item, formulation.currency_rates
+                )
+                if unit_cost_mn is None:
+                    unit_cost_mn = Decimal("0")
+                subtotal = item.quantity_per_pack * unit_cost_mn
                 row_values = [
                     item.name,
                     float(item.quantity_per_pack),
-                    float(item.unit_cost_mn),
+                    float(unit_cost_mn),
                     float(subtotal),
                     item.notes or "",
                 ]

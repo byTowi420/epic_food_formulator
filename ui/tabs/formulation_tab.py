@@ -38,6 +38,11 @@ from ui.actions.normalize_mass_action import NormalizeMassAction
 from ui.dialogs.number_input_dialog import NumberInputDialog
 from ui.formatters import fmt_decimal
 from ui.widgets.number_spinbox import UserNumberSpinBox
+from ui.widgets.sortable_table_item import (
+    SortableTableWidgetItem,
+    sort_key_numeric,
+    sort_key_text,
+)
 from ui.workers import AddWorker, ApiWorker, ImportWorker
 
 
@@ -71,6 +76,7 @@ class FormulationTabMixin:
         self.percent_column_index = 3
         self.lock_column_index = 4
         self.nutrient_export_flags: Dict[str, bool] = {}
+        self._row_index_role = Qt.UserRole + 1
 
         # Nutrient ordering helpers.
         self.nutrient_ordering = NutrientOrdering()
@@ -136,6 +142,8 @@ class FormulationTabMixin:
         self.formulation_table.setSelectionMode(QTableWidget.ExtendedSelection)
         self.formulation_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.formulation_table.horizontalHeader().setStretchLastSection(True)
+        self.formulation_table.setSortingEnabled(True)
+        self.formulation_table.horizontalHeader().setSortIndicatorShown(True)
         apply_selection_bar(self.formulation_table)
         layout.addWidget(self.formulation_table)
     
@@ -257,7 +265,7 @@ class FormulationTabMixin:
             return
         if not self._can_edit_column(column):
             return
-        self._edit_quantity_for_row(row)
+        self._edit_quantity_for_row(row, self.formulation_table)
 
 
     def on_lock_toggled_from_table(self, item: QTableWidgetItem) -> None:
@@ -272,11 +280,12 @@ class FormulationTabMixin:
         if table not in (self.formulation_table, self.formulation_preview):
             return
         row = item.row()
-        if row < 0 or row >= self.formulation_presenter.get_ingredient_count():
+        actual_index = self._get_row_index(table, row)
+        if actual_index is None:
             return
 
         desired_locked = item.checkState() == Qt.Checked
-        ok, error = self.formulation_presenter.set_lock_state(row, desired_locked)
+        ok, error = self.formulation_presenter.set_lock_state(actual_index, desired_locked)
         if not ok:
             # Avoid all items locked: keep one free.
             table.blockSignals(True)
@@ -299,7 +308,7 @@ class FormulationTabMixin:
         if not indexes:
             self.status_label.setText("Selecciona un ingrediente para editar.")
             return
-        self._edit_quantity_for_row(indexes[0].row())
+        self._edit_quantity_for_row(indexes[0].row(), self.formulation_table)
 
 
     def on_add_manual_clicked(self) -> None:
@@ -813,6 +822,38 @@ class FormulationTabMixin:
             table.item(row, self.lock_column_index), percent_enabled
         )
 
+    def _set_row_index(self, item: QTableWidgetItem, index: int) -> None:
+        item.setData(self._row_index_role, index)
+
+    def _get_row_index(self, table: QTableWidget, row: int) -> int | None:
+        if row < 0 or row >= table.rowCount():
+            return None
+        item = table.item(row, 0)
+        if item is None:
+            return None
+        data = item.data(self._row_index_role)
+        if data is None:
+            return row
+        try:
+            return int(data)
+        except (TypeError, ValueError):
+            return None
+
+    def _find_row_for_index(self, table: QTableWidget, index: int) -> int | None:
+        for row in range(table.rowCount()):
+            item = table.item(row, 0)
+            if item is None:
+                continue
+            data = item.data(self._row_index_role)
+            if data is None:
+                continue
+            try:
+                if int(data) == index:
+                    return row
+            except (TypeError, ValueError):
+                continue
+        return None
+
 
     def _can_edit_column(self, column: int | None) -> bool:
         if column is None:
@@ -829,20 +870,28 @@ class FormulationTabMixin:
         total_weight = self._total_weight()
 
         # Left preview (ID + Ingrediente)
+        preview_sorting = self.formulation_preview.isSortingEnabled()
+        self.formulation_preview.setSortingEnabled(False)
         self.formulation_preview.blockSignals(True)
         self.formulation_preview.setRowCount(self.formulation_presenter.get_ingredient_count())
         for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
             # Locked default handled by domain model
             fdc_display = self._display_fdc_id(item)
-            self.formulation_preview.setItem(
-                idx, 0, QTableWidgetItem(fdc_display)
-            )
-            self.formulation_preview.setItem(
-                idx, 1, QTableWidgetItem(item.get("description", ""))
-            )
+            fdc_item = SortableTableWidgetItem(fdc_display)
+            self._set_row_index(fdc_item, idx)
+            fdc_key = sort_key_text(fdc_display)
+            fdc_item.setData(Qt.UserRole, fdc_key)
+            self.formulation_preview.setItem(idx, 0, fdc_item)
+            desc = item.get("description", "")
+            desc_item = SortableTableWidgetItem(desc)
+            desc_item.setData(Qt.UserRole, sort_key_text(desc))
+            self.formulation_preview.setItem(idx, 1, desc_item)
         self.formulation_preview.blockSignals(False)
+        self.formulation_preview.setSortingEnabled(preview_sorting)
 
         # Main formulation table
+        table_sorting = self.formulation_table.isSortingEnabled()
+        self.formulation_table.setSortingEnabled(False)
         self.formulation_table.blockSignals(True)
         self.formulation_table.setRowCount(self.formulation_presenter.get_ingredient_count())
         for idx, item in enumerate(self.formulation_presenter.get_ui_items()):
@@ -851,12 +900,24 @@ class FormulationTabMixin:
             amount_display = self._display_amount_for_unit(amount_g)
             amount_decimals = self._mass_decimals(self._current_mass_unit())
             fdc_display = self._display_fdc_id(item)
+            fdc_item = SortableTableWidgetItem(fdc_display)
+            self._set_row_index(fdc_item, idx)
+            fdc_item.setData(Qt.UserRole, sort_key_text(fdc_display))
+            desc = item.get("description", "")
+            desc_item = SortableTableWidgetItem(desc)
+            desc_item.setData(Qt.UserRole, sort_key_text(desc))
+            amount_item = SortableTableWidgetItem(
+                fmt_decimal(amount_display, decimals=amount_decimals)
+            )
+            amount_item.setData(Qt.UserRole, sort_key_numeric(amount_display))
+            percent_item = SortableTableWidgetItem(fmt_decimal(percent, decimals=2))
+            percent_item.setData(Qt.UserRole, sort_key_numeric(percent))
 
             cells: list[QTableWidgetItem] = [
-                QTableWidgetItem(fdc_display),
-                QTableWidgetItem(item.get("description", "")),
-                QTableWidgetItem(fmt_decimal(amount_display, decimals=amount_decimals)),
-                QTableWidgetItem(fmt_decimal(percent, decimals=2)),
+                fdc_item,
+                desc_item,
+                amount_item,
+                percent_item,
             ]
 
             lock_item = QTableWidgetItem("")
@@ -866,15 +927,20 @@ class FormulationTabMixin:
             lock_item.setCheckState(
                 Qt.Checked if item.get("locked") else Qt.Unchecked
             )
+            lock_item.setData(Qt.UserRole, (0, 1 if item.get("locked") else 0))
             cells.append(lock_item)
 
-            cells.append(QTableWidgetItem(item.get("brand", "")))
+            brand = item.get("brand", "")
+            brand_item = SortableTableWidgetItem(brand)
+            brand_item.setData(Qt.UserRole, sort_key_text(brand))
+            cells.append(brand_item)
 
             for col, cell in enumerate(cells):
                 self.formulation_table.setItem(idx, col, cell)
 
             self._apply_column_state(self.formulation_table, idx)
         self.formulation_table.blockSignals(False)
+        self.formulation_table.setSortingEnabled(table_sorting)
         logging.debug("_populate_formulation_tables done")
 
 
@@ -968,18 +1034,19 @@ class FormulationTabMixin:
             refresh_costs()
 
 
-    def _select_preview_row(self, row: int) -> None:
-        if row < 0 or row >= self.formulation_preview.rowCount():
+    def _select_preview_row(self, index: int) -> None:
+        row = self._find_row_for_index(self.formulation_preview, index)
+        if row is None:
             return
         sel_model = self.formulation_preview.selectionModel()
         if sel_model is None:
             return
         sel_model.clearSelection()
-        index = self.formulation_preview.model().index(row, 0)
+        model_index = self.formulation_preview.model().index(row, 0)
         sel_model.select(
-            index, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows
+            model_index, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows
         )
-        self.formulation_preview.setCurrentIndex(index)
+        self.formulation_preview.setCurrentIndex(model_index)
 
 
     def _ensure_preview_selection(self) -> None:
@@ -1008,7 +1075,11 @@ class FormulationTabMixin:
             self._show_nutrients_for_row(-1)
             return
         row = sel_model.selectedRows()[0].row()
-        self._show_nutrients_for_row(row)
+        actual_index = self._get_row_index(self.formulation_preview, row)
+        if actual_index is None:
+            self._show_nutrients_for_row(-1)
+            return
+        self._show_nutrients_for_row(actual_index)
 
 
     def _export_formulation_to_excel(self, filepath: str) -> None:
@@ -1375,27 +1446,32 @@ class FormulationTabMixin:
         return "g", float(amount_g) if amount_g is not None else raw_value
 
 
-    def _edit_quantity_for_row(self, row: int) -> None:
+    def _edit_quantity_for_row(self, row: int, table: QTableWidget | None = None) -> None:
         """Prompt the user to update the quantity of a specific row."""
-        if row < 0 or row >= self.formulation_presenter.get_ingredient_count():
-            self.status_label.setText("Fila seleccionada inválida.")
+        target_table = table or self.formulation_table
+        actual_index = self._get_row_index(target_table, row)
+        if actual_index is None or actual_index < 0:
+            self.status_label.setText("Fila seleccionada invalida.")
+            return
+        if actual_index >= self.formulation_presenter.get_ingredient_count():
+            self.status_label.setText("Fila seleccionada invalida.")
             return
 
-        item = self.formulation_presenter.get_ui_item(row)
+        item = self.formulation_presenter.get_ui_item(actual_index)
         default_amount = item.get("amount_g", 0.0)
-        mode, value = self._prompt_quantity(default_amount, editing_index=row)
+        mode, value = self._prompt_quantity(default_amount, editing_index=actual_index)
         if mode is None:
             return
 
         if mode == "g":
             # Update the domain model directly so the change persists.
             self.formulation_presenter.update_ingredient_amount(
-                row,
+                actual_index,
                 value,
                 maintain_total=False,
             )
         else:
-            if not self._apply_percent_edit(row, value):
+            if not self._apply_percent_edit(actual_index, value):
                 return
 
         self._refresh_formulation_views()
@@ -1463,22 +1539,26 @@ class FormulationTabMixin:
             self.status_label.setText("Selecciona un ingrediente para eliminar.")
             return
         row = indexes[0].row()
-        if 0 <= row < self.formulation_presenter.get_ingredient_count():
+        actual_index = self._get_row_index(table, row)
+        if actual_index is None:
+            self.status_label.setText("Fila seleccionada invalida.")
+            return
+        if 0 <= actual_index < self.formulation_presenter.get_ingredient_count():
             # Ingredient removed via presenter
 
             removed = {"fdc_id": "", "description": "Removed"}
 
-            ok, error = self.formulation_presenter.remove_ingredient_safe(row)
+            ok, error = self.formulation_presenter.remove_ingredient_safe(actual_index)
             if not ok:
                 logging.error("Error removing ingredient via presenter: %s", error)
-                self.status_label.setText("Fila seleccionada inv lida.")
+                self.status_label.setText("Fila seleccionada invalida.")
                 return
             self._refresh_formulation_views()
             self.status_label.setText(
                 f"Eliminado {removed.get('fdc_id', '')} - {removed.get('description', '')}"
             )
         else:
-            self.status_label.setText("Fila seleccionada inválida.")
+            self.status_label.setText("Fila seleccionada invalida.")
 
 
     # ---- Async helpers ----

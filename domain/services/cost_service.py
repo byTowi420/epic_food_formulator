@@ -40,6 +40,31 @@ def _build_rate_map(currency_rates: list[Any]) -> Dict[str, Decimal]:
     return rates
 
 
+def build_rate_map(currency_rates: list[Any]) -> Dict[str, Decimal]:
+    return _build_rate_map(currency_rates)
+
+
+def convert_currency_to_mn(
+    value: Any, symbol: Any, currency_rates: list[Any]
+) -> Optional[Decimal]:
+    amount = _to_decimal(value)
+    if amount is None:
+        return None
+    currency = str(symbol or "").strip() or "$"
+    rate = _build_rate_map(currency_rates).get(currency)
+    if rate is None or rate <= 0:
+        return None
+    return amount * rate
+
+
+def packaging_unit_cost_mn(item: Any, currency_rates: list[Any]) -> Optional[Decimal]:
+    value = _to_decimal(getattr(item, "unit_cost_value", None))
+    symbol = str(getattr(item, "unit_cost_currency_symbol", "") or "").strip()
+    if value is not None:
+        return convert_currency_to_mn(value, symbol, currency_rates)
+    return _to_decimal(getattr(item, "unit_cost_mn", None))
+
+
 def normalize_ingredient_cost_to_mn_per_g(
     pack_amount: Any,
     pack_unit: Any,
@@ -236,7 +261,9 @@ def unit_costs_for_target_mass(
     packaging_cost = Decimal("0")
     for item in formulation.packaging_items:
         qty = _to_decimal(item.quantity_per_pack) or Decimal("0")
-        unit_cost = _to_decimal(item.unit_cost_mn) or Decimal("0")
+        unit_cost = packaging_unit_cost_mn(item, formulation.currency_rates)
+        if unit_cost is None:
+            unit_cost = Decimal("0")
         packaging_cost += qty * unit_cost
 
     total_pack_cost = total_cost_per_target + packaging_cost

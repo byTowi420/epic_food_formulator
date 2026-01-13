@@ -129,6 +129,8 @@ class SearchTabMixin:
         self.formulation_preview.setSelectionBehavior(QTableWidget.SelectRows)
         self.formulation_preview.setSelectionMode(QTableWidget.ExtendedSelection)
         self.formulation_preview.horizontalHeader().setStretchLastSection(True)
+        self.formulation_preview.setSortingEnabled(True)
+        self.formulation_preview.horizontalHeader().setSortIndicatorShown(True)
         apply_selection_bar(self.formulation_preview)
         left_panel.addWidget(self.formulation_preview)
     
@@ -357,7 +359,7 @@ class SearchTabMixin:
         """Allow quick edit from the preview table."""
         if not self._can_edit_column(column):
             return
-        self._edit_quantity_for_row(row)
+        self._edit_quantity_for_row(row, self.formulation_preview)
 
 
     def on_preview_selection_changed(self) -> None:

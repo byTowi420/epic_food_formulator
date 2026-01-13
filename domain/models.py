@@ -148,6 +148,8 @@ class PackagingItem:
     name: str
     quantity_per_pack: Decimal
     unit_cost_mn: Decimal
+    unit_cost_value: Optional[Decimal] = None
+    unit_cost_currency_symbol: Optional[str] = None
     notes: Optional[str] = None
 
 

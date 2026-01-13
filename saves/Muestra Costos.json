@@ -36,18 +36,24 @@
       "name": "Etiqueta premium",
       "quantity_per_pack": 1.0,
       "unit_cost_mn": 5.0,
+      "unit_cost_value": 5.0,
+      "unit_cost_currency_symbol": "$",
       "notes": null
     },
     {
       "name": "Envase",
       "quantity_per_pack": 1.0,
       "unit_cost_mn": 8.0,
+      "unit_cost_value": 8.0,
+      "unit_cost_currency_symbol": "$",
       "notes": null
     },
     {
       "name": "Caja 15 un",
       "quantity_per_pack": 0.067,
-      "unit_cost_mn": 30.0,
+      "unit_cost_mn": 243.0,
+      "unit_cost_value": 6.0,
+      "unit_cost_currency_symbol": "U$D",
       "notes": null
     }
   ],
@@ -69,7 +75,7 @@
       "description": "Eggs, Grade A, Large, egg whole",
       "brand": "",
       "data_type": "Foundation",
-      "amount_g": 1616.4388425585744,
+      "amount_g": 1615.6269703920364,
       "locked": false,
       "cost_pack_amount": 1500.0,
       "cost_pack_unit": "g",
@@ -82,7 +88,7 @@
       "description": "Water, bottled, generic",
       "brand": "",
       "data_type": "SR Legacy",
-      "amount_g": 1017.9966522282224,
+      "amount_g": 1017.9966522282225,
       "locked": true,
       "cost_pack_amount": 6.0,
       "cost_pack_unit": "kg",
@@ -95,7 +101,7 @@
       "description": "Spices, cinnamon, ground",
       "brand": "",
       "data_type": "SR Legacy",
-      "amount_g": 427.45827169882324,
+      "amount_g": 427.24357661478325,
       "locked": false,
       "cost_pack_amount": 100.0,
       "cost_pack_unit": "g",
@@ -108,7 +114,7 @@
       "description": "Oil, canola",
       "brand": "",
       "data_type": "SR Legacy",
-      "amount_g": 323.2877685117149,
+      "amount_g": 323.1253940784073,
       "locked": false,
       "cost_pack_amount": 10.0,
       "cost_pack_unit": "lb",
@@ -121,7 +127,7 @@
       "description": "Salt, table",
       "brand": "",
       "data_type": "SR Legacy",
-      "amount_g": 33.73127639080728,
+      "amount_g": 33.714334528410454,
       "locked": false,
       "cost_pack_amount": 500.0,
       "cost_pack_unit": "g",
@@ -134,7 +140,7 @@
       "description": "Lentils, dry",
       "brand": "",
       "data_type": "Foundation",
-      "amount_g": 353.46129357280836,
+      "amount_g": 353.28376419239197,
       "locked": false,
       "cost_pack_amount": 25.0,
       "cost_pack_unit": "kg",
@@ -147,7 +153,7 @@
       "description": "Cookie, chocolate sandwich",
       "brand": "",
       "data_type": "Survey (FNDDS)",
-      "amount_g": 150.0,
+      "amount_g": 149.92466103772415,
       "locked": false,
       "cost_pack_amount": 75.0,
       "cost_pack_unit": "g",
@@ -160,13 +166,56 @@
       "description": "Milk, whole, 3.25% milkfat, with added vitamin D",
       "brand": "",
       "data_type": "Foundation",
-      "amount_g": 1077.6258950390493,
+      "amount_g": 1077.0846469280236,
       "locked": false,
       "cost_pack_amount": 1.0,
       "cost_pack_unit": "kg",
       "cost_value": 40.0,
       "cost_currency_symbol": "$",
       "cost_per_g_mn": 0.04
+    },
+    {
+      "fdc_id": 0,
+      "description": "Ing manual",
+      "brand": "",
+      "data_type": "Manual",
+      "amount_g": 102.0,
+      "locked": false,
+      "cost_pack_amount": 15.0,
+      "cost_pack_unit": "g",
+      "cost_value": 150.0,
+      "cost_currency_symbol": "$",
+      "cost_per_g_mn": 10.0,
+      "nutrients": [
+        {
+          "name": "Nitrogen",
+          "unit": "g",
+          "amount": 14.4,
+          "nutrient_id": null,
+          "nutrient_number": null
+        },
+        {
+          "name": "Energy",
+          "unit": "kcal",
+          "amount": 360.0,
+          "nutrient_id": null,
+          "nutrient_number": null
+        },
+        {
+          "name": "Energy",
+          "unit": "kJ",
+          "amount": 1506.24,
+          "nutrient_id": null,
+          "nutrient_number": null
+        },
+        {
+          "name": "Protein",
+          "unit": "g",
+          "amount": 90.0,
+          "nutrient_id": null,
+          "nutrient_number": null
+        }
+      ]
     }
   ],
   "nutrient_export_flags": {

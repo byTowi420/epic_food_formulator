@@ -51,6 +51,9 @@ class CostsPresenter:
             symbols.insert(0, "$")
         return symbols
 
+    def get_currency_rate_map(self) -> Dict[str, Decimal]:
+        return cost_service.build_rate_map(self.formulation.currency_rates)
+
     def _to_decimal(self, value: Any) -> Optional[Decimal]:
         return parse_user_number(value)
 
@@ -227,14 +230,29 @@ class CostsPresenter:
 
     def build_packaging_rows(self) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
+        rate_map = self.get_currency_rate_map()
+        symbols = self.get_currency_symbols()
         for idx, item in enumerate(self.formulation.packaging_items):
-            subtotal = item.quantity_per_pack * item.unit_cost_mn
+            currency_symbol = str(item.unit_cost_currency_symbol or "").strip() or "$"
+            unit_cost_value = item.unit_cost_value
+            if unit_cost_value is None:
+                unit_cost_value = item.unit_cost_mn
+            rate = rate_map.get(currency_symbol)
+            unit_cost_mn = (
+                unit_cost_value * rate
+                if unit_cost_value is not None and rate is not None
+                else item.unit_cost_mn
+            )
+            subtotal = item.quantity_per_pack * (unit_cost_mn or Decimal("0"))
             rows.append(
                 {
                     "index": idx,
                     "name": item.name,
                     "quantity_per_pack": item.quantity_per_pack,
-                    "unit_cost_mn": item.unit_cost_mn,
+                    "unit_cost_value": unit_cost_value,
+                    "unit_cost_mn": unit_cost_mn,
+                    "currency_symbol": currency_symbol if currency_symbol in symbols else "$",
+                    "currency_missing": currency_symbol not in symbols,
                     "subtotal_mn": subtotal,
                     "notes": item.notes,
                 }
@@ -243,7 +261,13 @@ class CostsPresenter:
 
     def add_packaging_item(self) -> None:
         self.formulation.packaging_items.append(
-            PackagingItem(name="", quantity_per_pack=Decimal("1"), unit_cost_mn=Decimal("0"))
+            PackagingItem(
+                name="",
+                quantity_per_pack=Decimal("1"),
+                unit_cost_mn=Decimal("0"),
+                unit_cost_value=Decimal("0"),
+                unit_cost_currency_symbol="$",
+            )
         )
 
     def remove_packaging_item(self, index: int) -> None:
@@ -256,7 +280,8 @@ class CostsPresenter:
         *,
         name: Any = None,
         quantity_per_pack: Any = None,
-        unit_cost_mn: Any = None,
+        unit_cost_value: Any = None,
+        unit_cost_currency_symbol: Any = None,
         notes: Any = None,
     ) -> None:
         if index < 0 or index >= len(self.formulation.packaging_items):
@@ -268,10 +293,20 @@ class CostsPresenter:
             qty = self._to_decimal(quantity_per_pack)
             if qty is not None:
                 item.quantity_per_pack = qty
-        if unit_cost_mn is not None:
-            cost = self._to_decimal(unit_cost_mn)
+        if unit_cost_value is not None:
+            cost = self._to_decimal(unit_cost_value)
             if cost is not None:
-                item.unit_cost_mn = cost
+                item.unit_cost_value = cost
+        if unit_cost_currency_symbol is not None:
+            item.unit_cost_currency_symbol = str(unit_cost_currency_symbol).strip() or "$"
+        if unit_cost_value is not None or unit_cost_currency_symbol is not None:
+            computed = cost_service.convert_currency_to_mn(
+                item.unit_cost_value,
+                item.unit_cost_currency_symbol,
+                self.formulation.currency_rates,
+            )
+            if computed is not None:
+                item.unit_cost_mn = computed
         if notes is not None:
             item.notes = str(notes)
 

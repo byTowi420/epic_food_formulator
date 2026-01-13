@@ -142,6 +142,8 @@ class JSONFormulationRepository:
                     "name": item.name,
                     "quantity_per_pack": _as_str(item.quantity_per_pack),
                     "unit_cost_mn": _as_str(item.unit_cost_mn),
+                    "unit_cost_value": _as_str(item.unit_cost_value),
+                    "unit_cost_currency_symbol": item.unit_cost_currency_symbol,
                     "notes": item.notes,
                 }
                 for item in formulation.packaging_items
@@ -247,12 +249,22 @@ class JSONFormulationRepository:
             if not isinstance(item_data, dict):
                 continue
             quantity = _to_decimal(item_data.get("quantity_per_pack")) or Decimal("0")
-            unit_cost = _to_decimal(item_data.get("unit_cost_mn")) or Decimal("0")
+            unit_cost_mn = _to_decimal(item_data.get("unit_cost_mn"))
+            unit_cost_value = _to_decimal(item_data.get("unit_cost_value"))
+            unit_cost_symbol = str(
+                item_data.get("unit_cost_currency_symbol") or ""
+            ).strip() or "$"
+            if unit_cost_value is None:
+                unit_cost_value = unit_cost_mn
+            if unit_cost_mn is None:
+                unit_cost_mn = unit_cost_value or Decimal("0")
             formulation.packaging_items.append(
                 PackagingItem(
                     name=item_data.get("name", "") or "",
                     quantity_per_pack=quantity,
-                    unit_cost_mn=unit_cost,
+                    unit_cost_mn=unit_cost_mn,
+                    unit_cost_value=unit_cost_value,
+                    unit_cost_currency_symbol=unit_cost_symbol,
                     notes=item_data.get("notes"),
                 )
             )

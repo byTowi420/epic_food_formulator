@@ -31,12 +31,20 @@ from PySide6.QtWidgets import (
 )
 
 from domain.models import CurrencyRate, ProcessCost
+from domain.services import cost_service
 from domain.services.number_parser import parse_user_number
 from domain.services.unit_normalizer import convert_mass, normalize_mass_unit
 from ui.actions.normalize_mass_action import NormalizeMassAction
 from ui.formatters import fmt_decimal, fmt_money_mn, fmt_percent, fmt_qty
 from ui.tabs.table_utils import apply_selection_bar, attach_copy_shortcut
+from ui.widgets.composite_table import CompositeGridTable
+from ui.widgets.grouped_header import GroupedHeaderView
 from ui.widgets.number_spinbox import UserNumberSpinBox
+from ui.widgets.sortable_table_item import (
+    SortableTableWidgetItem,
+    sort_key_numeric,
+    sort_key_text,
+)
 
 
 class NoWheelComboBox(QComboBox):
@@ -113,6 +121,12 @@ class CostsTabMixin:
     def _init_costs_state(self) -> None:
         self._costs_block_signals = False
         self._costs_total_batch_mn = Decimal("0")
+        self._row_index_role = Qt.UserRole + 1
+        self._costs_sort_state = {
+            "ingredients": {"column": None, "order": Qt.AscendingOrder},
+            "processes": {"column": None, "order": Qt.AscendingOrder},
+            "packaging": {"column": None, "order": Qt.AscendingOrder},
+        }
         self._ingredient_cost_columns = {
             "ingredient": 0,
             "amount": 1,
@@ -133,9 +147,10 @@ class CostsTabMixin:
         self._packaging_columns = {
             "name": 0,
             "qty": 1,
-            "unit_cost": 2,
-            "subtotal": 3,
-            "delete": 4,
+            "currency": 2,
+            "unit_cost": 3,
+            "subtotal": 4,
+            "delete": 5,
         }
 
     def _build_costs_tab_ui(self) -> None:
@@ -313,18 +328,40 @@ class CostsTabMixin:
         ingredients_header.addStretch()
         ingredients_layout.addLayout(ingredients_header)
 
-        self.costs_ingredients_table = QTableWidget(0, len(self._ingredient_cost_columns))
+        self.costs_ingredients_table = CompositeGridTable(0, len(self._ingredient_cost_columns))
         self.costs_ingredients_table.setHorizontalHeaderLabels(
             [
                 "Ingrediente",
                 "Cantidad",
-                "Presentacion",
-                "Unidad",
-                "Moneda",
-                "Costo",
+                "",
+                "",
+                "",
+                "",
                 "$/kg",
                 "$ tirada",
                 "% insumos",
+            ]
+        )
+        ingredients_header = GroupedHeaderView(Qt.Horizontal, self.costs_ingredients_table)
+        ingredients_header.set_groups(
+            [
+                (
+                    self._ingredient_cost_columns["pack_amount"],
+                    self._ingredient_cost_columns["pack_unit"],
+                    "Presentacion",
+                ),
+                (
+                    self._ingredient_cost_columns["currency"],
+                    self._ingredient_cost_columns["cost_value"],
+                    "Costo",
+                ),
+            ]
+        )
+        self.costs_ingredients_table.setHorizontalHeader(ingredients_header)
+        self.costs_ingredients_table.set_hidden_vertical_borders(
+            [
+                self._ingredient_cost_columns["pack_amount"],
+                self._ingredient_cost_columns["currency"],
             ]
         )
         self.costs_ingredients_table.horizontalHeader().setSectionResizeMode(
@@ -440,15 +477,30 @@ class CostsTabMixin:
         packaging_table_container = QWidget(packaging_panel)
         packaging_table_layout = QVBoxLayout(packaging_table_container)
         packaging_table_layout.setContentsMargins(0, 0, 0, 0)
-        self.costs_packaging_table = QTableWidget(0, len(self._packaging_columns))
+        self.costs_packaging_table = CompositeGridTable(0, len(self._packaging_columns))
         self.costs_packaging_table.setHorizontalHeaderLabels(
             [
                 "Nombre",
                 "Cantidad/pack",
-                "$ unit",
+                "",
+                "",
                 "Subtotal",
                 "",
             ]
+        )
+        packaging_header = GroupedHeaderView(Qt.Horizontal, self.costs_packaging_table)
+        packaging_header.set_groups(
+            [
+                (
+                    self._packaging_columns["currency"],
+                    self._packaging_columns["unit_cost"],
+                    "Costo Unitario",
+                ),
+            ]
+        )
+        self.costs_packaging_table.setHorizontalHeader(packaging_header)
+        self.costs_packaging_table.set_hidden_vertical_borders(
+            [self._packaging_columns["currency"]]
         )
         self.costs_packaging_table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.Stretch
@@ -464,6 +516,9 @@ class CostsTabMixin:
         )
         self.costs_packaging_table.horizontalHeader().setSectionResizeMode(
             4, QHeaderView.ResizeToContents
+        )
+        self.costs_packaging_table.horizontalHeader().setSectionResizeMode(
+            5, QHeaderView.ResizeToContents
         )
         self.costs_packaging_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.costs_packaging_table.setSelectionMode(QTableWidget.ExtendedSelection)
@@ -519,6 +574,7 @@ class CostsTabMixin:
         paste_shortcut.activated.connect(self._paste_ingredients_table)
 
         self._apply_costs_column_widths()
+        self._setup_costs_sorting()
         self._refresh_costs_view()
         self._apply_costs_layout_sizing()
 
@@ -543,6 +599,7 @@ class CostsTabMixin:
         packaging_table = self.costs_packaging_table
         packaging_table.setColumnWidth(self._packaging_columns["name"], 150)
         packaging_table.setColumnWidth(self._packaging_columns["qty"], 90)
+        packaging_table.setColumnWidth(self._packaging_columns["currency"], 70)
         packaging_table.setColumnWidth(self._packaging_columns["unit_cost"], 90)
         packaging_table.setColumnWidth(self._packaging_columns["subtotal"], 90)
         packaging_table.setColumnWidth(self._packaging_columns["delete"], 30)
@@ -567,6 +624,51 @@ class CostsTabMixin:
         frame = table.frameWidth() * 2
         target = header_height + (row_height * rows) + frame
         table.setMinimumHeight(target)
+
+    def _setup_costs_sorting(self) -> None:
+        for table in (
+            self.costs_ingredients_table,
+            self.costs_process_table,
+            self.costs_packaging_table,
+        ):
+            table.setSortingEnabled(True)
+            header = table.horizontalHeader()
+            header.setSortIndicatorShown(True)
+
+        self.costs_ingredients_table.horizontalHeader().sectionClicked.connect(
+            lambda section: self._on_costs_sort_clicked(
+                "ingredients", self.costs_ingredients_table, section
+            )
+        )
+        self.costs_process_table.horizontalHeader().sectionClicked.connect(
+            lambda section: self._on_costs_sort_clicked(
+                "processes", self.costs_process_table, section
+            )
+        )
+        self.costs_packaging_table.horizontalHeader().sectionClicked.connect(
+            lambda section: self._on_costs_sort_clicked(
+                "packaging", self.costs_packaging_table, section
+            )
+        )
+
+    def _on_costs_sort_clicked(self, key: str, table: QTableWidget, section: int) -> None:
+        header = table.horizontalHeader()
+        target = section
+        if isinstance(header, GroupedHeaderView):
+            target = header.left_for_section(section)
+        state = self._costs_sort_state.get(key)
+        order = Qt.AscendingOrder
+        if state is not None:
+            if state["column"] == target:
+                order = (
+                    Qt.DescendingOrder
+                    if state["order"] == Qt.AscendingOrder
+                    else Qt.AscendingOrder
+                )
+            state["column"] = target
+            state["order"] = order
+        table.sortItems(target, order)
+        header.setSortIndicator(target, order)
 
     def _sync_costs_card_heights(self) -> None:
         cards = getattr(self, "_costs_kpi_cards", None)
@@ -608,17 +710,58 @@ class CostsTabMixin:
         minutes = value * Decimal("60")
         return f"{fmt_decimal(minutes, decimals=0)} min"
 
-    def _make_readonly_item(self, text: str) -> QTableWidgetItem:
-        item = QTableWidgetItem(text)
+
+    def _make_readonly_item(
+        self, text: str, sort_key=None
+    ) -> QTableWidgetItem:
+        item = SortableTableWidgetItem(text)
+        if sort_key is not None:
+            item.setData(Qt.UserRole, sort_key)
         item.setFlags(item.flags() & ~Qt.ItemIsEditable)
         return item
 
-    def _make_numeric_item(self, text: str, readonly: bool = True) -> QTableWidgetItem:
-        item = QTableWidgetItem(text)
+    def _make_numeric_item(
+        self, text: str, readonly: bool = True, sort_key=None
+    ) -> QTableWidgetItem:
+        item = SortableTableWidgetItem(text)
         item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        if sort_key is not None:
+            item.setData(Qt.UserRole, sort_key)
         if readonly:
             item.setFlags(item.flags() & ~Qt.ItemIsEditable)
         return item
+
+    def _set_row_index(self, item: QTableWidgetItem, index: int) -> None:
+        item.setData(self._row_index_role, index)
+
+    def _get_row_index(self, table: QTableWidget, row: int) -> int | None:
+        if row < 0 or row >= table.rowCount():
+            return None
+        item = table.item(row, 0)
+        if item is None:
+            return None
+        data = item.data(self._row_index_role)
+        if data is None:
+            return row
+        try:
+            return int(data)
+        except (TypeError, ValueError):
+            return None
+
+    def _find_row_for_index(self, table: QTableWidget, index: int) -> int | None:
+        for row in range(table.rowCount()):
+            item = table.item(row, 0)
+            if item is None:
+                continue
+            data = item.data(self._row_index_role)
+            if data is None:
+                continue
+            try:
+                if int(data) == index:
+                    return row
+            except (TypeError, ValueError):
+                continue
+        return None
 
     def _make_delete_button(self) -> QPushButton:
         button = QPushButton("✖")
@@ -1049,47 +1192,74 @@ class CostsTabMixin:
         rows = self.costs_presenter.build_ingredient_rows(self.quantity_mode)
         table = self.costs_ingredients_table
         symbols = self.costs_presenter.get_currency_symbols()
+        rate_map = cost_service.build_rate_map(self.costs_presenter.formulation.currency_rates)
         table.blockSignals(True)
+        table.setSortingEnabled(False)
         table.setRowCount(len(rows))
         for row_idx, row in enumerate(rows):
+            name_item = self._make_readonly_item(
+                row["description"], sort_key=sort_key_text(row["description"])
+            )
+            self._set_row_index(name_item, row["index"])
             table.setItem(
                 row_idx,
                 self._ingredient_cost_columns["ingredient"],
-                self._make_readonly_item(row["description"]),
+                name_item,
             )
             amount_text = self._format_mass(row["amount_g"], row["unit"])
+            amount_key = sort_key_numeric(row.get("amount_display"))
             table.setItem(
                 row_idx,
                 self._ingredient_cost_columns["amount"],
-                self._make_numeric_item(amount_text),
+                self._make_numeric_item(amount_text, sort_key=amount_key),
             )
 
             pack_amount = "" if row["cost_pack_amount"] is None else fmt_decimal(row["cost_pack_amount"], decimals=3)
+            present_grams = None
+            if row["cost_pack_amount"] is not None and row.get("cost_pack_unit"):
+                present_grams = convert_mass(row["cost_pack_amount"], row["cost_pack_unit"], "g")
+            present_key = sort_key_numeric(present_grams)
             table.setItem(
                 row_idx,
                 self._ingredient_cost_columns["pack_amount"],
-                self._make_numeric_item(pack_amount, readonly=False),
+                self._make_numeric_item(pack_amount, readonly=False, sort_key=present_key),
+            )
+            table.setItem(
+                row_idx,
+                self._ingredient_cost_columns["pack_unit"],
+                self._make_readonly_item("", sort_key=present_key),
             )
 
             unit_combo = NoWheelComboBox(table)
             unit_combo.addItems(["g", "kg", "lb", "oz", "ton"])
             unit_combo.setCurrentText(row["cost_pack_unit"] or "g")
-            unit_combo.setProperty("row", row_idx)
+            unit_combo.setProperty("index", row["index"])
             unit_combo.currentTextChanged.connect(self._on_ingredient_unit_changed)
             table.setCellWidget(row_idx, self._ingredient_cost_columns["pack_unit"], unit_combo)
 
             currency_combo = NoWheelComboBox(table)
             currency_combo.addItems(symbols)
             currency_combo.setCurrentText(row["cost_currency_symbol"] or "$")
-            currency_combo.setProperty("row", row_idx)
+            currency_combo.setProperty("index", row["index"])
             currency_combo.currentTextChanged.connect(self._on_ingredient_currency_changed)
             table.setCellWidget(row_idx, self._ingredient_cost_columns["currency"], currency_combo)
-
             cost_value = "" if row["cost_value"] is None else fmt_decimal(row["cost_value"], decimals=3)
+            cost_mn = None
+            if not row.get("currency_missing"):
+                rate = rate_map.get(row["cost_currency_symbol"] or "")
+                if row["cost_value"] is not None and rate is not None:
+                    cost_mn = row["cost_value"] * rate
+            cost_key = sort_key_numeric(cost_mn)
+            table.setItem(
+                row_idx,
+                self._ingredient_cost_columns["currency"],
+                self._make_readonly_item("", sort_key=cost_key),
+            )
+
             table.setItem(
                 row_idx,
                 self._ingredient_cost_columns["cost_value"],
-                self._make_numeric_item(cost_value, readonly=False),
+                self._make_numeric_item(cost_value, readonly=False, sort_key=cost_key),
             )
 
             unit_cost_text = "-"
@@ -1098,7 +1268,14 @@ class CostsTabMixin:
                 per_kg = row["cost_per_g_mn"] * Decimal("1000")
                 unit_cost_text = fmt_decimal(per_kg, decimals=4)
                 unit_cost_tooltip = fmt_decimal(per_kg, decimals=8)
-            unit_cost_item = self._make_numeric_item(unit_cost_text)
+            unit_cost_item = self._make_numeric_item(
+                unit_cost_text,
+                sort_key=sort_key_numeric(
+                    row["cost_per_g_mn"] * Decimal("1000")
+                    if row["cost_per_g_mn"] is not None
+                    else None
+                ),
+            )
             if unit_cost_tooltip:
                 unit_cost_item.setToolTip(unit_cost_tooltip)
             table.setItem(
@@ -1112,12 +1289,18 @@ class CostsTabMixin:
             table.setItem(
                 row_idx,
                 self._ingredient_cost_columns["batch_cost"],
-                self._make_numeric_item(batch_cost_text),
+                self._make_numeric_item(
+                    batch_cost_text,
+                    sort_key=sort_key_numeric(row["cost_batch_mn"]),
+                ),
             )
             table.setItem(
                 row_idx,
                 self._ingredient_cost_columns["percent"],
-                self._make_numeric_item(self._format_percent(row["percent_of_ingredients"])),
+                self._make_numeric_item(
+                    self._format_percent(row["percent_of_ingredients"]),
+                    sort_key=sort_key_numeric(row["percent_of_ingredients"]),
+                ),
             )
 
             if row["cost_per_g_mn"] is None:
@@ -1131,24 +1314,29 @@ class CostsTabMixin:
             if row.get("currency_missing"):
                 currency_combo.setStyleSheet("background-color: #fff2cc;")
         table.blockSignals(False)
+        table.setSortingEnabled(True)
 
     def _on_ingredient_unit_changed(self, _text: str) -> None:
         if self._costs_block_signals:
             return
         combo = self.sender()
         if isinstance(combo, QComboBox):
-            row = combo.property("row")
-            if row is not None:
-                self._update_ingredient_from_row(int(row))
+            index = combo.property("index")
+            if index is not None:
+                row = self._find_row_for_index(self.costs_ingredients_table, int(index))
+                if row is not None:
+                    self._update_ingredient_from_row(row)
 
     def _on_ingredient_currency_changed(self, _text: str) -> None:
         if self._costs_block_signals:
             return
         combo = self.sender()
         if isinstance(combo, QComboBox):
-            row = combo.property("row")
-            if row is not None:
-                self._update_ingredient_from_row(int(row))
+            index = combo.property("index")
+            if index is not None:
+                row = self._find_row_for_index(self.costs_ingredients_table, int(index))
+                if row is not None:
+                    self._update_ingredient_from_row(row)
 
     def _on_ingredient_cost_item_changed(self, item: QTableWidgetItem) -> None:
         if self._costs_block_signals:
@@ -1161,6 +1349,9 @@ class CostsTabMixin:
 
     def _update_ingredient_from_row(self, row: int) -> None:
         table = self.costs_ingredients_table
+        actual_index = self._get_row_index(table, row)
+        if actual_index is None:
+            return
         pack_amount_item = table.item(row, self._ingredient_cost_columns["pack_amount"])
         cost_value_item = table.item(row, self._ingredient_cost_columns["cost_value"])
         unit_combo = table.cellWidget(row, self._ingredient_cost_columns["pack_unit"])
@@ -1170,7 +1361,7 @@ class CostsTabMixin:
         currency = currency_combo.currentText() if isinstance(currency_combo, QComboBox) else "$"
 
         self.costs_presenter.update_ingredient_cost(
-            row,
+            actual_index,
             cost_pack_amount=pack_amount_item.text() if pack_amount_item else None,
             cost_pack_unit=pack_unit,
             cost_value=cost_value_item.text() if cost_value_item else None,
@@ -1182,18 +1373,25 @@ class CostsTabMixin:
         rows = self.costs_presenter.build_process_rows()
         table = self.costs_process_table
         table.blockSignals(True)
+        table.setSortingEnabled(False)
         table.setRowCount(len(rows))
         for row_idx, row in enumerate(rows):
+            name_item = self._make_readonly_item(
+                row["name"] or "", sort_key=sort_key_text(row["name"])
+            )
+            self._set_row_index(name_item, row["index"])
             table.setItem(
                 row_idx,
                 self._process_columns["name"],
-                self._make_readonly_item(row["name"] or ""),
+                name_item,
             )
             time_text = self._format_time_total(row["time_total_h"])
             table.setItem(
                 row_idx,
                 self._process_columns["time_total"],
-                self._make_numeric_item(time_text),
+                self._make_numeric_item(
+                    time_text, sort_key=sort_key_numeric(row["time_total_h"])
+                ),
             )
             total_text = (
                 self._format_money(row["total_cost_mn"])
@@ -1203,15 +1401,18 @@ class CostsTabMixin:
             table.setItem(
                 row_idx,
                 self._process_columns["total_cost"],
-                self._make_numeric_item(total_text),
+                self._make_numeric_item(
+                    total_text, sort_key=sort_key_numeric(row["total_cost_mn"])
+                ),
             )
             delete_button = self._make_delete_button()
             delete_button.clicked.connect(
-                lambda _checked=False, row=row_idx: self._remove_process_at(row)
+                lambda _checked=False, index=row["index"]: self._remove_process_at(index)
             )
             table.setCellWidget(row_idx, self._process_columns["delete"], delete_button)
 
         table.blockSignals(False)
+        table.setSortingEnabled(True)
         if rows:
             self.costs_process_stack.setCurrentIndex(0)
         else:
@@ -1228,14 +1429,17 @@ class CostsTabMixin:
         self._edit_process_row(item.row())
 
     def _edit_process_row(self, row: int) -> None:
-        if row < 0 or row >= len(self.costs_presenter.formulation.process_costs):
+        actual_index = self._get_row_index(self.costs_process_table, row)
+        if actual_index is None:
             return
-        current = self.costs_presenter.formulation.process_costs[row]
+        if actual_index < 0 or actual_index >= len(self.costs_presenter.formulation.process_costs):
+            return
+        current = self.costs_presenter.formulation.process_costs[actual_index]
         updated = self._prompt_process_dialog(current)
         if updated is None:
             return
         self.costs_presenter.update_process(
-            row,
+            actual_index,
             name=updated.name,
             scale_type=updated.scale_type,
             setup_time_value=updated.setup_time_value,
@@ -1249,21 +1453,23 @@ class CostsTabMixin:
         )
         self._refresh_costs_view()
 
-    def _remove_process_at(self, row: int) -> None:
-        self.costs_presenter.remove_process(row)
+    def _remove_process_at(self, index: int) -> None:
+        self.costs_presenter.remove_process(index)
         self._refresh_costs_view()
 
     def _populate_packaging_table(self) -> None:
         rows = self.costs_presenter.build_packaging_rows()
         table = self.costs_packaging_table
+        symbols = self.costs_presenter.get_currency_symbols()
         table.blockSignals(True)
+        table.setSortingEnabled(False)
         table.setRowCount(len(rows))
         for row_idx, row in enumerate(rows):
-            table.setItem(
-                row_idx,
-                self._packaging_columns["name"],
-                QTableWidgetItem(row["name"] or ""),
+            name_item = self._make_readonly_item(
+                row["name"] or "", sort_key=sort_key_text(row["name"])
             )
+            self._set_row_index(name_item, row["index"])
+            table.setItem(row_idx, self._packaging_columns["name"], name_item)
             qty = (
                 fmt_decimal(row["quantity_per_pack"], decimals=3)
                 if row["quantity_per_pack"] is not None
@@ -1272,30 +1478,53 @@ class CostsTabMixin:
             table.setItem(
                 row_idx,
                 self._packaging_columns["qty"],
-                self._make_numeric_item(qty, readonly=False),
+                self._make_numeric_item(
+                    qty,
+                    readonly=False,
+                    sort_key=sort_key_numeric(row["quantity_per_pack"]),
+                ),
+            )
+            currency_combo = NoWheelComboBox(table)
+            currency_combo.addItems(symbols)
+            currency_combo.setCurrentText(row.get("currency_symbol") or "$")
+            currency_combo.setProperty("index", row["index"])
+            currency_combo.currentTextChanged.connect(self._on_packaging_currency_changed)
+            table.setCellWidget(row_idx, self._packaging_columns["currency"], currency_combo)
+            unit_cost_key = sort_key_numeric(
+                None if row.get("currency_missing") else row.get("unit_cost_mn")
+            )
+            table.setItem(
+                row_idx,
+                self._packaging_columns["currency"],
+                self._make_readonly_item("", sort_key=unit_cost_key),
             )
             unit_cost = (
-                fmt_decimal(row["unit_cost_mn"], decimals=3)
-                if row["unit_cost_mn"] is not None
+                fmt_decimal(row["unit_cost_value"], decimals=3)
+                if row.get("unit_cost_value") is not None
                 else ""
             )
             table.setItem(
                 row_idx,
                 self._packaging_columns["unit_cost"],
-                self._make_numeric_item(unit_cost, readonly=False),
+                self._make_numeric_item(unit_cost, readonly=False, sort_key=unit_cost_key),
             )
             subtotal = self._format_money(row["subtotal_mn"]) if row["subtotal_mn"] is not None else "-"
             table.setItem(
                 row_idx,
                 self._packaging_columns["subtotal"],
-                self._make_numeric_item(subtotal),
+                self._make_numeric_item(
+                    subtotal, sort_key=sort_key_numeric(row["subtotal_mn"])
+                ),
             )
             delete_button = self._make_delete_button()
             delete_button.clicked.connect(
-                lambda _checked=False, row=row_idx: self._remove_packaging_at(row)
+                lambda _checked=False, index=row["index"]: self._remove_packaging_at(index)
             )
             table.setCellWidget(row_idx, self._packaging_columns["delete"], delete_button)
+            if row.get("currency_missing"):
+                currency_combo.setStyleSheet("background-color: #fff2cc;")
         table.blockSignals(False)
+        table.setSortingEnabled(True)
         if rows:
             self.costs_packaging_stack.setCurrentIndex(0)
         else:
@@ -1311,21 +1540,40 @@ class CostsTabMixin:
         ):
             self._update_packaging_from_row(item.row())
 
+    def _on_packaging_currency_changed(self, _text: str) -> None:
+        if self._costs_block_signals:
+            return
+        combo = self.sender()
+        if isinstance(combo, QComboBox):
+            index = combo.property("index")
+            if index is not None:
+                row = self._find_row_for_index(self.costs_packaging_table, int(index))
+                if row is not None:
+                    self._update_packaging_from_row(row)
+
     def _update_packaging_from_row(self, row: int) -> None:
         table = self.costs_packaging_table
+        actual_index = self._get_row_index(table, row)
+        if actual_index is None:
+            return
         name_item = table.item(row, self._packaging_columns["name"])
         qty_item = table.item(row, self._packaging_columns["qty"])
         unit_cost_item = table.item(row, self._packaging_columns["unit_cost"])
+        currency_combo = table.cellWidget(row, self._packaging_columns["currency"])
+        currency_symbol = "$"
+        if isinstance(currency_combo, QComboBox):
+            currency_symbol = currency_combo.currentText()
         self.costs_presenter.update_packaging_item(
-            row,
+            actual_index,
             name=name_item.text() if name_item else "",
             quantity_per_pack=qty_item.text() if qty_item else None,
-            unit_cost_mn=unit_cost_item.text() if unit_cost_item else None,
+            unit_cost_value=unit_cost_item.text() if unit_cost_item else None,
+            unit_cost_currency_symbol=currency_symbol,
         )
         self._refresh_costs_view()
 
-    def _remove_packaging_at(self, row: int) -> None:
-        self.costs_presenter.remove_packaging_item(row)
+    def _remove_packaging_at(self, index: int) -> None:
+        self.costs_presenter.remove_packaging_item(index)
         self._refresh_costs_view()
 
     def _on_add_packaging_clicked(self) -> None:
